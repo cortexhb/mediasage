@@ -285,8 +285,7 @@ async function validateAI(provider, apiKey, ollamaUrl, customUrl) {
         body: JSON.stringify({
             provider,
             api_key: apiKey || '',
-            ollama_url: ollamaUrl || '',
-            custom_url: customUrl || '',
+            endpoint_url: (provider === 'ollama' ? ollamaUrl : customUrl) || '',
         }),
     });
 }
@@ -1462,8 +1461,8 @@ function recalculateCostDisplay() {
     // Recalculate cost locally without API call (for track_count/max_tracks changes)
     if (!state.lastFilterPreview || !state.config) return;
 
-    // If cost rates aren't available (old config), fall back to API call
-    if (state.config.cost_per_million_input === undefined) {
+    // Unpriced config: the server owns the "no cost" answer, so ask it.
+    if (!state.config.is_priced) {
         updateFilterPreview();
         return;
     }
@@ -1488,13 +1487,12 @@ function recalculateCostDisplay() {
     const gen_input = tracks_to_send * 40;
     const gen_output = state.trackCount * 60;
 
-    // Analysis model cost (e.g. Sonnet)
-    const analysis_in_rate = state.config.analysis_cost_per_million_input ?? state.config.cost_per_million_input;
-    const analysis_out_rate = state.config.analysis_cost_per_million_output ?? state.config.cost_per_million_output;
-    const analysis_cost = (analysis_input / 1_000_000) * analysis_in_rate + (analysis_output / 1_000_000) * analysis_out_rate;
+    // Each role is billed at its own configured rate.
+    const analysis_cost = (analysis_input / 1_000_000) * state.config.cost_analysis_input
+        + (analysis_output / 1_000_000) * state.config.cost_analysis_output;
 
-    // Generation model cost (e.g. Haiku)
-    const gen_cost = (gen_input / 1_000_000) * state.config.cost_per_million_input + (gen_output / 1_000_000) * state.config.cost_per_million_output;
+    const gen_cost = (gen_input / 1_000_000) * state.config.cost_generation_input
+        + (gen_output / 1_000_000) * state.config.cost_generation_output;
 
     const estimated_cost = analysis_cost + gen_cost;
 
@@ -1736,20 +1734,21 @@ function updateSettings() {
 
     // Update Ollama settings
     const ollamaUrl = document.getElementById('ollama-url');
-    ollamaUrl.value = state.config.ollama_url || 'http://localhost:11434';
+    ollamaUrl.value = (state.config.llm_provider === 'ollama' && state.config.endpoint_url)
+        || 'http://localhost:11434';
 
     // Update Custom provider settings
     const customUrl = document.getElementById('custom-url');
     const customApiKey = document.getElementById('custom-api-key');
     const customModel = document.getElementById('custom-model');
     const customContext = document.getElementById('custom-context-window');
-    customUrl.value = state.config.custom_url || '';
+    customUrl.value = (state.config.llm_provider === 'custom' && state.config.endpoint_url) || '';
     customApiKey.value = '';  // Never show actual key
     customApiKey.placeholder = state.config.llm_api_key_set && state.config.llm_provider === 'custom'
         ? '••••••••••••• (key saved)'
         : 'sk-... (optional)';
     customModel.value = state.config.model_analysis || '';  // Custom uses same model for both
-    customContext.value = state.config.custom_context_window || 32768;
+    customContext.value = state.config.context_window || 32768;
 
     // Update status indicators
     const plexStatus = document.getElementById('plex-status');
@@ -1883,7 +1882,7 @@ async function updateOllamaContextDisplay(url, modelName) {
         const info = await fetchOllamaModelInfo(url, modelName);
         if (info && info.context_window) {
             // Show context window with note if using default
-            const isDefault = info.context_detected === false;
+            const isDefault = false;
             const defaultNote = isDefault ? ' (default - not detected)' : '';
             contextEl.textContent = `${info.context_window.toLocaleString()} tokens${defaultNote}`;
 
@@ -1893,7 +1892,7 @@ async function updateOllamaContextDisplay(url, modelName) {
 
             // Save the context window to config so backend can calculate max_tracks_to_ai
             try {
-                await updateConfig({ ollama_context_window: info.context_window });
+                await updateConfig({ context_window: info.context_window });
                 // Refresh config state to get updated max_tracks_to_ai
                 state.config = await fetchConfig();
             } catch (saveError) {
@@ -3272,7 +3271,7 @@ async function handleSaveSettings() {
 
     // Set provider-specific settings
     if (llmProvider === 'ollama') {
-        if (ollamaUrl) updates.ollama_url = ollamaUrl;
+        if (ollamaUrl) updates.endpoint_url = ollamaUrl;
         if (ollamaModelAnalysis) updates.model_analysis = ollamaModelAnalysis;
         if (ollamaModelGeneration) updates.model_generation = ollamaModelGeneration;
     } else if (llmProvider === 'custom') {
@@ -3282,13 +3281,13 @@ async function handleSaveSettings() {
             showError(validationErrors.join('. '));
             return;
         }
-        if (customUrl) updates.custom_url = customUrl;
+        if (customUrl) updates.endpoint_url = customUrl;
         if (customApiKey) updates.llm_api_key = customApiKey;
         if (customModel) {
             updates.model_analysis = customModel;
             updates.model_generation = customModel;  // Same model for both
         }
-        updates.custom_context_window = customContextWindow;
+        updates.context_window = customContextWindow;
     } else {
         // Cloud providers need API key
         if (llmApiKey) updates.llm_api_key = llmApiKey;

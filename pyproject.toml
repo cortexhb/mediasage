@@ -1,0 +1,84 @@
+[project]
+name = "mediasage"
+version = "0.1.0"
+description = "AI-powered playlists and album recommendations for Plex, using only music you own"
+readme = "README.md"
+requires-python = ">=3.14"
+license = { text = "MIT" }
+
+dependencies = [
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.52.4",
+    "plexapi>=4.18.2",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.15.0",
+    "pyyaml>=6.0.3",
+    "python-dotenv>=1.2.3",
+    "rapidfuzz>=3.14.5",
+    "unidecode>=1.4.0",
+    "httpx>=0.28.1",
+    "json-repair>=0.63.3",
+    "readability-lxml>=0.8.4.1",
+    "langchain>=1.0",
+    "langchain-anthropic>=1.6.1",
+    "langchain-openai>=1.6.0",
+    "langchain-google-genai>=4.3.5",
+    "langchain-ollama>=1.1.0",
+    "ollama>=0.6.2",
+    "sqlmodel>=0.0.39",
+    "alembic>=1.19.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-mock>=3.15.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.4",
+    "pyrefly>=1.2.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pyrefly]
+python-version = "3.14"
+search-path = ["backend", "tests", "."]
+preset = "default"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.pyright]
+extraPaths = ["backend"]
+venvPath = "."
+venv = ".venv"
+
+[tool.coverage.run]
+source = ["backend"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING",
+    "if __name__ ==",
+]

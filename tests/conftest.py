@@ -1,9 +1,93 @@
 """Pytest fixtures for MediaSage tests."""
 
-import pytest
 from unittest.mock import MagicMock
 
-from backend.models import Track, Dimension
+import pytest
+
+from backend.config import MediasageConfig
+from backend.config.store import config_store
+from backend.models import Dimension, Track
+
+# Every environment variable the config reads. A developer's shell may have
+# these set, so tests must clear them or they assert against that machine
+# instead of the values under test.
+CONFIG_ENV_VARS = (
+    "MEDIASAGE_DEFAULTS__TRACK_COUNT",
+    "MEDIASAGE_LLM__API_KEY",
+    "MEDIASAGE_LLM__CONTEXT_WINDOW",
+    "MEDIASAGE_LLM__ENDPOINT_URL",
+    "MEDIASAGE_LLM__MODEL_ANALYSIS",
+    "MEDIASAGE_LLM__MODEL_GENERATION",
+    "MEDIASAGE_LLM__PROVIDER",
+    "MEDIASAGE_PLEX__MUSIC_LIBRARY",
+    "MEDIASAGE_PLEX__TOKEN",
+    "MEDIASAGE_PLEX__URL",
+)
+
+
+
+@pytest.fixture(autouse=True)
+def installed_config(monkeypatch) -> MediasageConfig:
+    """Install a complete configuration before every test.
+
+    Tunables are read off the config at call time, so even a test that never
+    mentions settings needs one installed; without it the developer's own
+    config would be loaded and assertions would depend on their machine.
+    """
+    config = MediasageConfig(llm={"provider": "anthropic", "context_window": 200000})
+    monkeypatch.setattr(config_store, "config", config)
+    return config
+
+
+@pytest.fixture
+def clean_config_env(monkeypatch):
+    """Remove every config env var so a test sees only what it sets itself."""
+    for var in CONFIG_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    return monkeypatch
+
+
+
+@pytest.fixture
+def temp_db(tmp_path):
+    """A migrated database on a fresh file, with in-process sync state reset.
+
+    Migrations build the schema, so tests exercise what the application
+    actually ships rather than a parallel definition.
+    """
+    from backend.db import db, upgrade_to_head
+    from backend.library import library_sync
+    from backend.library.models import SyncRun
+
+    db.configure(f"sqlite:///{tmp_path / 'test.db'}")
+    upgrade_to_head()
+    library_sync._run = SyncRun()
+
+    yield db
+
+    db.dispose()
+
+
+@pytest.fixture
+def library_settings(monkeypatch):
+    """Install a real configuration so library tunables are readable.
+
+    Returns a callable that reinstalls the config with `LibraryConfig`
+    overrides, for tests that need a different batch size or live rule.
+    """
+    from backend.config import LibraryConfig, MediasageConfig
+    from backend.config.store import config_store
+
+    def install(**overrides) -> LibraryConfig:
+        config = MediasageConfig(
+            llm={"provider": "anthropic", "context_window": 200000},
+            library=LibraryConfig(**overrides),
+        )
+        monkeypatch.setattr(config_store, "config", config)
+        return config.library
+
+    install()
+    return install
 
 
 @pytest.fixture

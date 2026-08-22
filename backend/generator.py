@@ -5,10 +5,17 @@ import logging
 from collections.abc import Generator
 from datetime import datetime
 
-from backend.llm_client import get_llm_client
+from rapidfuzz import fuzz
+
+from backend import library
+from backend.config import config_store
+from backend.library import TrackFilter
+from backend.llm import client_store
+from backend.matching import artist_variants, simplify, threshold
 from backend.models import GenerateResponse, Track
-from backend.plex_client import PlexQueryError, get_plex_client
-from backend import library_cache
+from backend.plex import PlexFilter, PlexQueryError, plex_store
+from backend.results import Result
+from backend.results import store as results_store
 
 logger = logging.getLogger(__name__)
 
@@ -74,10 +81,7 @@ def generate_narrative(
             logger.warning("Narrative missing from response. Keys: %s", list(result.keys()))
 
         # Append date to title
-        if raw_title:
-            playlist_title = f"{raw_title} - {date_suffix}"
-        else:
-            playlist_title = fallback_title
+        playlist_title = f"{raw_title} - {date_suffix}" if raw_title else fallback_title
 
         return playlist_title, narrative
 
@@ -117,13 +121,15 @@ def _get_tracks_from_cache_or_plex(
     effective_limit = max_tracks_to_ai if max_tracks_to_ai > 0 else 2000
 
     # Try cache first
-    if library_cache.has_cached_tracks():
+    if library.has_tracks():
         logger.info("Using cached tracks for generation")
-        cached_tracks = library_cache.get_tracks_by_filters(
-            genres=genres,
-            decades=decades,
-            min_rating=min_rating,
-            exclude_live=exclude_live,
+        cached_tracks = library.tracks.filtered(
+            TrackFilter(
+                genres=genres or [],
+                decades=decades or [],
+                min_rating=min_rating,
+                exclude_live=exclude_live,
+            ),
             limit=effective_limit,
         )
         return [_cached_track_to_model(t) for t in cached_tracks]
@@ -131,18 +137,17 @@ def _get_tracks_from_cache_or_plex(
     # Fall back to Plex
     logger.info("Cache empty, fetching from Plex")
     if not has_filters:
-        return plex_client.get_random_tracks(
-            count=effective_limit,
-            exclude_live=exclude_live,
-        )
-    else:
-        return plex_client.get_tracks_by_filters(
-            genres=genres,
-            decades=decades,
-            exclude_live=exclude_live,
+        return plex_client.random_tracks(effective_limit, exclude_live=exclude_live)
+
+    return plex_client.filtered(
+        PlexFilter(
+            genres=genres or [],
+            decades=decades or [],
             min_rating=min_rating,
-            limit=effective_limit,
-        )
+            exclude_live=exclude_live,
+        ),
+        limit=effective_limit,
+    )
 
 
 def generate_playlist_stream(
@@ -157,7 +162,7 @@ def generate_playlist_stream(
     exclude_live: bool = True,
     min_rating: int = 0,
     max_tracks_to_ai: int = 500,
-) -> Generator[str, None, None]:
+) -> Generator[str]:
     """Generate a playlist with streaming progress updates.
 
     Yields SSE-formatted events with progress updates and final result.
@@ -167,8 +172,8 @@ def generate_playlist_stream(
 
     try:
         logger.info("Starting playlist generation (streaming)")
-        llm_client = get_llm_client()
-        plex_client = get_plex_client()
+        llm_client = client_store.get()
+        plex_client = plex_store.get()
 
         if not llm_client:
             yield emit("error", {"message": "LLM client not initialized"})
@@ -180,7 +185,7 @@ def generate_playlist_stream(
         has_filters = genres or decades or min_rating > 0
 
         # Step 1: Fetch tracks from cache or Plex
-        using_cache = library_cache.has_cached_tracks()
+        using_cache = library.has_tracks()
         if using_cache:
             yield emit("progress", {"step": "fetching", "message": "Loading tracks from cache..."})
         elif not has_filters:
@@ -275,6 +280,7 @@ def generate_playlist_stream(
         if seed_track:
             used_keys.add(seed_track.rating_key)
 
+        floor = threshold()
         for selection in track_selections:
             if len(matched_tracks) >= track_count:
                 break
@@ -287,7 +293,7 @@ def generate_playlist_stream(
                 if track.rating_key in used_keys:
                     continue
 
-                if _tracks_match(artist, title, track):
+                if _tracks_match(artist, title, track, floor):
                     matched_tracks.append(track)
                     used_keys.add(track.rating_key)
                     if reason:
@@ -313,15 +319,16 @@ def generate_playlist_stream(
         logger.info("Emitting 'Playlist ready!' progress event")
         yield emit("progress", {"step": "complete", "message": "Playlist ready!"})
 
-        logger.info("Building GenerateResponse: tokens=%s, cost=%s",
-                    getattr(response, 'total_tokens', 'N/A'),
-                    response.estimated_cost() if response else 'N/A')
+        cost = response.cost(config_store.get().llm)
+        logger.info(
+            "Building GenerateResponse: tokens=%s, cost=%s", response.total_tokens, cost
+        )
 
         try:
             result = GenerateResponse(
                 tracks=matched_tracks,
                 token_count=response.total_tokens,
-                estimated_cost=response.estimated_cost(),
+                estimated_cost=cost,
                 playlist_title=playlist_title,
                 narrative=narrative,
                 track_reasons=track_reasons,
@@ -357,14 +364,16 @@ def generate_playlist_stream(
                 result_subtitle = f"{prompt} \u00b7 {len(matched_tracks)} tracks"
             else:
                 result_subtitle = f"{len(matched_tracks)} tracks"
-            result_id = library_cache.save_result(
-                result_type=result_type,
-                title=result_title,
-                prompt=prompt or "",
-                snapshot=result.model_dump(mode="json"),
-                track_count=len(matched_tracks),
-                art_rating_key=first_art_key,
-                subtitle=result_subtitle,
+            result_id = results_store.save(
+                Result(
+                    type=result_type,
+                    title=result_title,
+                    prompt=prompt or "",
+                    snapshot=result.model_dump(mode="json"),
+                    track_count=len(matched_tracks),
+                    art_rating_key=first_art_key,
+                    subtitle=result_subtitle,
+                )
             )
         except Exception as e:
             logger.warning("Failed to save result: %s", e)
@@ -432,26 +441,17 @@ Return ONLY valid JSON:
 No markdown formatting, no explanations - just the JSON object."""
 
 
-def _tracks_match(llm_artist: str, llm_title: str, library_track: Track) -> bool:
+def _tracks_match(llm_artist: str, llm_title: str, library_track: Track, floor: int) -> bool:
     """Check if LLM selection matches a library track.
 
-    Uses fuzzy matching to handle slight variations in naming.
+    Uses fuzzy matching to handle slight variations in naming. `floor` is read
+    once per generation rather than per track: it cannot change mid-run.
     """
-    from rapidfuzz import fuzz
-    from backend.plex_client import simplify_string, normalize_artist, FUZZ_THRESHOLD
-
-    # Compare titles
-    simplified_llm_title = simplify_string(llm_title)
-    simplified_lib_title = simplify_string(library_track.title)
-
-    if fuzz.ratio(simplified_llm_title, simplified_lib_title) < FUZZ_THRESHOLD:
+    if fuzz.ratio(simplify(llm_title), simplify(library_track.title)) < floor:
         return False
 
-    # Compare artists (with variations)
-    for artist_variant in normalize_artist(llm_artist):
-        simplified_artist = simplify_string(artist_variant)
-        simplified_lib_artist = simplify_string(library_track.artist)
-        if fuzz.ratio(simplified_artist, simplified_lib_artist) >= FUZZ_THRESHOLD:
-            return True
-
-    return False
+    library_artist = simplify(library_track.artist)
+    return any(
+        fuzz.ratio(simplify(variant), library_artist) >= floor
+        for variant in artist_variants(llm_artist)
+    )

@@ -13,9 +13,17 @@ RUN groupadd -r -g 1000 mediasageappuser && useradd -r -u 1000 -g mediasageappus
 # Create data directory with correct ownership (for volume mounts)
 RUN mkdir -p /app/data && chown mediasageappuser:mediasageappuser /app/data
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# uv resolves and installs from the committed lock file
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    PATH="/app/.venv/bin:$PATH"
+
+# Separate layer from the source copy so edits do not reinstall dependencies
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project
 
 # Copy application code with ownership
 COPY --chown=mediasageappuser:mediasageappuser backend/ ./backend/

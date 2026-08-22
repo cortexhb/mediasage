@@ -1,8 +1,12 @@
 """Tests for prompt and track analysis."""
 
 import json
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
+
+from backend.library import DecadeCount, GenreCount
+from backend.models import LibraryStatsResponse
 
 
 class TestPromptAnalysis:
@@ -11,7 +15,7 @@ class TestPromptAnalysis:
     def test_analyze_prompt_extracts_genres(self, mocker):
         """Should extract suggested genres from prompt."""
         from backend.analyzer import analyze_prompt
-        from backend.llm_client import LLMResponse
+        from backend.llm import LLMResponse
 
         mock_response = LLMResponse(
             content=json.dumps({
@@ -21,22 +25,23 @@ class TestPromptAnalysis:
             }),
             input_tokens=100,
             output_tokens=50,
-            model="test-model"
-        )
+            model="test-model", role="analysis")
 
-        with patch("backend.analyzer.get_llm_client") as mock_llm:
+        with patch("backend.analyzer.client_store") as mock_store:
             mock_client = MagicMock()
             mock_client.analyze.return_value = mock_response
             mock_client.parse_json_response.return_value = json.loads(mock_response.content)
-            mock_llm.return_value = mock_client
+            mock_store.require.return_value = mock_client
 
-            with patch("backend.analyzer.get_plex_client") as mock_plex:
+            with patch("backend.analyzer.plex_store") as mock_plex:
                 mock_plex_client = MagicMock()
-                mock_plex_client.get_library_stats.return_value = {
-                    "genres": [{"name": "Alternative", "count": 100}, {"name": "Rock", "count": 200}],
-                    "decades": [{"name": "1990s", "count": 150}]
-                }
-                mock_plex.return_value = mock_plex_client
+                mock_plex_client.stats.return_value = LibraryStatsResponse(
+                    total_tracks=300,
+                    genres=[GenreCount(name="Alternative", count=100),
+                            GenreCount(name="Rock", count=200)],
+                    decades=[DecadeCount(name="1990s", count=150)],
+                )
+                mock_plex.get.return_value = mock_plex_client
 
                 result = analyze_prompt("melancholy 90s alternative")
 
@@ -46,28 +51,28 @@ class TestPromptAnalysis:
     def test_analyze_prompt_handles_malformed_response(self, mocker):
         """Should handle malformed LLM JSON responses gracefully."""
         from backend.analyzer import analyze_prompt
-        from backend.llm_client import LLMResponse
+        from backend.llm import LLMResponse
 
         mock_response = LLMResponse(
             content="Not valid JSON at all",
             input_tokens=100,
             output_tokens=50,
-            model="test-model"
-        )
+            model="test-model", role="analysis")
 
-        with patch("backend.analyzer.get_llm_client") as mock_llm:
+        with patch("backend.analyzer.client_store") as mock_store:
             mock_client = MagicMock()
             mock_client.analyze.return_value = mock_response
             mock_client.parse_json_response.side_effect = ValueError("Invalid JSON")
-            mock_llm.return_value = mock_client
+            mock_store.require.return_value = mock_client
 
-            with patch("backend.analyzer.get_plex_client") as mock_plex:
+            with patch("backend.analyzer.plex_store") as mock_plex:
                 mock_plex_client = MagicMock()
-                mock_plex_client.get_library_stats.return_value = {
-                    "genres": [{"name": "Rock", "count": 100}],
-                    "decades": [{"name": "1990s", "count": 100}]
-                }
-                mock_plex.return_value = mock_plex_client
+                mock_plex_client.stats.return_value = LibraryStatsResponse(
+                    total_tracks=100,
+                    genres=[GenreCount(name="Rock", count=100)],
+                    decades=[DecadeCount(name="1990s", count=100)],
+                )
+                mock_plex.get.return_value = mock_plex_client
 
                 with pytest.raises(ValueError):
                     analyze_prompt("test prompt")
@@ -75,7 +80,7 @@ class TestPromptAnalysis:
     def test_analyze_prompt_returns_available_filters(self, mocker):
         """Should return available genres and decades from library."""
         from backend.analyzer import analyze_prompt
-        from backend.llm_client import LLMResponse
+        from backend.llm import LLMResponse
 
         mock_response = LLMResponse(
             content=json.dumps({
@@ -85,30 +90,22 @@ class TestPromptAnalysis:
             }),
             input_tokens=100,
             output_tokens=50,
-            model="test-model"
-        )
+            model="test-model", role="analysis")
 
-        with patch("backend.analyzer.get_llm_client") as mock_llm:
+        with patch("backend.analyzer.client_store") as mock_store:
             mock_client = MagicMock()
             mock_client.analyze.return_value = mock_response
             mock_client.parse_json_response.return_value = json.loads(mock_response.content)
-            mock_llm.return_value = mock_client
+            mock_store.require.return_value = mock_client
 
-            with patch("backend.analyzer.get_plex_client") as mock_plex:
+            with patch("backend.analyzer.plex_store") as mock_plex:
                 mock_plex_client = MagicMock()
-                mock_plex_client.get_library_stats.return_value = {
-                    "genres": [
-                        {"name": "Rock", "count": 500},
-                        {"name": "Jazz", "count": 200},
-                        {"name": "Classical", "count": 100}
-                    ],
-                    "decades": [
-                        {"name": "1980s", "count": 300},
-                        {"name": "1990s", "count": 400},
-                        {"name": "2000s", "count": 200}
-                    ]
-                }
-                mock_plex.return_value = mock_plex_client
+                mock_plex_client.stats.return_value = LibraryStatsResponse(
+                    total_tracks=800,
+                    genres=[GenreCount(name="Rock", count=500), GenreCount(name="Jazz", count=200), GenreCount(name="Classical", count=100)],
+                    decades=[DecadeCount(name="1980s", count=300), DecadeCount(name="1990s", count=400), DecadeCount(name="2000s", count=200)],
+                )
+                mock_plex.get.return_value = mock_plex_client
 
                 result = analyze_prompt("rock music from the 90s")
 
@@ -123,7 +120,7 @@ class TestFilterSuggestions:
     def test_filters_suggest_matching_library_genres(self, mocker):
         """Suggested genres should match library genres."""
         from backend.analyzer import analyze_prompt
-        from backend.llm_client import LLMResponse
+        from backend.llm import LLMResponse
 
         # LLM suggests "Alt Rock" but library has "Alternative"
         mock_response = LLMResponse(
@@ -134,25 +131,22 @@ class TestFilterSuggestions:
             }),
             input_tokens=100,
             output_tokens=50,
-            model="test-model"
-        )
+            model="test-model", role="analysis")
 
-        with patch("backend.analyzer.get_llm_client") as mock_llm:
+        with patch("backend.analyzer.client_store") as mock_store:
             mock_client = MagicMock()
             mock_client.analyze.return_value = mock_response
             mock_client.parse_json_response.return_value = json.loads(mock_response.content)
-            mock_llm.return_value = mock_client
+            mock_store.require.return_value = mock_client
 
-            with patch("backend.analyzer.get_plex_client") as mock_plex:
+            with patch("backend.analyzer.plex_store") as mock_plex:
                 mock_plex_client = MagicMock()
-                mock_plex_client.get_library_stats.return_value = {
-                    "genres": [
-                        {"name": "Alternative", "count": 500},
-                        {"name": "Grunge", "count": 100}
-                    ],
-                    "decades": [{"name": "1990s", "count": 400}]
-                }
-                mock_plex.return_value = mock_plex_client
+                mock_plex_client.stats.return_value = LibraryStatsResponse(
+                    total_tracks=600,
+                    genres=[GenreCount(name="Alternative", count=500), GenreCount(name="Grunge", count=100)],
+                    decades=[DecadeCount(name="1990s", count=400)],
+                )
+                mock_plex.get.return_value = mock_plex_client
 
                 result = analyze_prompt("90s alt rock")
 
@@ -167,7 +161,7 @@ class TestTrackAnalysis:
     def test_analyze_track_extracts_dimensions(self, mocker):
         """Should extract musical dimensions from a track."""
         from backend.analyzer import analyze_track
-        from backend.llm_client import LLMResponse
+        from backend.llm import LLMResponse
         from backend.models import Track
 
         track = Track(
@@ -190,14 +184,13 @@ class TestTrackAnalysis:
             }),
             input_tokens=100,
             output_tokens=80,
-            model="test-model"
-        )
+            model="test-model", role="analysis")
 
-        with patch("backend.analyzer.get_llm_client") as mock_llm:
+        with patch("backend.analyzer.client_store") as mock_store:
             mock_client = MagicMock()
             mock_client.analyze.return_value = mock_response
             mock_client.parse_json_response.return_value = json.loads(mock_response.content)
-            mock_llm.return_value = mock_client
+            mock_store.require.return_value = mock_client
 
             result = analyze_track(track)
 
@@ -209,7 +202,7 @@ class TestTrackAnalysis:
     def test_analyze_track_returns_specific_labels(self, mocker):
         """Dimension labels should be specific, not generic."""
         from backend.analyzer import analyze_track
-        from backend.llm_client import LLMResponse
+        from backend.llm import LLMResponse
         from backend.models import Track
 
         track = Track(
@@ -231,14 +224,13 @@ class TestTrackAnalysis:
             }),
             input_tokens=100,
             output_tokens=60,
-            model="test-model"
-        )
+            model="test-model", role="analysis")
 
-        with patch("backend.analyzer.get_llm_client") as mock_llm:
+        with patch("backend.analyzer.client_store") as mock_store:
             mock_client = MagicMock()
             mock_client.analyze.return_value = mock_response
             mock_client.parse_json_response.return_value = json.loads(mock_response.content)
-            mock_llm.return_value = mock_client
+            mock_store.require.return_value = mock_client
 
             result = analyze_track(track)
 

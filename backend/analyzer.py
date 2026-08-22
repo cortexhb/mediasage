@@ -1,17 +1,16 @@
 """Prompt analysis and seed track dimension extraction."""
 
-from backend.llm_client import get_llm_client
+from backend.config import config_store
+from backend.llm import client_store
 from backend.models import (
     AnalyzePromptResponse,
     AnalyzeTrackResponse,
     Dimension,
-    GenreCount,
-    DecadeCount,
     Track,
 )
-from backend.plex_client import get_plex_client
+from backend.plex import plex_store
 
-
+# TODO Prompts go in prompt.py files in the respective modules
 PROMPT_ANALYSIS_SYSTEM = """You are a music expert helping to create playlists from a user's music library.
 
 Analyze the user's prompt and suggest appropriate filters (genres and decades) that would help find matching tracks.
@@ -63,20 +62,18 @@ def analyze_prompt(prompt: str) -> AnalyzePromptResponse:
 
     Raises:
         ValueError: If LLM response cannot be parsed
-        RuntimeError: If clients are not initialized
+        LLMError: If no LLM provider is configured
+        RuntimeError: If the Plex client is not initialized
     """
-    llm_client = get_llm_client()
-    plex_client = get_plex_client()
+    llm_client = client_store.require()
+    plex_client = plex_store.get()
 
-    if not llm_client:
-        raise RuntimeError("LLM client not initialized")
     if not plex_client:
         raise RuntimeError("Plex client not initialized")
 
-    # Get library stats for available filters
-    stats = plex_client.get_library_stats()
-    available_genres = [GenreCount(**g) for g in stats.get("genres", [])]
-    available_decades = [DecadeCount(**d) for d in stats.get("decades", [])]
+    stats = plex_client.stats()
+    available_genres = stats.genres
+    available_decades = stats.decades
 
     # Build prompt with available filter context
     analysis_prompt = f"""User's playlist request: "{prompt}"
@@ -115,7 +112,7 @@ Suggest genres and decades from the available options that best match the user's
         available_decades=available_decades,
         reasoning=data.get("reasoning", ""),
         token_count=response.total_tokens,
-        estimated_cost=response.estimated_cost(),
+        estimated_cost=response.cost(config_store.get().llm),
     )
 
 
@@ -130,12 +127,9 @@ def analyze_track(track: Track) -> AnalyzeTrackResponse:
 
     Raises:
         ValueError: If LLM response cannot be parsed
-        RuntimeError: If LLM client is not initialized
+        LLMError: If no LLM provider is configured
     """
-    llm_client = get_llm_client()
-
-    if not llm_client:
-        raise RuntimeError("LLM client not initialized")
+    llm_client = client_store.require()
 
     # Build analysis prompt
     analysis_prompt = f"""Analyze this track:
@@ -166,5 +160,5 @@ Identify 5-7 specific musical dimensions that make this track distinctive."""
         track=track,
         dimensions=dimensions,
         token_count=response.total_tokens,
-        estimated_cost=response.estimated_cost(),
+        estimated_cost=response.cost(config_store.get().llm),
     )

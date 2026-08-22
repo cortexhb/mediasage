@@ -4,7 +4,7 @@ services:
     # Alternative registries:
     # image: ghcr.io/ecwilsonaz/mediasage:latest
     # To build locally instead, comment out 'image' and uncomment 'build':
-    # build: .
+    build: .
     container_name: mediasage
     # Optional: Run as specific user for NAS/Synology (use your PUID:PGID)
     # user: "1000:1000"
@@ -12,36 +12,40 @@ services:
       - "5765:5765"
     environment:
       # Required: Plex server settings
-      - PLEX_URL=${PLEX_URL}
-      - PLEX_TOKEN=${PLEX_TOKEN}
-      - PLEX_MUSIC_LIBRARY=${PLEX_MUSIC_LIBRARY:-Music}
+      - MEDIASAGE_PLEX__URL=${MEDIASAGE_PLEX__URL}
+      - MEDIASAGE_PLEX__TOKEN=${MEDIASAGE_PLEX__TOKEN}
+      - MEDIASAGE_PLEX__MUSIC_LIBRARY=${MEDIASAGE_PLEX__MUSIC_LIBRARY:-Music}
 
       # Performance tuning
       - UVICORN_WORKERS=${UVICORN_WORKERS:-1}
 
-      # LLM Provider (anthropic, openai, gemini, ollama, or custom)
-      # Defaults to gemini. Can also be configured in the web UI.
-      #- LLM_PROVIDER=gemini
+      # LLM provider: anthropic, openai, gemini, ollama, or custom.
+      # Required -- an unconfigured provider fails at startup, not mid-request.
+      # CONTEXT_WINDOW is required too: there is no per-model table to fall back on.
 
-      # Cloud provider API keys (set one)
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      # Hosted: Gemini
+      #- MEDIASAGE_LLM__PROVIDER=gemini
+      #- MEDIASAGE_LLM__API_KEY=${MEDIASAGE_LLM__API_KEY:-}
+      #- MEDIASAGE_LLM__MODEL_ANALYSIS=gemini-2.5-flash
+      #- MEDIASAGE_LLM__MODEL_GENERATION=gemini-2.5-flash
+      #- MEDIASAGE_LLM__CONTEXT_WINDOW=1000000
 
-      # Optional: Override default models
-      #- LLM_MODEL_ANALYSIS=gemini-2.5-flash
-      #- LLM_MODEL_GENERATION=gemini-2.5-flash
+      # Local: Ollama
+      #- MEDIASAGE_LLM__PROVIDER=ollama
+      #- MEDIASAGE_LLM__ENDPOINT_URL=http://host.docker.internal:11434
+      #- MEDIASAGE_LLM__CONTEXT_WINDOW=32768
 
-      # Local LLM: Ollama (experimental)
-      #- LLM_PROVIDER=ollama
-      #- OLLAMA_URL=http://host.docker.internal:11434
-      #- OLLAMA_CONTEXT_WINDOW=32768
+      # Local or proxied: any OpenAI-compatible API (MLX, LM Studio, OpenRouter)
+      - MEDIASAGE_LLM__PROVIDER=custom
+      - MEDIASAGE_LLM__ENDPOINT_URL=https://openrouter.ai/api/v1
+      - MEDIASAGE_LLM__API_KEY=sk-or-your-key
+      - MEDIASAGE_LLM__CONTEXT_WINDOW=32768
 
-      # Local LLM: Custom OpenAI-compatible API (experimental)
-      #- LLM_PROVIDER=custom
-      #- CUSTOM_LLM_URL=https://openrouter.ai/api/v1
-      #- CUSTOM_LLM_API_KEY=sk-or-your-key
-      #- CUSTOM_CONTEXT_WINDOW=32768
+      # Cost display, per million tokens. Unset means unpriced, not free.
+      #- MEDIASAGE_LLM__COST_ANALYSIS_INPUT=3.00
+      #- MEDIASAGE_LLM__COST_ANALYSIS_OUTPUT=15.00
+      #- MEDIASAGE_LLM__COST_GENERATION_INPUT=1.00
+      #- MEDIASAGE_LLM__COST_GENERATION_OUTPUT=5.00
     volumes:
       # Persist library cache across restarts
       # Ensure directory is writable: either set 'user' above, or run:
