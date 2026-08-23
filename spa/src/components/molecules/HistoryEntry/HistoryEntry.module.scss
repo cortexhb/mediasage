@@ -1,0 +1,123 @@
+/**
+ * A row: icon tile, title block, timestamp, delete.
+ *
+ * The title's `::after` is stretched over the row so the whole card is a click
+ * target while only the title is in the tab order. The delete button sits
+ * above it on the stacking order, which is why both carry a `z-index`.
+ *
+ * The delete button appears on hover, and on `:focus-within` as well — hover
+ * alone (`frontend/style.css:3297`) left it invisible to a keyboard.
+ */
+
+.historyEntry {
+  position: relative;
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast);
+}
+
+.historyEntry:hover {
+  background: var(--bg-secondary);
+}
+
+.historyEntry__icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.historyEntry:hover .historyEntry__icon {
+  color: var(--accent);
+  background: var(--bg-hover);
+}
+
+.historyEntry__body {
+  min-width: 0;
+  flex: 1;
+}
+
+.historyEntry__title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.historyEntry__title::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  content: '';
+}
+
+.historyEntry__artist {
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+/* An em dash, so the artist reads as an aside rather than a second title. */
+.historyEntry__artist::before {
+  color: var(--text-muted);
+  content: '\2014\00a0';
+}
+
+.historyEntry__subtitle {
+  display: block;
+  overflow: hidden;
+  font-size: var(--font-size-xs);
+  line-height: 1.3;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.historyEntry__time {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.historyEntry__delete {
+  position: absolute;
+  top: 50%;
+  right: var(--spacing-sm);
+  z-index: 2;
+  padding: var(--spacing-xs);
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: all var(--transition-fast);
+}
+
+.historyEntry:hover .historyEntry__delete,
+.historyEntry:focus-within .historyEntry__delete {
+  opacity: 1;
+}
+
+.historyEntry:hover .historyEntry__time,
+.historyEntry:focus-within .historyEntry__time {
+  opacity: 0;
+}
+
+.historyEntry__delete:hover {
+  color: var(--error);
+}

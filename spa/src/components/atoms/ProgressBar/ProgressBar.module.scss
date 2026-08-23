@@ -1,0 +1,44 @@
+/**
+ * A track with a fill, both fully rounded so the fill never squares off.
+ *
+ * Indeterminate is a travelling sliver rather than an empty bar, because an
+ * empty bar and a stalled sync look identical.
+ */
+
+.progressBar {
+  height: 8px;
+  overflow: hidden;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-full);
+}
+
+.progressBar__fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-full);
+  transition: width var(--transition-normal);
+}
+
+@keyframes progress-travel {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(400%);
+  }
+}
+
+.progressBar[data-indeterminate] .progressBar__fill {
+  width: 25%;
+  animation: progress-travel 1.4s ease-in-out infinite;
+}
+
+/* No motion left, so the bar states that it is running by filling. */
+@media (prefers-reduced-motion: reduce) {
+  .progressBar[data-indeterminate] .progressBar__fill {
+    width: 100%;
+    animation: none;
+    opacity: 0.4;
+  }
+}

@@ -14,6 +14,9 @@ import styles from './Overlay.module.scss'
  * `open` is the caller's state, not the element's. Escape and a
  * `form method="dialog"` submit close the element on their own, so `onClose`
  * is how the caller learns it has to catch up.
+ *
+ * The close button is not optional. Escape dismisses every one of these, and
+ * a way out that only a keyboard can find is not a way out.
  */
 export interface OverlayProps {
   readonly open: boolean
@@ -42,7 +45,22 @@ export function Overlay({ open, onClose, label, children }: OverlayProps) {
       aria-label={label}
       className={styles.overlay}
     >
-      {children}
+      {/* Unmounted while closed: a closed dialog is hidden by the UA sheet,
+          which jsdom does not apply, so its content stayed queryable. */}
+      {open && (
+        <>
+          <button
+            type="button"
+            className={styles.overlay__dismiss}
+            aria-label="Close"
+            // `close()` rather than `onClose`: it fires `close` for both.
+            onClick={() => ref.current?.close()}
+          >
+            ×
+          </button>
+          {children}
+        </>
+      )}
     </dialog>
   )
 }

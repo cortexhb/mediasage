@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { describe, expect, it } from 'vitest'
 
 import { server } from '@test'
+import { LibrarySyncProvider } from '../../components/organisms/LibrarySyncProvider/LibrarySyncProvider.tsx'
 import type { SettingsData } from '../../libs/loadSettings/loadSettings.ts'
 import { Settings } from './Settings.tsx'
 
@@ -43,10 +44,31 @@ const STATS = {
   decades: [{ name: '1980s', count: 620 }],
 }
 
-/** The page on its own route, with the loader stubbed. */
+/** The page on its own route, with the loader stubbed.
+
+    The provider stands in for the shell, which owns the sync poller the
+    Plex card's sync button reads. */
 function renderPage(data: SettingsData = DATA) {
+  server.use(
+    http.get('/api/library/status', () =>
+      HttpResponse.json({
+        track_count: STATS.total_tracks,
+        synced_at: new Date().toISOString(),
+        is_syncing: false,
+        plex_connected: true,
+      }),
+    ),
+  )
   const router = createMemoryRouter([
-    { path: '/', Component: Settings, loader: () => data },
+    {
+      path: '/',
+      loader: () => data,
+      Component: () => (
+        <LibrarySyncProvider>
+          <Settings />
+        </LibrarySyncProvider>
+      ),
+    },
     { path: 'settings/stats', loader: () => STATS },
   ])
   return render(<RouterProvider router={router} />)

@@ -31,6 +31,7 @@ from backend.db import Upsert, db
 from backend.library.live import LiveVersionRule
 from backend.library.models import (
     AlbumMetadata,
+    AlbumStage,
     SyncPhase,
     SyncProgress,
     SyncResult,
@@ -41,6 +42,12 @@ from backend.library.models import (
 from backend.library.tables import SyncState, Track, TrackGenre
 
 logger = logging.getLogger(__name__)
+
+# Which sync phase each album-metadata stage is reported as.
+ALBUM_PHASES: dict[AlbumStage, SyncPhase] = {
+    "albums": "fetching_albums",
+    "genres": "fetching_genres",
+}
 
 
 class LibrarySync(BaseModel):
@@ -214,15 +221,26 @@ class LibrarySync(BaseModel):
 
         token, cursor = self._checkpoint()
         total = plex_client.library.total_tracks()
-        self._advance(total=total)
+        logger.info("Syncing %d tracks from server %s, resuming at %d", total, server_id, cursor)
 
-        logger.info("Fetching album metadata from Plex...")
-        album_metadata = plex_client.library.album_metadata()
-        logger.info("Got metadata for %d albums", len(album_metadata))
-        self._advance(phase="processing")
+        album_metadata = plex_client.library.album_metadata(self._album_progress)
+        logger.info("Read metadata for %d albums", len(album_metadata))
+
+        # The track total is restored here: the album stages counted albums.
+        self._advance(phase="processing", current=cursor, total=total)
 
         synced = self._write_pages(plex_client, album_metadata, token, cursor, total, on_progress)
         return self._finish(server_id, token, synced, started)
+
+    def _album_progress(self, stage: AlbumStage, done: int, total: int) -> None:
+        """Report what `album_metadata` is doing, as a sync phase.
+
+        Without this the album stages set no `current`, so the UI drew a bar
+        that could not move for as long as they took -- minutes on a large
+        library, which reads as a hung sync.
+        """
+        self._advance(phase=ALBUM_PHASES[stage], current=done, total=total)
+        logger.info("Fetching %s: %d/%d", stage, done, total)
 
     def _checkpoint(self) -> tuple[str, int]:
         """Resume an interrupted sync, or start a new one."""

@@ -1574,7 +1574,8 @@ export type SyncProgress = {
   /**
    * Phase
    */
-  phase?: 'fetching_albums' | 'fetching' | 'processing' | null
+  phase?:
+    'fetching_albums' | 'fetching_genres' | 'fetching' | 'processing' | null
   /**
    * Current
    */

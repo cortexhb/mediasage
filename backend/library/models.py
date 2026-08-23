@@ -7,6 +7,7 @@ consume; `backend.library.tables` holds the rows they are built from.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, Field, field_validator
@@ -15,7 +16,13 @@ from backend.library.live import LiveVersionRule
 from backend.library.tables import Track
 
 # Which stage of the sync is running, for progress display.
-SyncPhase = Literal["fetching_albums", "fetching", "processing"]
+SyncPhase = Literal["fetching_albums", "fetching_genres", "fetching", "processing"]
+
+# What `PlexLibrary.album_metadata` is doing. The stages count different things.
+AlbumStage = Literal["albums", "genres"]
+
+# Called with (stage, done, total) as `album_metadata` advances.
+AlbumProgress = Callable[[AlbumStage, int, int], None]
 
 # How much of an album the user has already heard.
 FamiliarityLevel = Literal["unplayed", "light", "well-loved"]

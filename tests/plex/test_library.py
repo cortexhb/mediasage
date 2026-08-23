@@ -176,6 +176,101 @@ class TestAlbumMetadataFetch:
         assert PlexLibrary(connection=make_connection()).album_metadata() == {}
 
 
+class TestAlbumMetadataProgress:
+    """Both stages report, or the UI draws a bar that cannot move.
+
+    Without a callback here nothing set `current` until the sync reached its
+    processing phase, which on an 80k-track library is minutes of an empty bar
+    — indistinguishable from a hung sync.
+    """
+
+    def reported(self, connection, section, albums: int, genres: list[str]):
+        """Every (stage, done, total) a fetch of `albums` albums reports."""
+        items = fake_items(albums)
+        for album in items:
+            album.year = 1999
+
+        section.totalViewSize.return_value = albums
+        section.listFilterChoices.return_value = [choice(name) for name in genres]
+        section.search.side_effect = lambda **kw: (
+            [] if kw.get("genre") else (items if kw.get("container_start", 0) == 0 else [])
+        )
+
+        seen: list[tuple[str, int, int]] = []
+        PlexLibrary(connection=connection).album_metadata(
+            lambda stage, done, total: seen.append((stage, done, total))
+        )
+        return seen
+
+    def test_the_album_stage_counts_albums_not_tracks(self, connection, section):
+        seen = self.reported(connection, section, albums=3, genres=[])
+        assert ("albums", 3, 3) in seen
+
+    def test_the_genre_stage_counts_genre_choices(self, connection, section):
+        # One query per genre, so a choice is the unit of work.
+        seen = self.reported(connection, section, albums=1, genres=["Rock", "Jazz"])
+        assert [entry for entry in seen if entry[0] == "genres"] == [
+            ("genres", 1, 2),
+            ("genres", 2, 2),
+        ]
+
+    def test_a_failing_genre_still_advances(self, connection, section):
+        """A skipped genre must not leave the bar short of its total."""
+        section.totalViewSize.return_value = 1
+        section.listFilterChoices.return_value = [choice("Broken")]
+
+        def search(**kwargs):
+            if kwargs.get("genre"):
+                raise RuntimeError("filter blew up")
+            return fake_items(1) if kwargs.get("container_start", 0) == 0 else []
+
+        section.search.side_effect = search
+        seen: list[tuple[str, int, int]] = []
+        PlexLibrary(connection=connection).album_metadata(
+            lambda stage, done, total: seen.append((stage, done, total))
+        )
+
+        assert ("genres", 1, 1) in seen
+
+    def test_a_server_without_genre_filters_reports_no_genre_stage(self, connection, section):
+        section.totalViewSize.return_value = 1
+        section.listFilterChoices.side_effect = RuntimeError("not supported")
+        section.search.side_effect = lambda **kw: (
+            fake_items(1) if kw.get("container_start", 0) == 0 else []
+        )
+
+        seen: list[tuple[str, int, int]] = []
+        PlexLibrary(connection=connection).album_metadata(
+            lambda stage, done, total: seen.append((stage, done, total))
+        )
+
+        assert [entry for entry in seen if entry[0] == "genres"] == []
+
+    def test_it_still_works_without_a_callback(self, connection, section):
+        section.totalViewSize.return_value = 1
+        section.listFilterChoices.return_value = []
+        section.search.side_effect = lambda **kw: (
+            fake_items(1) if kw.get("container_start", 0) == 0 else []
+        )
+
+        assert PlexLibrary(connection=connection).album_metadata().keys() == {"0"}
+
+
+class TestTotalAlbums:
+    """The album stage's denominator."""
+
+    def test_it_comes_from_the_section(self, connection, section):
+        section.totalViewSize.return_value = 512
+        assert PlexLibrary(connection=connection).total_albums() == 512
+
+    def test_a_disconnected_library_reports_zero(self):
+        assert PlexLibrary(connection=make_connection()).total_albums() == 0
+
+    def test_a_failing_call_reports_zero(self, connection, section):
+        section.totalViewSize.side_effect = RuntimeError("boom")
+        assert PlexLibrary(connection=connection).total_albums() == 0
+
+
 class TestStats:
     """The filter choices the UI offers."""
 

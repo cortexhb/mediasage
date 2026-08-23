@@ -1,8 +1,18 @@
 import { render, screen } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 import { createMemoryRouter, RouterProvider } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
+import { server } from '@test'
 import { Shell } from './Shell.tsx'
+
+/** A synced library, so the footer's poller has something to report. */
+const SYNCED = {
+  track_count: 1200,
+  synced_at: '2026-08-23T09:00:00Z',
+  is_syncing: false,
+  plex_connected: true,
+}
 
 /** The shell with one child page, so the outlet has something to render. */
 function renderShell() {
@@ -16,6 +26,10 @@ function renderShell() {
 }
 
 describe('Shell', () => {
+  beforeEach(() => {
+    server.use(http.get('/api/library/status', () => HttpResponse.json(SYNCED)))
+  })
+
   it('renders the page in its outlet', () => {
     renderShell()
 
@@ -43,5 +57,11 @@ describe('Shell', () => {
     renderShell()
 
     expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content')
+  })
+
+  it('carries the footer, so the sync state is on every page', async () => {
+    renderShell()
+
+    expect(await screen.findByText('1,200 tracks')).toBeVisible()
   })
 })

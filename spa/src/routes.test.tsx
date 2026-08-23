@@ -2,10 +2,18 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { createMemoryRouter, RouterProvider } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import { server } from '@test'
 import { routes } from './routes.ts'
+
+/** A synced library, for the footer the shell carries on every route. */
+const SYNCED = {
+  track_count: 1200,
+  synced_at: '2026-08-23T09:00:00Z',
+  is_syncing: false,
+  plex_connected: true,
+}
 
 /** Enough of `/api/config` for the settings page to render. */
 const CONFIG = {
@@ -40,6 +48,15 @@ function renderAt(path: string) {
 }
 
 describe('routes', () => {
+  beforeEach(() => {
+    server.use(
+      http.get('/api/library/status', () => HttpResponse.json(SYNCED)),
+      http.get('/api/results', () =>
+        HttpResponse.json({ results: [], total: 0 }),
+      ),
+    )
+  })
+
   it('answers an unmatched path with the not-found page', () => {
     renderAt('/nowhere')
 

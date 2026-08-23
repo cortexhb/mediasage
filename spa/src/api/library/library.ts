@@ -1,12 +1,12 @@
 /**
  * The library endpoints, paired with their generated types.
  *
- * Only what Settings reports today. Sync and status arrive with their own
- * page rather than ahead of it.
+ * Search is not here: it belongs to the seed flow, which has not landed.
  */
 import type {
   LibraryCacheStatusResponse,
   LibraryStatsResponse,
+  SyncTriggerResponse,
 } from '../generated/types.gen.ts'
 import { request } from '../request/request.ts'
 
@@ -40,4 +40,17 @@ export function readLibraryStatus(
   signal: AbortSignal,
 ): Promise<LibraryCacheStatusResponse> {
   return request<LibraryCacheStatusResponse>('/api/library/status', { signal })
+}
+
+/**
+ * `POST /api/library/sync` — start a sync and return immediately.
+ *
+ * Always backgrounded, so progress comes from `readLibraryStatus` rather than
+ * from this call. Answers 409 when one is already running.
+ */
+export function syncLibrary(signal: AbortSignal): Promise<SyncTriggerResponse> {
+  return request<SyncTriggerResponse>('/api/library/sync', {
+    method: 'POST',
+    signal,
+  })
 }

@@ -8,6 +8,11 @@
  * above every stacking context on the page.
  */
 .overlay {
+  /* No `position`: the UA fixes an open modal, and overriding that made it
+     scroll away with the page. It still anchors the close button. */
+
+  /* The reset's `* { margin: 0 }` beats the UA `dialog { margin: auto }`. */
+  margin: auto;
   max-width: min(90vw, 480px);
   padding: var(--spacing-lg);
   color: var(--text-primary);
@@ -21,5 +26,28 @@
     background: rgb(26 26 26 / 80%);
 
     @include ds.fade-in;
+  }
+}
+
+/* Out of flow, so content is laid out as if the button were not there. */
+.overlay__dismiss {
+  position: absolute;
+  top: var(--spacing-sm);
+  right: var(--spacing-sm);
+
+  /* 44px: the smallest comfortable touch target. */
+  width: 44px;
+  height: 44px;
+  font-size: var(--font-size-xl);
+  line-height: 1;
+  color: var(--text-secondary);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: var(--radius-md);
+
+  &:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
   }
 }

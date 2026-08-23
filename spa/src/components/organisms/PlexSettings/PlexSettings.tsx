@@ -10,7 +10,11 @@
  *
  * `music_library` is the one Plex value the settings form still submits;
  * everything else here writes through `/api/plex/*` as it is done.
+ *
+ * The sync button reads the shell's poller rather than its own, so starting a
+ * sync here is the same sync the status bar reports.
  */
+import { useSharedLibrarySync } from '../../../libs/useLibrarySync/useLibrarySync.ts'
 import { usePlexLink } from '../../../libs/usePlexLink/usePlexLink.ts'
 import { Button } from '../../atoms/Button/Button.tsx'
 import { Status } from '../../atoms/Status/Status.tsx'
@@ -47,6 +51,8 @@ export function PlexSettings({
   libraries,
 }: PlexSettingsProps) {
   const plex = usePlexLink(linked)
+  const sync = useSharedLibrarySync()
+  const syncing = sync.status?.is_syncing ?? false
 
   // A sign-in outranks the loader, which has not reread the config.
   const now = plex.linked ?? {
@@ -150,6 +156,13 @@ export function PlexSettings({
             <LibraryField value={library} libraries={offered} />
             <LibraryStats connected={now.connected} />
             <div className={styles.plex__actions}>
+              <Button
+                variant="secondary"
+                onClick={sync.start}
+                disabled={!now.connected || syncing}
+              >
+                {syncing ? 'Syncing…' : 'Sync library'}
+              </Button>
               <Button variant="ghost" onClick={plex.signOut}>
                 Sign out
               </Button>

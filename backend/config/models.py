@@ -94,6 +94,10 @@ class PlexConfig(ConfigSection):
     # Seconds between retries of a transient failure; empty disables retrying.
     retry_backoff: list[float] = [1.0, 3.0, 8.0, 20.0]
 
+    # Concurrent genre queries during a sync; 1 keeps that stage serial.
+    # 8: one request per genre, and a big library has hundreds.
+    genre_workers: int = Field(default=8, gt=0, le=64)
+
     @field_validator("url")
     @classmethod
     def strip_trailing_slash(cls, v: str) -> str:

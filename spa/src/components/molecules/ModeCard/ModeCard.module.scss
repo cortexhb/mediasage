@@ -1,0 +1,62 @@
+/**
+ * A centred stack: icon, title, description.
+ *
+ * The parts are spans made block, not divs: an `<a>` may not contain block
+ * elements, and the whole card is one link.
+ */
+
+.modeCard {
+  display: block;
+  padding: var(--spacing-lg) var(--spacing-md);
+  color: var(--text-primary);
+  text-align: center;
+  text-decoration: none;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-fast);
+}
+
+.modeCard:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+}
+
+/* Attribute, not a class: the state is already in the accessibility tree.
+   After the hover rule, at equal specificity, so it undoes the hover. */
+.modeCard[data-disabled='true'] {
+  cursor: not-allowed;
+  background: var(--bg-secondary);
+  border-color: var(--border);
+  opacity: 0.45;
+}
+
+.modeCard__icon {
+  display: block;
+  margin-bottom: var(--spacing-sm);
+  color: var(--text-secondary);
+}
+
+.modeCard:hover .modeCard__icon {
+  color: var(--accent);
+}
+
+/* The Lucide default of 2 is heavy at 40px. */
+.modeCard__icon svg {
+  margin: 0 auto;
+  stroke-width: 1.25;
+}
+
+.modeCard__title {
+  display: block;
+  margin-bottom: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.modeCard__description {
+  display: block;
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  color: var(--text-muted);
+}

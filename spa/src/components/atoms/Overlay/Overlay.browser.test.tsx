@@ -107,12 +107,12 @@ describe('Overlay', () => {
   })
 
   describe('what the platform supplies', () => {
-    it('moves focus into the dialog', async () => {
+    it('moves focus into the dialog, onto the way out of it', async () => {
       render(<Controlled />)
 
       await userEvent.click(screen.getByRole('button', { name: 'Open' }))
 
-      expect(screen.getByRole('button', { name: 'Confirm' })).toHaveFocus()
+      expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus()
     })
 
     it('covers the page behind it, so a click cannot reach it', async () => {
@@ -140,6 +140,17 @@ describe('Overlay', () => {
         await userEvent.tab()
         for (const button of outside) expect(button).not.toHaveFocus()
       }
+    })
+
+    it('closes from the button, for anyone not reaching for Escape', async () => {
+      const onClose = vi.fn()
+      render(<Controlled onClose={onClose} />)
+      await userEvent.click(screen.getByRole('button', { name: 'Open' }))
+
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+      expect(onClose).toHaveBeenCalledOnce()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
 
     it('closes on Escape and tells the caller', async () => {

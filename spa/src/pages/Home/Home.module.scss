@@ -1,0 +1,34 @@
+/**
+ * A centred intro and three cards, then a left-aligned feed.
+ *
+ * The cards drop to one column below the touch breakpoint, where three of them
+ * across leave no room for a title.
+ */
+@use 'mixins' as ds;
+
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  padding: var(--spacing-xl) 0;
+}
+
+.home__intro {
+  text-align: center;
+}
+
+.home__modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-md);
+
+  @include ds.on-compact {
+    grid-template-columns: 1fr;
+  }
+}
+
+.home__history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}

@@ -14,12 +14,19 @@ import logging
 import threading
 import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from backend.config.store import config_store
-from backend.library import AlbumMetadata, DecadeCount, GenreCount, LiveVersionRule
+from backend.library import (
+    AlbumMetadata,
+    AlbumProgress,
+    DecadeCount,
+    GenreCount,
+    LiveVersionRule,
+)
 from backend.models import LibraryStatsResponse, Track
 from backend.plex.connection import PlexConnection, PlexQueryError
 from backend.plex.filters import PlexFilter
@@ -40,12 +47,24 @@ class PlexLibrary(BaseModel):
 
     def total_tracks(self) -> int:
         """How many tracks the library holds, or 0 when it cannot be read."""
+        return self._total("track")
+
+    def total_albums(self) -> int:
+        """How many albums the library holds, or 0 when it cannot be read.
+
+        The denominator `album_metadata` reports against: without it the album
+        phase can only say that it is running, which reads as a stalled sync.
+        """
+        return self._total("album")
+
+    def _total(self, libtype: str) -> int:
+        """How many of `libtype` the library holds. 0 when it cannot be read."""
         if not self.connection.library:
             return 0
         try:
-            return self.connection.library.totalViewSize(libtype="track")
+            return self.connection.library.totalViewSize(libtype=libtype)
         except Exception:
-            logger.exception("Failed to get library track count")
+            logger.exception("Failed to get library %s count", libtype)
             return 0
 
     def _pages(self, libtype: str, start: int, rows: int) -> Iterator[list[Any]]:
@@ -95,8 +114,11 @@ class PlexLibrary(BaseModel):
             logger.exception("Failed to get all tracks")
             return []
 
-    def album_metadata(self) -> dict[str, AlbumMetadata]:
+    def album_metadata(self, on_progress: AlbumProgress | None = None) -> dict[str, AlbumMetadata]:
         """Every album's year and genres, keyed by rating key.
+
+        Args:
+            on_progress: Called with (stage, done, total) as each stage advances
 
         Raises:
             PlexFetchError: When a page still fails after retries
@@ -104,20 +126,30 @@ class PlexLibrary(BaseModel):
         if not self.connection.library:
             return {}
 
+        total = self.total_albums()
         albums: dict[str, AlbumMetadata] = {}
         for page in self._pages("album", 0, config_store.get().plex.page_size):
             for album in page:
                 albums[str(album.ratingKey)] = AlbumMetadata(year=getattr(album, "year", None))
+            if on_progress:
+                on_progress("albums", len(albums), total)
 
-        self._attach_genres(albums)
+        self._attach_genres(albums, on_progress)
         return albums
 
-    def _attach_genres(self, albums: dict[str, AlbumMetadata]) -> None:
+    def _attach_genres(
+        self, albums: dict[str, AlbumMetadata], on_progress: AlbumProgress | None = None
+    ) -> None:
         """Fill in each album's genres with one query per genre choice.
 
         Plex omits Genre tags from section listings, so reading `album.genres`
         costs a request per album -- thousands on a mid-size library. Querying by
-        genre instead costs one request per genre, of which there are tens.
+        genre instead costs one request per genre, of which there are hundreds.
+
+        Those queries run concurrently, `plex.genre_workers` at a time: they are
+        the slowest stage of a sync and each is an independent indexed lookup.
+        Only the search happens on a worker; the results are applied here, so
+        `albums` is never written from more than one thread.
 
         A failure is logged and skipped: a missing genre degrades filtering, it
         does not invalidate the sync.
@@ -128,19 +160,30 @@ class PlexLibrary(BaseModel):
             logger.warning("Could not list album genre choices, genres unavailable: %s", error)
             return
 
-        for choice in choices:
-            title = getattr(choice, "title", None)
-            if not title:
-                continue
-            try:
-                matches = self.connection.library.search(libtype="album", genre=title)
-            except Exception as error:
-                logger.warning("Genre query failed for %r: %s", title, error)
-                continue
-            for album in matches:
-                entry = albums.get(str(album.ratingKey))
-                if entry is not None:
-                    entry.genres.append(title)
+        titles = [title for title in (getattr(c, "title", None) for c in choices) if title]
+        if not titles:
+            return
+
+        workers = min(config_store.get().plex.genre_workers, len(titles))
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="genre") as pool:
+            queries = {pool.submit(self._albums_of_genre, title): title for title in titles}
+            for done, query in enumerate(as_completed(queries), start=1):
+                title = queries[query]
+                for key in query.result():
+                    entry = albums.get(key)
+                    if entry is not None:
+                        entry.genres.append(title)
+                if on_progress:
+                    on_progress("genres", done, len(titles))
+
+    def _albums_of_genre(self, title: str) -> list[str]:
+        """Rating keys of every album carrying one genre. Runs on a worker."""
+        try:
+            matches = self.connection.library.search(libtype="album", genre=title)
+        except Exception as error:
+            logger.warning("Genre query failed for %r: %s", title, error)
+            return []
+        return [str(album.ratingKey) for album in matches]
 
     def stats(self) -> LibraryStatsResponse:
         """The genre and decade choices the server offers, with the track total.

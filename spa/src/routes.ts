@@ -12,13 +12,14 @@
 import type { RouteObject } from 'react-router'
 
 import { Shell } from './components/organisms/Shell/Shell.tsx'
+import { loadHistory } from './libs/loadHistory/loadHistory.ts'
 import { loadSettings } from './libs/loadSettings/loadSettings.ts'
 import { loadStats } from './libs/loadStats/loadStats.ts'
 import { probeOllama } from './libs/probeOllama/probeOllama.ts'
 import { ErrorPage } from './pages/ErrorPage/ErrorPage.tsx'
+import { Home } from './pages/Home/Home.tsx'
 import { NotFound } from './pages/NotFound/NotFound.tsx'
 import { Settings } from './pages/Settings/Settings.tsx'
-import App from './App.tsx'
 
 export const routes: RouteObject[] = [
   {
@@ -29,7 +30,7 @@ export const routes: RouteObject[] = [
         // Below the shell, so a failed page keeps the header.
         ErrorBoundary: ErrorPage,
         children: [
-          { index: true, Component: App },
+          { index: true, Component: Home, loader: loadHistory },
           {
             // No action: the save is a plain call, see `libs/saveSettings`.
             path: 'settings',

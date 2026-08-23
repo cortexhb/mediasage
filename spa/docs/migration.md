@@ -50,27 +50,68 @@ because the first page would drag the entire API layer in behind it, un-reviewab
 Components are born in `organisms/`. The second consumer moves one down a layer, as
 `spa/README.md` already requires. Nothing is promoted speculatively.
 
-A route is declared when its page is built, not ahead of it. `src/routes.ts` holds the shell, the
-scaffold screen at `/`, and a catch-all; the navigation links to `/playlist`, `/recommend` and
-`/settings`, and each answers `NotFound` until its phase lands. Stub routes were rejected for the
+A route is declared when its page is built, not ahead of it. `src/routes.ts` holds the shell, `Home`
+at `/`, `Settings`, and a catch-all; the navigation links to `/playlist` and `/recommend`, and each
+answers `NotFound` until its phase lands. Stub routes were rejected for the
 same reason as a speculative component library: a stub is a shape guessed before its loader exists,
 and a route table full of them reads as coverage the app does not have.
 
 | Phase | Scope                                                | Why here                                       |
 | ----- | ---------------------------------------------------- | ---------------------------------------------- |
-| 0     | Design-system core, API boundary, SSE reader, spikes | Nothing can be built without it. Mostly done   |
+| 0     | Design-system core, API boundary, SSE reader, spikes | Nothing can be built without it                |
 | 1     | App shell, nav, `NotFound`                           | Proves routing and tokens                      |
 | 2     | Settings                                             | Only configuration surface; the broken screen  |
 | 3     | Home, history feed, library sync                     | Read-mostly; exercises loaders                 |
 | 4     | Prompt flow, filters, generation, `/result/:id`      | Proves the step mechanism and the stream       |
-| 5     | Seed flow                                            | Validates the shared filters route             |
-| 6     | Recommend Album                                      | Largest screen; server-held session            |
-| 7     | Parity sweep                                         | Each slice adds its own checklist rows         |
-| 8     | Cutover                                              | SPA fallback, Docker stage, delete `frontend/` |
+| 5     | Full configuration surface                           | Settings grows past what the wizard ever held  |
+| 6     | Seed flow                                            | Validates the shared filters route             |
+| 7     | Recommend Album                                      | Largest screen; server-held session            |
+| 8     | Parity sweep                                         | Each slice adds its own checklist rows         |
+| 9     | Cutover                                              | SPA fallback, Docker stage, delete `frontend/` |
 
 Plex login lands between Phase 2 and Phase 3, and is specified in `docs/plex_login.md`. It replaces
 the Plex URL and token fields Phase 2 ports with a browser sign-in, so it needs those fields to exist
 first and rewrites the Plex half of the Settings card when it arrives.
+
+### Phase 5 Exists Because Settings Reaches One Sixth of the Config
+
+`MediasageConfig` (`backend/config/settings.py:88`) holds 69 fields across nine sections.
+`ConfigUpdate.FIELD_MAP` (`backend/config/models.py:489`) is the only path from a form to the config
+store, and it carries 12 of them. The Settings form submits 8; the four price fields are writable
+today and reach nothing.
+
+The remaining 57 are configurable only by editing YAML or setting `MEDIASAGE_<SECTION>__<FIELD>`.
+Everything a dashboard user would change lives there: how many tracks a playlist defaults to, what
+counts as a live version, the fuzzy-match thresholds, how many albums a recommendation considers,
+whether reviews are researched at all. A user with a dashboard should not be editing a YAML file.
+
+Every field moves into the dashboard. Only the six Plex identity fields — `url`, `token`,
+`account_token`, `client_id`, `server_id`, `server_name` — stay untyped, because `/api/plex/*`
+writes them from a browser sign-in; they are shown, not edited.
+
+Backend first, because there is no UI-only version of this. Each field needs a `ConfigUpdate` field,
+a `FIELD_MAP` entry, and a `ConfigResponse` field before a form can carry it. Bounds already live on
+the pydantic fields (`gt`, `ge`, `le`), so the schema can drive input constraints rather than the
+form restating them.
+
+One form of 69 inputs is unusable, so Settings becomes a two-pane screen: a rail of collapsible
+concept groups on the left, one page of cards on the right, each card a Save of its own. Grouped by
+what a reader is trying to change, not by which pydantic section the field happens to live in:
+
+| Group              | Pages                                      |
+| ------------------ | ------------------------------------------ |
+| Plex               | Connection, Library sync                   |
+| Models & inference | Provider, Limits, Pricing, Token budget    |
+| Music              | Playlist defaults, Live versions, Matching |
+| Recommendations    | Flow, Sessions                             |
+| Research & artwork | Research, Sources, Artwork                 |
+
+Each page is a route under `/settings/*`, so a group is deep-linkable and the rail is navigation
+rather than component state — the same reason wizard steps became routes.
+
+TODO(phase-5): decide whether the operational knobs (`plex.page_size`, `art.cache_max_age`, the
+research service URLs, `recommend.session_expiry`) sit inline or behind a per-page Advanced
+disclosure. They are configurable either way; this is about what a first read shows.
 
 ### Settings Leads the Page Slices
 
@@ -227,6 +268,17 @@ spot — asserting the lap length would encode a number found by trial. And Chro
 accessibility tree excludes inert content, but RTL walks the DOM rather than asking the browser, so
 inertness is asserted through `elementFromPoint` instead of a role query.
 
+Two constraints the component carries, both found by Phase 3 mounting the first `Overlay` on a real
+page. It renders no children while closed: the UA stylesheet hides a closed dialog's content, jsdom
+applies no such rule, and the content stayed queryable — a unit test asserting "no dialog here" read
+as passing against markup that was present. And it sets no `position`: the UA fixes an open modal,
+so overriding that to anchor the close button made the dialog scroll away with the page. A fixed
+element already establishes the containing block.
+
+Every overlay carries a close button. Escape closes all of them, and an exit only a keyboard can
+find is not an exit. It calls `close()` on the element rather than the caller's `onClose`, so both
+routes fire the same `close` event.
+
 This is the one place the port deliberately does not mirror the legacy CSS structure. The rendered
 result must match; the source will not.
 
@@ -272,8 +324,8 @@ for module-level functions.
 
 ## Backend Defects — Fixed
 
-Four defects the port depended on. All four are fixed; recorded here because later phases assume
-the new behaviour rather than the old.
+Defects the port depended on. All are fixed; recorded here because later phases assume the new
+behaviour rather than the old.
 
 **Configuring inference no longer spends an inference call.** Saving settings used to run a real
 completion whenever a `CONNECTING` field was present, making it billable and able to block for
@@ -292,6 +344,27 @@ union, so the `/result/:resultId` switch is compiler-checked.
 
 **Every route sets a camelCase `operation_id`**, and both streaming routes declare their frame union
 through `EventStreamResponse`, so the schema carries the payloads codegen needs.
+
+Phase 3 found three more, all in the sync, all fixed there.
+
+**A sync now reports progress through every phase.** `PlexLibrary.album_metadata` took no callback,
+so `SyncProgress.current` stayed at 0 while `total` already held the track count — a bar that could
+not move for minutes on a large library, indistinguishable from a hang. It takes an `AlbumProgress`
+callback now, and reports two stages against their own denominators: albums read against
+`total_albums()`, then genres against the number of genre choices. `SyncPhase` gained
+`fetching_albums` and `fetching_genres` to name them. `AlbumStage` and `AlbumProgress` live in
+`backend/library/models.py` rather than beside the reader, because `backend.plex.library` already
+imports from `backend.library`.
+
+**The genre stage runs concurrently.** Plex omits Genre tags from section listings, so genres cost
+one album search per genre choice — 605 of them on the reference library, previously serial and the
+slowest part of a sync. They run `plex.genre_workers` at a time (default 8). Only the search happens
+on a worker; results are applied on the calling thread, so the album dictionary is never written
+from more than one.
+
+**Nothing starts a sync on its own.** `checkLibraryStatus` (`frontend/app.js:2352`) started one on an
+empty library, spending hours of somebody's Plex server for opening a page. A sync is a click, from
+the status bar or from the Plex settings card.
 
 ## Prerequisites in `spa/` — Done
 
@@ -312,9 +385,10 @@ The design system is `spa/src/design-system/`: `global.scss` (the only global st
 `_tokens.scss`, `_sizes.scss`, `_mixins.scss`. It is on Sass's load path, so a module at any depth
 writes `@use 'mixins' as ds`. Three departures from the legacy stylesheet, all deliberate:
 `touch-target` sets `min-width` as well as `min-height`, entrance animations honour
-`prefers-reduced-motion` where the legacy has none, and `--font-size-xs` is left undeclared because
-the legacy reads it without ever defining it — declaring it would silently change how
-`frontend/style.css:3153` and `:3331` render.
+`prefers-reduced-motion` where the legacy has none, and `--font-size-xs` is declared at 0.75rem.
+The legacy reads that variable without ever declaring it (`frontend/style.css:3153` and `:3331`),
+so both rules inherit their parent size there; the history feed writes the literal 0.75rem in six
+places instead. Declaring the token is a deliberate divergence, not a port.
 
 The `<dialog>` spike is settled — see Six Overlays. It added a second Vitest project, `dom`, running
 real Chromium through Playwright and matching `*.browser.test.tsx`; `atoms/Overlay` arrived early as
@@ -335,6 +409,43 @@ with its generated response type and lives beside the page that needs it, so Pha
 `api/config/` and nothing before it has to.
 
 Phase 0 is complete.
+
+## Phase 3 Status
+
+Home, the history feed, and the library sync are built. `src/App.tsx` is deleted; `/` is `pages/Home`
+behind `libs/loadHistory`.
+
+**One poller, in a context.** `libs/useLibrarySync` owns the endpoint through a chain of timeouts
+rather than an interval, so a slow status read cannot queue polls behind each other. Three consumers
+ask about a sync — the status bar, the Plex settings card, and Home's three mode cards — and each
+calling the hook would mean three pollers. Worse than the duplicate requests: a sync started from one
+would never be seen by another, because an idle poller only re-polls once it already believes a sync
+is running. `organisms/LibrarySyncProvider` holds the one instance, mounted in `Shell`, and
+`useSharedLibrarySync` throws where no provider is above the caller.
+
+**A phase without a denominator is indeterminate, not zero.** `frontend/app.js:2258` drew the fetch
+phases as an empty bar, which reads as a stalled sync. `libs/syncProgress` keys on the denominator
+rather than the phase: a total above zero gives a percentage, anything else gives text and an
+indeterminate `ProgressBar` with no `aria-valuenow`. The phases count different things, so the bar
+restarts between them and the text says why.
+
+**Home's three cards go disabled while a sync runs.** They stay `<Link>` elements with
+`aria-disabled` and a click that preventDefaults; dropping `to` would take them out of the tab order
+and strip the link role, leaving a keyboard user with no card and no explanation. The intro line
+states the reason — three dimmed cards with no stated cause read as broken. Route-level guards for
+deep links into `/playlist/*` and `/recommend` belong to Phase 4, where those loaders exist.
+
+**The sync dialog is a view of the sync, never a stage of it.** A first sync opens it unasked,
+because with no tracks cached there is nothing to play from; a resync does not, because the app
+stays usable. `frontend/app.js:2372` made that modal inescapable and `frontend/app.js:2244` hid it
+with no way back, which left the sync reporting only in a thin footer while the page it had
+disabled gave no reason. Here Escape and the close button both dismiss it, dismissing it never
+touches the sync, and the bar's progress text is a button that reopens it — for any sync, at any
+point. It closes itself when the sync ends.
+
+The app version and the configured model that `frontend/index.html:890` showed in the footer are not
+ported. Both come from `GET /api/config`, which no route above the shell loads, and a loader on the
+shell would make every navigation wait on it. They arrive when something else already needs that read.
 
 ## Verification
 

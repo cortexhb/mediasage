@@ -7,7 +7,7 @@ from typing import Any, Self
 import pytest
 
 from backend.db import db
-from backend.library.models import AlbumMetadata
+from backend.library.models import AlbumMetadata, AlbumProgress
 from backend.library.tables import Track, TrackGenre
 
 
@@ -72,7 +72,14 @@ class FakePlexClient:
     def total_tracks(self) -> int:
         return len(self.tracks)
 
-    def album_metadata(self) -> dict[str, AlbumMetadata]:
+    def total_albums(self) -> int:
+        return len(self.albums)
+
+    def album_metadata(self, on_progress: AlbumProgress | None = None) -> dict[str, AlbumMetadata]:
+        """Report both stages as complete in one step, then answer."""
+        if on_progress:
+            on_progress("albums", len(self.albums), len(self.albums))
+            on_progress("genres", 1, 1)
         return self.albums
 
     def iter_raw_tracks(self, start: int = 0, page_size: int = 1000):

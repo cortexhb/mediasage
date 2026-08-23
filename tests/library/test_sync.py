@@ -1,6 +1,7 @@
 """Tests for the sync, the only writer of tracks and their genre rows."""
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select
@@ -154,7 +155,7 @@ class TestFailure:
 
     def test_a_failure_is_marked_resumable(self, temp_db, library_settings):
         class Failing(FakePlexClient):
-            def album_metadata(self):
+            def album_metadata(self, on_progress=None):
                 raise ConnectionError("Plex unreachable")
 
         result = library_sync.run(Failing())
@@ -164,7 +165,7 @@ class TestFailure:
         library_sync.run(plex)
 
         class Failing(FakePlexClient):
-            def album_metadata(self):
+            def album_metadata(self, on_progress=None):
                 raise ConnectionError("Plex unreachable")
 
         library_sync.run(Failing())
@@ -173,7 +174,7 @@ class TestFailure:
 
     def test_the_error_is_visible_then_cleared_by_a_good_run(self, temp_db, plex):
         class Failing(FakePlexClient):
-            def album_metadata(self):
+            def album_metadata(self, on_progress=None):
                 raise ConnectionError("Plex unreachable")
 
         library_sync.run(Failing())
@@ -239,7 +240,7 @@ class TestConcurrency:
 
     def test_the_claim_is_released_after_a_failure(self, temp_db, library_settings):
         class Failing(FakePlexClient):
-            def album_metadata(self):
+            def album_metadata(self, on_progress=None):
                 raise ConnectionError("boom")
 
         library_sync.run(Failing())
@@ -266,6 +267,45 @@ class TestProgress:
         seen: list[tuple[int, int]] = []
         library_sync.run(plex, on_progress=lambda current, total: seen.append((current, total)))
         assert seen == []
+
+
+class TestAlbumPhases:
+    """The album stages report progress, so the UI can draw a moving bar.
+
+    Before this they set no `current` at all: `_advance(total=...)` recorded
+    the track count and nothing moved until the processing phase, which on a
+    large library is minutes of a bar that cannot budge.
+    """
+
+    def phases(self, plex) -> list[tuple[str | None, int, int]]:
+        """Every phase the sync passed through, in order, with its counts."""
+        seen: list[tuple[str | None, int, int]] = []
+        original = library_sync._advance
+
+        def record(**fields):
+            original(**fields)
+            run = library_sync.snapshot().progress
+            seen.append((run.phase, run.current, run.total))
+
+        with patch.object(library_sync, "_advance", record):
+            library_sync.run(plex)
+        return seen
+
+    def test_the_album_stage_reports_against_the_album_count(self, temp_db, plex):
+        assert ("fetching_albums", 2, 2) in self.phases(plex)
+
+    def test_the_genre_stage_reports_separately(self, temp_db, plex):
+        # Its own phase because it counts genre choices, not albums.
+        assert ("fetching_genres", 1, 1) in self.phases(plex)
+
+    def test_processing_restores_the_track_total(self, temp_db, plex):
+        # Otherwise the bar would keep measuring against the album count.
+        assert ("processing", 0, 3) in self.phases(plex)
+
+    def test_the_stages_run_in_order(self, temp_db, plex):
+        order = [phase for phase, _current, _total in self.phases(plex)]
+        assert order.index("fetching_albums") < order.index("fetching_genres")
+        assert order.index("fetching_genres") < order.index("processing")
 
 
 class TestServerChange:

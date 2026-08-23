@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { server } from '@test'
+import { LibrarySyncProvider } from '../LibrarySyncProvider/LibrarySyncProvider.tsx'
 import type { PlexSettingsProps } from './PlexSettings.tsx'
 import { PlexSettings } from './PlexSettings.tsx'
 
@@ -45,10 +46,25 @@ const SERVERS = [
   { id: 'def456', name: 'A Friend', owned: false },
 ]
 
+/** What the sync poller is answered with unless a test says otherwise. */
+const IDLE = {
+  track_count: 52341,
+  synced_at: new Date().toISOString(),
+  is_syncing: false,
+  plex_connected: true,
+}
+
 /** The card inside a router, since its counts come from a resource route. */
 function render(props: Partial<PlexSettingsProps> = {}) {
   const router = createMemoryRouter([
-    { index: true, Component: () => <PlexSettings {...PROPS} {...props} /> },
+    {
+      index: true,
+      Component: () => (
+        <LibrarySyncProvider>
+          <PlexSettings {...PROPS} {...props} />
+        </LibrarySyncProvider>
+      ),
+    },
     { path: 'settings/stats', loader: () => STATS },
   ])
   return mount(<RouterProvider router={router} />)
@@ -80,11 +96,12 @@ describe('PlexSettings', () => {
   beforeEach(() => {
     opened = vi.fn().mockReturnValue(null)
     vi.stubGlobal('open', opened)
-    // A signed-in card lists its servers on mount.
+    // A signed-in card lists its servers on mount, and polls the sync.
     server.use(
       http.get('/api/plex/servers', () =>
         HttpResponse.json({ state: 'linked', servers: SERVERS }),
       ),
+      http.get('/api/library/status', () => HttpResponse.json(IDLE)),
     )
   })
 
@@ -154,6 +171,54 @@ describe('PlexSettings', () => {
 
       expect(await screen.findByText('Total Tracks')).toBeVisible()
       expect(screen.getByText('52,341')).toBeVisible()
+    })
+  })
+
+  describe('syncing the library', () => {
+    it('offers the sync next to the fields that decide what it reads', () => {
+      render()
+
+      expect(screen.getByRole('button', { name: 'Sync library' })).toBeEnabled()
+    })
+
+    it('asks the server for one', async () => {
+      let started = false
+      server.use(
+        http.post('/api/library/sync', () => {
+          started = true
+          return HttpResponse.json({ started: true, blocking: false })
+        }),
+      )
+      render()
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Sync library' }),
+      )
+
+      await waitFor(() => {
+        expect(started).toBe(true)
+      })
+    })
+
+    it('refuses one while a sync is already running', async () => {
+      server.use(
+        http.get('/api/library/status', () =>
+          HttpResponse.json({ ...IDLE, is_syncing: true }),
+        ),
+      )
+      render()
+
+      expect(
+        await screen.findByRole('button', { name: 'Syncing…' }),
+      ).toBeDisabled()
+    })
+
+    it('refuses one with no server answering', () => {
+      render({ connected: false })
+
+      expect(
+        screen.getByRole('button', { name: 'Sync library' }),
+      ).toBeDisabled()
     })
   })
 

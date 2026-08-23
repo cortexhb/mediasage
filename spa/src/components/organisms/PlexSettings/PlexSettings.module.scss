@@ -21,11 +21,14 @@
   margin-bottom: 0;
 }
 
+/* Space-between: signing out sits opposite the action, not beside it.
+   A row with one button is unaffected -- it stays at the start. */
 .plex__actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--spacing-sm);
   align-items: center;
+  justify-content: space-between;
 }
 
 /* Read aloud one character at a time, so it is spaced and not a word. */
