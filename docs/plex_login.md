@@ -85,8 +85,19 @@ consequence of the change.
 | ------------------------- | ----------------------------------------------------------------- |
 | `POST /api/plex/link`     | Create a pin. Returns its id, the approval URL, and its lifetime. |
 | `GET /api/plex/link/{id}` | Pending, expired, or signed in — with the server list on success. |
+| `GET /api/plex/servers`   | List the servers again, for a reload between the two.             |
 | `POST /api/plex/server`   | Choose a server: resolve, connect, save, rebuild the client.      |
 | `DELETE /api/plex/link`   | Clear the stored identity.                                        |
+
+`GET /api/plex/servers` exists because the list otherwise only ever arrives with the poll. The card
+calls it on mount whenever a sign-in is already stored, so the server is a select that is always
+present rather than something behind a button; it also covers a browser closed between approving the
+pin and choosing a server. It answers 409 before a sign-in, and an empty list rather than an error
+when plex.tv will not enumerate them — the token is already stored, so that is a retry, not a failed
+sign-in.
+
+`ConfigResponse.plex_server_id` and `PlexLinkedResponse.server_id` exist for that select: without
+the id it can name the current server but cannot mark it.
 
 `DELETE` clears `account_token`, `token`, `server_id`, `server_name` and `url`. It leaves the track
 cache alone: signing out of Plex is not a request to discard a synced library.
@@ -101,13 +112,21 @@ becomes a check that the saved server still answers.
   (`backend/api/routes/setup/status.py:48`) that nothing else in `backend/` reads — the loader reads
   `MEDIASAGE_PLEX__URL` — so the flag is wrong in both directions. Deleting the field retires the
   defect with it.
-- `ConfigResponse` trades `plex_url` and `plex_token_set` for `plex_linked` and `plex_server_name`.
+- `ConfigResponse` trades `plex_url` and `plex_token_set` for `plex_linked`, `plex_server_name` and
+  `plex_server_id`.
 - `ConfigUpdate` loses `plex_url` and `plex_token` (`backend/config/models.py:446-447`, and their
   entries in the two mappings at `:427` and `:463`), leaving `music_library` as the only Plex value a
   form writes.
 
 The Settings screen's Plex card becomes: sign-in state, a server picker, a library picker, and a
-sign-out action.
+sign-out action. It is `spa/src/components/organisms/PlexSettings/`, over the state machine in
+`spa/src/libs/usePlexLink/`.
+
+**The card must never report a sign-in in progress as signed out.** `ConfigResponse.plex_linked`
+comes from the loader, which ran before the sign-in; between approving the pin and the chosen
+server being resolved it still says `false`. Two things stop that surfacing: `usePlexLink` keeps a
+`signedIn` flag that is sticky until a sign-out succeeds, and every in-flight call renders its own
+`busy` state rather than falling through to the signed-out branch.
 
 ## Existing Installations
 

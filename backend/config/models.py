@@ -56,12 +56,30 @@ class ConfigSection(BaseModel):
 class PlexConfig(ConfigSection):
     """Plex server connection settings, and how hard to lean on the server.
 
+    Identity comes from a browser sign-in, not from these fields being typed;
+    see `docs/plex_login.md`. Only `music_library` and the timing values are
+    still settings a person edits.
+
     The timing values depend on the hardware Plex runs on: a NAS answers a bulk
     page slower than a desktop does, and rides closer to its own limits.
     """
 
+    # A cache, not a setting: addresses move, and `server_id` re-resolves them.
     url: str = ""
+
+    # The chosen server's own token; diverges from `account_token` when shared.
     token: SecretStr = SecretStr("")
+
+    # Lists the servers. Kept so a sign-in survives a server being swapped.
+    account_token: SecretStr = SecretStr("")
+
+    # `clientIdentifier`, stable while the address is not.
+    server_id: str = ""
+    server_name: str = ""
+
+    # Ours, sent as X-Plex-Client-Identifier; a new one orphans a Plex device.
+    client_id: str = ""
+
     music_library: str = "Music"
 
     # Rows per bulk request; PLEXAPI_PLEXAPI_CONTAINER_SIZE is set to match.
@@ -428,8 +446,6 @@ class DefaultsConfig(ConfigSection):
 # is saved on its own word.
 CONNECTING: Final[frozenset[str]] = frozenset(
     {
-        "plex_url",
-        "plex_token",
         "llm_provider",
         "llm_api_key",
         "endpoint_url",
@@ -445,10 +461,12 @@ class ConfigUpdate(ConfigSection):
 
     Owns the mapping from API field names to the section and key they write, so
     neither the route nor the store has to restate it.
+
+    No Plex identity here: the address and both tokens come from a browser
+    sign-in, written by `/api/plex/*`. `music_library` is all a form still says
+    about Plex.
     """
 
-    plex_url: str | None = None
-    plex_token: SecretStr | None = None
     music_library: str | None = None
     llm_provider: Provider | None = None
     llm_api_key: SecretStr | None = None
@@ -465,8 +483,6 @@ class ConfigUpdate(ConfigSection):
 
     # Field name -> the section and key it writes.
     FIELD_MAP: ClassVar[dict[str, tuple[str, str]]] = {
-        "plex_url": ("plex", "url"),
-        "plex_token": ("plex", "token"),
         "music_library": ("plex", "music_library"),
         "llm_provider": ("llm", "provider"),
         "llm_api_key": ("llm", "api_key"),

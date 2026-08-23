@@ -74,6 +74,27 @@ class ConfigChange(BaseModel):
             },
         )
 
+    @classmethod
+    def to_plex(cls, current: MediasageConfig, changes: dict[str, Any]) -> Self:
+        """What writing `changes` into the Plex section would produce.
+
+        Separate from `of` because no form can express these: the address and
+        both tokens come from a browser sign-in, not from `ConfigUpdate`.
+
+        Args:
+            current: The configuration in force now
+            changes: Plex section keys, named as `PlexConfig` names them
+        """
+        # Unwrapped first: yaml writes a SecretStr as a python-object tag.
+        plain = {key: ConfigUpdate.plain(value) for key, value in changes.items()}
+
+        return cls(
+            config=current.model_copy(
+                update={"plex": PlexConfig(**(current.plex.model_dump() | plain))}
+            ),
+            sections={"plex": plain} if plain else {},
+        )
+
 
 class ConfigStore:
     """Owns the loaded configuration and the file UI edits are written to.

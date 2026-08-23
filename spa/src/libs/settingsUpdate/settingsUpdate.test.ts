@@ -12,39 +12,46 @@ function submitted(fields: Record<string, string>): FormData {
 describe('settingsUpdate', () => {
   it('carries the fields that were filled in', () => {
     const update = settingsUpdate(
-      submitted({ plex_url: 'http://plex:32400', music_library: 'Music' }),
+      submitted({
+        endpoint_url: 'http://ollama:11434',
+        music_library: 'Music',
+      }),
     )
 
     expect(update).toEqual({
-      plex_url: 'http://plex:32400',
+      endpoint_url: 'http://ollama:11434',
       music_library: 'Music',
     })
   })
 
   it('trims what was typed', () => {
-    const update = settingsUpdate(submitted({ plex_url: '  http://plex  ' }))
+    const update = settingsUpdate(
+      submitted({ endpoint_url: '  http://ollama  ' }),
+    )
 
-    expect(update).toEqual({ plex_url: 'http://plex' })
+    expect(update).toEqual({ endpoint_url: 'http://ollama' })
   })
 
   describe('leaving fields out', () => {
     it('drops an empty field entirely', () => {
-      // A present key is a change: blank would erase the stored token.
+      // A present key is a change: blank would erase the stored key.
       const update = settingsUpdate(
-        submitted({ plex_token: '', plex_url: 'http://plex' }),
+        submitted({ llm_api_key: '', music_library: 'Music' }),
       )
 
-      expect(update).not.toHaveProperty('plex_token')
+      expect(update).not.toHaveProperty('llm_api_key')
     })
 
     it('drops a field of only whitespace', () => {
-      const update = settingsUpdate(submitted({ plex_token: '   ' }))
+      const update = settingsUpdate(submitted({ llm_api_key: '   ' }))
 
       expect(update).toEqual({})
     })
 
     it('answers an empty update when nothing was filled in', () => {
-      const update = settingsUpdate(submitted({ plex_url: '', plex_token: '' }))
+      const update = settingsUpdate(
+        submitted({ music_library: '', llm_api_key: '' }),
+      )
 
       expect(update).toEqual({})
     })

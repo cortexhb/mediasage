@@ -2,7 +2,7 @@
 
 import pytest
 import yaml
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from backend.config import LocalLLMConfig, MediasageConfig
 
@@ -23,25 +23,26 @@ def write_config(tmp_path, data):
     return config_file
 
 
+def plain(value):
+    """A loaded field as its value, whether or not it is a secret."""
+    return value.get_secret_value() if isinstance(value, SecretStr) else value
+
+
 class TestSourcePrecedence:
     """Tests for environment variable priority over YAML."""
 
     def test_env_var_takes_priority(self, tmp_path, clean_config_env):
         """Environment variable should override YAML value."""
-        config_file = write_config(
-            tmp_path, {"plex": {"url": "http://yaml:32400"}, "llm": CLOUD_LLM}
-        )
-        clean_config_env.setenv("MEDIASAGE_PLEX__URL", "http://env:32400")
+        config_file = write_config(tmp_path, {"plex": {"music_library": "Yaml"}, "llm": CLOUD_LLM})
+        clean_config_env.setenv("MEDIASAGE_PLEX__MUSIC_LIBRARY", "Env")
 
-        assert MediasageConfig.load(config_file).plex.url == "http://env:32400"
+        assert MediasageConfig.load(config_file).plex.music_library == "Env"
 
     def test_yaml_used_when_no_env_var(self, tmp_path, clean_config_env):
         """YAML value should be used when env var not set."""
-        config_file = write_config(
-            tmp_path, {"plex": {"url": "http://yaml:32400"}, "llm": CLOUD_LLM}
-        )
+        config_file = write_config(tmp_path, {"plex": {"music_library": "Yaml"}, "llm": CLOUD_LLM})
 
-        assert MediasageConfig.load(config_file).plex.url == "http://yaml:32400"
+        assert MediasageConfig.load(config_file).plex.music_library == "Yaml"
 
     def test_default_used_when_no_env_or_yaml(self, tmp_path, clean_config_env):
         """Default should be used when neither env nor YAML set."""
@@ -52,11 +53,57 @@ class TestSourcePrecedence:
     def test_empty_string_env_var_is_used(self, tmp_path, clean_config_env):
         """Empty string env var should still take priority."""
         config_file = write_config(
+            tmp_path, {"llm": CLOUD_LLM | {"model_generation": "gpt-4o-mini"}}
+        )
+        clean_config_env.setenv("MEDIASAGE_LLM__MODEL_GENERATION", "")
+
+        assert MediasageConfig.load(config_file).llm.model_generation == ""
+
+
+class TestPlexIdentityIsNotEnvironmental:
+    """A sign-in writes it to YAML; no variable may supply or shadow it.
+
+    Set from the environment, a stale address would outrank the one the last
+    sign-in resolved, and no save could correct it.
+    """
+
+    @pytest.mark.parametrize(
+        ("variable", "field"),
+        [
+            ("MEDIASAGE_PLEX__URL", "url"),
+            ("MEDIASAGE_PLEX__TOKEN", "token"),
+            ("MEDIASAGE_PLEX__ACCOUNT_TOKEN", "account_token"),
+            ("MEDIASAGE_PLEX__SERVER_ID", "server_id"),
+            ("MEDIASAGE_PLEX__SERVER_NAME", "server_name"),
+            ("MEDIASAGE_PLEX__CLIENT_ID", "client_id"),
+        ],
+    )
+    def test_an_identity_env_var_is_ignored(self, tmp_path, clean_config_env, variable, field):
+        config_file = write_config(tmp_path, {"plex": {field: "from-yaml"}, "llm": CLOUD_LLM})
+        clean_config_env.setenv(variable, "from-env")
+
+        loaded = getattr(MediasageConfig.load(config_file).plex, field)
+
+        assert plain(loaded) == "from-yaml"
+
+    def test_a_plex_only_environment_leaves_the_section_defaulted(self, tmp_path, clean_config_env):
+        """Dropping every key must drop the section, not offer an empty one."""
+        config_file = write_config(
             tmp_path, {"plex": {"url": "http://yaml:32400"}, "llm": CLOUD_LLM}
         )
-        clean_config_env.setenv("MEDIASAGE_PLEX__URL", "")
+        clean_config_env.setenv("MEDIASAGE_PLEX__TOKEN", "from-env")
 
-        assert MediasageConfig.load(config_file).plex.url == ""
+        assert MediasageConfig.load(config_file).plex.url == "http://yaml:32400"
+
+    def test_a_non_identity_plex_var_still_works(self, tmp_path, clean_config_env):
+        """Only the identity is filtered; the rest of the section is settable."""
+        config_file = write_config(tmp_path, {"llm": CLOUD_LLM})
+        clean_config_env.setenv("MEDIASAGE_PLEX__MUSIC_LIBRARY", "Env")
+        clean_config_env.setenv("MEDIASAGE_PLEX__TOKEN", "from-env")
+
+        loaded = MediasageConfig.load(config_file).plex
+
+        assert (loaded.music_library, plain(loaded.token)) == ("Env", "")
 
 
 class TestUnconfiguredProvider:
@@ -145,14 +192,12 @@ class TestLoadConfig:
             },
         )
 
-        clean_config_env.setenv("MEDIASAGE_PLEX__URL", "http://env:32400")
-        clean_config_env.setenv("MEDIASAGE_PLEX__TOKEN", "env-token")
+        clean_config_env.setenv("MEDIASAGE_PLEX__MUSIC_LIBRARY", "Env Music")
         clean_config_env.setenv("MEDIASAGE_LLM__API_KEY", "env-key")
 
         config = MediasageConfig.load(config_file)
 
-        assert config.plex.url == "http://env:32400"
-        assert config.plex.token.get_secret_value() == "env-token"
+        assert config.plex.music_library == "Env Music"
         assert config.llm.api_key.get_secret_value() == "env-key"
 
     def test_api_key_is_provider_independent(self, tmp_path, clean_config_env):

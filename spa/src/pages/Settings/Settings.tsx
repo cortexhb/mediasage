@@ -98,11 +98,11 @@ export function Settings() {
       <Heading level={2}>Settings</Heading>
 
       <PlexSettings
-        url={config.plex_url}
         library={config.music_library}
         connected={config.plex_connected}
-        tokenSet={config.plex_token_set}
-        fromEnv={setup.plex_from_env ?? false}
+        linked={config.plex_linked}
+        serverName={config.plex_server_name}
+        serverId={config.plex_server_id}
         libraries={setup.music_libraries ?? []}
       />
 

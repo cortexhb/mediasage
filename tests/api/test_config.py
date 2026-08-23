@@ -1,6 +1,6 @@
 """Tests for ``/api/config`` and ``/api/ollama``."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -31,14 +31,26 @@ def ollama():
 
 
 class TestGetConfig:
-    def test_returns_the_plex_url_but_never_the_token(self, client, plex):
-        config = mediasage_config(plex_url="http://test:32400", plex_token="secret-token")
+    def test_reports_the_signed_in_server_but_never_a_token(self, client, plex):
+        """No URL either: it is a cache the sign-in refreshes, not a setting."""
+        config = mediasage_config(server_name="Living Room", plex_token="secret-token")
         with patch("backend.config.store.ConfigStore.get", return_value=config):
             response = client.get("/api/config")
 
         assert response.status_code == 200
-        assert response.json()["plex_url"] == "http://test:32400"
+        data = response.json()
+        assert (data["plex_linked"], data["plex_server_name"]) == (True, "Living Room")
+        # The id, so the picker can mark the server already in force.
+        assert data["plex_server_id"] == "abc123"
+        assert "plex_url" not in data
         assert "secret-token" not in response.text
+
+    def test_reports_an_installation_that_has_never_signed_in(self, client, plex):
+        config = mediasage_config(account_token="", server_name="")
+        with patch("backend.config.store.ConfigStore.get", return_value=config):
+            data = client.get("/api/config").json()
+
+        assert data["plex_linked"] is False
 
     def test_returns_the_provider_but_never_the_key(self, client, plex):
         config = mediasage_config(llm_provider="anthropic", llm_api_key="secret-api-key")
@@ -71,13 +83,14 @@ class TestGetConfig:
 class TestUpdateConfig:
     """A change is proved, written, published, and then rebuilt."""
 
-    def test_saves_a_new_plex_url(self, client, plex, answering):
-        config = mediasage_config(plex_url="http://new-server:32400")
+    def test_saves_a_new_music_library(self, client, plex, answering):
+        """All a settings form still says about Plex; the rest is the sign-in."""
+        config = mediasage_config(music_library="Vinyl Rips")
         with patch("backend.config.store.ConfigStore.commit", return_value=config):
-            response = client.post("/api/config", json={"plex_url": "http://new-server:32400"})
+            response = client.post("/api/config", json={"music_library": "Vinyl Rips"})
 
         assert response.status_code == 200
-        assert response.json()["plex_url"] == "http://new-server:32400"
+        assert response.json()["music_library"] == "Vinyl Rips"
 
     def test_saves_a_new_provider(self, client, plex, answering):
         config = mediasage_config(llm_provider="openai")
@@ -97,12 +110,12 @@ class TestUpdateConfig:
         assert response.json()["smart_generation"] is True
 
     def test_a_plex_change_rebuilds_the_plex_client(self, client, plex, answering, rebuilds):
-        """Without the rebuild the next request would use the old server."""
+        """Without the rebuild the next request would read the old library."""
         config = mediasage_config()
         with (
             patch("backend.config.store.ConfigStore.commit", return_value=config),
         ):
-            client.post("/api/config", json={"plex_url": "http://new:32400"})
+            client.post("/api/config", json={"music_library": "Vinyl Rips"})
 
         rebuilds.plex.assert_called_once_with(config.plex)
 
@@ -122,20 +135,16 @@ class TestUpdateConfig:
 class TestUpdateConfigProbes:
     """Nothing is written until what the change could break has answered."""
 
-    def test_a_plex_url_that_does_not_answer_is_refused(self, client, plex):
-        refused = MagicMock()
-        refused.connection.is_connected.return_value = False
-        refused.connection.error = "Invalid Plex token - unauthorized"
-
+    def test_a_library_rename_is_never_probed(self, client, plex):
+        """Plex is proved by the sign-in; a library name resolves on first use."""
         with (
-            patch("backend.api.probes.PlexClient.of", return_value=refused),
-            patch("backend.config.store.ConfigStore.commit") as commit,
+            patch("backend.api.probes.ModelListing.of", new_callable=AsyncMock) as listing,
+            patch("backend.config.store.ConfigStore.commit", return_value=mediasage_config()),
         ):
-            response = client.post("/api/config", json={"plex_url": "http://new:32400"})
+            response = client.post("/api/config", json={"music_library": "Vinyl Rips"})
 
-        assert response.status_code == 422
-        assert "unauthorized" in response.json()["detail"]
-        commit.assert_not_called()
+        assert response.status_code == 200
+        listing.assert_not_called()
 
     def test_a_provider_that_does_not_answer_is_refused(self, client, plex):
         with (
@@ -152,37 +161,34 @@ class TestUpdateConfigProbes:
 
     def test_a_refused_change_rebuilds_nothing(self, client, plex, rebuilds):
         """The held client still works; replacing it with a broken one would help nobody."""
-        refused = MagicMock()
-        refused.connection.is_connected.return_value = False
-        refused.connection.error = "unauthorized"
-
         with (
-            patch("backend.api.probes.PlexClient.of", return_value=refused),
+            patch(
+                "backend.api.probes.ModelListing.of",
+                AsyncMock(return_value=ModelListing(error="nope")),
+            ),
             patch("backend.config.store.ConfigStore.commit"),
         ):
-            client.post("/api/config", json={"plex_url": "http://new:32400"})
+            client.post("/api/config", json={"llm_provider": "openai"})
 
-        rebuilds.plex.assert_not_called()
+        rebuilds.llm.assert_not_called()
 
     def test_a_price_edit_probes_nothing(self, client, plex):
         """A number the UI reports back must not fail because a provider is down."""
         with (
             patch("backend.api.probes.ModelListing.of", new_callable=AsyncMock) as listing,
-            patch("backend.api.probes.PlexClient") as plex_client,
             patch("backend.config.store.ConfigStore.commit", return_value=mediasage_config()),
         ):
             response = client.post("/api/config", json={"cost_analysis_input": 3.0})
 
         assert response.status_code == 200
         listing.assert_not_called()
-        plex_client.of.assert_not_called()
 
     def test_a_failed_write_is_a_500(self, client, plex, answering):
         with patch(
             "backend.config.store.ConfigStore.commit",
             side_effect=ConfigSaveError("disk full"),
         ):
-            response = client.post("/api/config", json={"plex_url": "http://new:32400"})
+            response = client.post("/api/config", json={"llm_provider": "openai"})
 
         assert response.status_code == 500
 

@@ -7,9 +7,9 @@ import { saveSettings } from './saveSettings.ts'
 /** Enough of what `POST /api/config` answers with to be adopted. */
 const CONFIG = {
   version: '1.0.0',
-  plex_url: 'http://plex:32400',
   plex_connected: true,
-  plex_token_set: true,
+  plex_linked: true,
+  plex_server_name: 'Living Room',
   music_library: 'Music',
   llm_provider: 'anthropic',
   llm_configured: true,
@@ -56,7 +56,7 @@ describe('saveSettings', () => {
   it('reports a save that was kept', async () => {
     kept()
 
-    const outcome = await save({ plex_url: 'http://plex:32400' })
+    const outcome = await save({ music_library: 'Music' })
 
     expect(outcome.saved).toBe(true)
     expect(outcome.message).toBe('Settings saved')
@@ -73,14 +73,14 @@ describe('saveSettings', () => {
     )
 
     await save({
-      plex_url: 'http://plex:32400',
-      plex_token: '',
+      llm_api_key: '',
       music_library: 'Vinyl',
+      model_analysis: 'claude',
     })
 
     expect(sent).toEqual({
-      plex_url: 'http://plex:32400',
       music_library: 'Vinyl',
+      model_analysis: 'claude',
     })
   })
 
@@ -92,12 +92,10 @@ describe('saveSettings', () => {
     })
 
     it('re-reads the status, which holds the library list', async () => {
-      // A Plex change moves it, and `POST /api/config` does not carry it.
+      // A sign-in moves it, and `POST /api/config` does not carry it.
       kept()
 
-      expect((await save({ plex_url: 'http://new:32400' })).setup).toEqual(
-        SETUP,
-      )
+      expect((await save({ music_library: 'Vinyl' })).setup).toEqual(SETUP)
     })
 
     it('stays a save when that re-read fails', async () => {
@@ -137,7 +135,7 @@ describe('saveSettings', () => {
         ),
       )
 
-      const outcome = await save({ plex_url: '' })
+      const outcome = await save({ music_library: '' })
 
       expect(outcome.saved).toBe(false)
       expect(outcome.message).toBe('No configuration values provided')
@@ -148,7 +146,7 @@ describe('saveSettings', () => {
     // An error page would take a typed credential with it.
     server.use(http.post('/api/config', () => HttpResponse.error()))
 
-    const outcome = await save({ plex_url: 'http://plex' })
+    const outcome = await save({ music_library: 'Music' })
 
     expect(outcome.saved).toBe(false)
     expect(outcome.message).toMatch(/Could not reach the server/)

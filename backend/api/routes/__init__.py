@@ -2,6 +2,7 @@
 
   health.py   GET /api/health -- both dependencies, without touching either
   setup/      /api/setup -- the onboarding wizard and its validations
+  plex/       /api/plex/link and /api/plex/server -- the browser sign-in
   config/     /api/config and /api/ollama -- settings, and what fills them in
   library/    /api/library -- the local mirror: status, sync, stats, search
   analyze/    /api/analyze and /api/filter/preview -- what a prompt implies

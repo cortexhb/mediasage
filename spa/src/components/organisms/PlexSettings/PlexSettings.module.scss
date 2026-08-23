@@ -1,0 +1,46 @@
+/**
+ * The Plex card's own layout: a stack of steps, and a row of actions.
+ *
+ * `Section` supplies the card, and every child of it here is a block-level
+ * atom, so the only thing missing is the rhythm between them and a row that
+ * keeps two buttons from stacking.
+ */
+
+.plex {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+/* Child selector: the fields and counts are their own modules, unreachable
+   by name. Their own margins stack on top of the gap above -- between the
+   library select and the counts that was 56px. The gap alone spaces them. */
+.plex > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.plex__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+/* Read aloud one character at a time, so it is spaced and not a word. */
+.plex__code {
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.3em;
+  text-align: center;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.plex__approve {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}

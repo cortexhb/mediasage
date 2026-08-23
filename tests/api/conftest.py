@@ -30,6 +30,10 @@ LOCAL_PROVIDERS = ("ollama", "custom")
 def mediasage_config(
     plex_url: str = "http://test:32400",
     plex_token: str = "token",
+    account_token: str = "account-token",
+    server_id: str = "abc123",
+    server_name: str = "Test Server",
+    client_id: str = "test-client-id",
     music_library: str = "Music",
     llm_provider: str = "anthropic",
     llm_api_key: str = "key",
@@ -53,7 +57,15 @@ def mediasage_config(
         llm["endpoint_url"] = endpoint_url
 
     return MediasageConfig(
-        plex=PlexConfig(url=plex_url, token=plex_token, music_library=music_library),
+        plex=PlexConfig(
+            url=plex_url,
+            token=plex_token,
+            account_token=account_token,
+            server_id=server_id,
+            server_name=server_name,
+            client_id=client_id,
+            music_library=music_library,
+        ),
         llm=LLM_SECTION_ADAPTER.validate_python(llm),
         budget=BudgetConfig(),
         defaults=DefaultsConfig(track_count=track_count),
@@ -142,22 +154,13 @@ def plex(request, client, monkeypatch):
 
 @pytest.fixture
 def answering():
-    """Patch both probes to say the candidate settings work.
+    """Patch the provider probe to say the candidate settings work.
 
     Patched at the probe's own seam rather than at `probes.rejected`: a route
-    that stopped probing must not still pass.
+    that stopped probing must not still pass. Plex has no probe here -- it is
+    proved by the sign-in, under `/api/plex`.
     """
-    probe = MagicMock()
-    probe.connection.server_name = "Test Server"
-    probe.connection.is_connected.return_value = True
-    probe.connection.music_libraries.return_value = ["Music"]
-
-    # Patched by module, not class: `rebuilds` must still see that call.
-    with (
-        patch("backend.api.probes.PlexClient") as plex,
-        patch("backend.api.probes.ModelListing.of", new_callable=AsyncMock) as listing,
-    ):
-        plex.of.return_value = probe
+    with patch("backend.api.probes.ModelListing.of", new_callable=AsyncMock) as listing:
         # Unsupported refuses no model name, whatever the test configured.
         listing.return_value = ModelListing(supported=False)
         yield

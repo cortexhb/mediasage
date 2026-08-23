@@ -52,7 +52,6 @@ async def _status(
         data_dir=str(db.data_dir),
         plex_connected=connected,
         plex_error=plex.connection.error if plex and not connected else None,
-        plex_from_env=bool(os.environ.get("PLEX_URL")),
         music_libraries=libraries,
         llm_configured=config.llm.is_configured,
         llm_provider=config.llm.provider,

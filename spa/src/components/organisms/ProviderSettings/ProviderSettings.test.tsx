@@ -12,9 +12,10 @@ import { ProviderSettings } from './ProviderSettings.tsx'
 /** A configured Anthropic deployment, which is the common case. */
 const CONFIG: ConfigResponse = {
   version: '1.0.0',
-  plex_url: 'http://plex:32400',
   plex_connected: true,
-  plex_token_set: true,
+  plex_linked: true,
+  plex_server_name: 'Living Room',
+  plex_server_id: 'abc123',
   music_library: 'Music',
   llm_provider: 'anthropic',
   llm_configured: true,

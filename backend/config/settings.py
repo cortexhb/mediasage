@@ -13,11 +13,16 @@ Precedence, highest first:
 5. `config.yaml` — the deployment's base file
 6. Field defaults
 
-Section fields nest with a double underscore: `MEDIASAGE_PLEX__URL`,
-`MEDIASAGE_LLM__ENDPOINT_URL`, `MEDIASAGE_DEFAULTS__TRACK_COUNT`.
+Section fields nest with a double underscore: `MEDIASAGE_LLM__ENDPOINT_URL`,
+`MEDIASAGE_DEFAULTS__TRACK_COUNT`.
+
+Plex identity is the exception: it comes from a browser sign-in and no
+environment variable can supply it. `Identityless` drops those keys, because
+pydantic-settings has no per-field opt-out. See `docs/plex_login.md`.
 """
 
 from pathlib import Path
+from typing import Any, Final
 
 from pydantic_settings import (
     BaseSettings,
@@ -43,6 +48,41 @@ BASE_CONFIG_PATH = Path("config.yaml")
 
 # UI-saved settings; in the data volume so they survive container restarts.
 USER_CONFIG_PATH = Path("data/config.user.yaml")
+
+# Plex identity keys, ignored wherever the environment offers them.
+PLEX_IDENTITY: Final[frozenset[str]] = frozenset(
+    {"url", "token", "account_token", "server_id", "client_id", "server_name"}
+)
+
+
+class Identityless(PydanticBaseSettingsSource):
+    """Another source, with the Plex identity keys removed.
+
+    Wraps rather than replaces: the environment and `.env` sources each know
+    how to parse their own nesting, and only their result needs filtering.
+    """
+
+    def __init__(self, source: PydanticBaseSettingsSource) -> None:
+        super().__init__(source.settings_cls)
+        self.source = source
+
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+        """Never called: `__call__` is overridden and does not consult it."""
+        raise NotImplementedError
+
+    def __call__(self) -> dict[str, Any]:
+        """What the wrapped source offers, minus the Plex identity."""
+        offered = self.source()
+        plex = offered.get("plex")
+        if not isinstance(plex, dict):
+            return offered
+
+        kept = {key: value for key, value in plex.items() if key not in PLEX_IDENTITY}
+        return (
+            {**offered, "plex": kept}
+            if kept
+            else {key: value for key, value in offered.items() if key != "plex"}
+        )
 
 
 class MediasageConfig(BaseSettings):
@@ -77,18 +117,19 @@ class MediasageConfig(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Install the YAML source below the environment.
+        """Install the YAML source below the environment, minus Plex identity.
 
         Required: pydantic-settings ships no YAML source, and a `yaml_file` in
-        `model_config` is ignored unless one is added here.
+        `model_config` is ignored unless one is added here. YAML is not
+        filtered — that is where a sign-in writes what it learned.
         """
         override = getattr(init_settings, "init_kwargs", {}).get("_base_config_file")
         base_path = Path(override) if override else BASE_CONFIG_PATH
 
         return (
             init_settings,
-            env_settings,
-            dotenv_settings,
+            Identityless(env_settings),
+            Identityless(dotenv_settings),
             YamlConfigSettingsSource(
                 settings_cls,
                 yaml_file=[base_path, USER_CONFIG_PATH],

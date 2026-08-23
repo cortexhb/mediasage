@@ -2,6 +2,7 @@
 
 import pytest
 import yaml
+from pydantic import SecretStr
 
 from backend.config import (
     ConfigSaveError,
@@ -10,6 +11,7 @@ from backend.config import (
     LocalLLMConfig,
     MediasageConfig,
 )
+from backend.config.store import ConfigChange
 
 
 class TestReadUserYaml:
@@ -184,16 +186,16 @@ class TestApply:
         store = store_over(
             tmp_path,
             {
-                "plex": {"url": "http://old:32400", "token": "tok"},
+                "plex": {"music_library": "Old", "token": "tok"},
                 "llm": {"provider": "openai", "context_window": 128_000},
             },
         )
 
-        config = applied(store, ConfigUpdate(plex_url="http://new:32400"))
+        config = applied(store, ConfigUpdate(music_library="New"))
 
-        assert config.plex.url == "http://new:32400"
+        assert config.plex.music_library == "New"
         assert config.plex.token.get_secret_value() == "tok"
-        assert yaml.safe_load(store.path.read_text())["plex"] == {"url": "http://new:32400"}
+        assert yaml.safe_load(store.path.read_text())["plex"] == {"music_library": "New"}
 
     def test_provider_switch_clears_the_previous_models(self, tmp_path, clean_config_env):
         """The old provider's model names do not survive; nothing is guessed in their place."""
@@ -264,30 +266,30 @@ class TestCandidate:
     """A candidate is computed without keeping it."""
 
     def test_nothing_is_written(self, tmp_path, clean_config_env):
-        store = store_over(tmp_path, {"plex": {"url": "http://old:32400"}, "llm": LLM})
+        store = store_over(tmp_path, {"plex": {"music_library": "Old"}, "llm": LLM})
 
-        store.candidate(ConfigUpdate(plex_url="http://new:32400"))
+        store.candidate(ConfigUpdate(music_library="New"))
 
         assert not store.path.exists()
 
     def test_nothing_is_published(self, tmp_path, clean_config_env):
         """The held configuration is untouched until the change is committed."""
-        store = store_over(tmp_path, {"plex": {"url": "http://old:32400"}, "llm": LLM})
+        store = store_over(tmp_path, {"plex": {"music_library": "Old"}, "llm": LLM})
 
-        store.candidate(ConfigUpdate(plex_url="http://new:32400"))
+        store.candidate(ConfigUpdate(music_library="New"))
 
-        assert store.get().plex.url == "http://old:32400"
+        assert store.get().plex.music_library == "Old"
 
     def test_the_change_carries_what_it_would_write(self, tmp_path, clean_config_env):
-        store = store_over(tmp_path, {"plex": {"url": "http://old:32400"}, "llm": LLM})
+        store = store_over(tmp_path, {"plex": {"music_library": "Old"}, "llm": LLM})
 
-        change = store.candidate(ConfigUpdate(plex_url="http://new:32400"))
+        change = store.candidate(ConfigUpdate(music_library="New"))
 
-        assert change.config.plex.url == "http://new:32400"
-        assert change.sections == {"plex": {"url": "http://new:32400"}}
+        assert change.config.plex.music_library == "New"
+        assert change.sections == {"plex": {"music_library": "New"}}
 
     def test_an_empty_update_writes_no_section(self, tmp_path, clean_config_env):
-        store = store_over(tmp_path, {"plex": {"url": "http://old:32400"}, "llm": LLM})
+        store = store_over(tmp_path, {"plex": {"music_library": "Old"}, "llm": LLM})
 
         assert store.candidate(ConfigUpdate()).sections == {}
 
@@ -297,18 +299,71 @@ class TestCommit:
 
     def test_a_failed_write_publishes_nothing(self, tmp_path, clean_config_env):
         """Otherwise the process runs on settings that will not survive a restart."""
-        store = store_over(tmp_path, {"plex": {"url": "http://old:32400"}, "llm": LLM})
-        change = store.candidate(ConfigUpdate(plex_url="http://new:32400"))
+        store = store_over(tmp_path, {"plex": {"music_library": "Old"}, "llm": LLM})
+        change = store.candidate(ConfigUpdate(music_library="New"))
         store.user_config_path = tmp_path / "missing-dir" / "config.user.yaml"
 
         with pytest.raises(ConfigSaveError):
             store.commit(change)
 
-        assert store.get().plex.url == "http://old:32400"
+        assert store.get().plex.music_library == "Old"
 
     def test_a_written_change_is_published(self, tmp_path, clean_config_env):
-        store = store_over(tmp_path, {"plex": {"url": "http://old:32400"}, "llm": LLM})
+        store = store_over(tmp_path, {"plex": {"music_library": "Old"}, "llm": LLM})
 
-        store.commit(store.candidate(ConfigUpdate(plex_url="http://new:32400")))
+        store.commit(store.candidate(ConfigUpdate(music_library="New")))
 
-        assert store.get().plex.url == "http://new:32400"
+        assert store.get().plex.music_library == "New"
+
+
+class TestToPlex:
+    """The sign-in's own change: keys no `ConfigUpdate` field can express."""
+
+    def signed_in(self, store: ConfigStore, changes: dict) -> MediasageConfig:
+        return store.commit(ConfigChange.to_plex(store.get(), changes))
+
+    def test_the_identity_is_written_and_published(self, tmp_path, clean_config_env):
+        store = store_over(tmp_path, {"plex": {"music_library": "Music"}, "llm": LLM})
+
+        config = self.signed_in(
+            store, {"url": "http://found:32400", "server_id": "abc123", "server_name": "Attic"}
+        )
+
+        assert config.plex.url == "http://found:32400"
+        assert yaml.safe_load(store.path.read_text())["plex"] == {
+            "url": "http://found:32400",
+            "server_id": "abc123",
+            "server_name": "Attic",
+        }
+
+    def test_a_secret_is_unwrapped_for_the_file(self, tmp_path, clean_config_env):
+        """Left wrapped, yaml writes a python-object tag `safe_load` refuses."""
+        store = store_over(tmp_path, {"llm": LLM})
+
+        self.signed_in(store, {"account_token": SecretStr("account-token")})
+
+        assert yaml.safe_load(store.path.read_text())["plex"] == {"account_token": "account-token"}
+
+    def test_the_rest_of_the_section_survives(self, tmp_path, clean_config_env):
+        """A sign-in must not reset the library name the user chose."""
+        store = store_over(tmp_path, {"plex": {"music_library": "Vinyl Rips"}, "llm": LLM})
+
+        config = self.signed_in(store, {"server_id": "abc123"})
+
+        assert config.plex.music_library == "Vinyl Rips"
+
+    def test_signing_out_removes_the_keys(self, tmp_path, clean_config_env):
+        """Written back as blanks they would shadow nothing; the default is blank."""
+        store = store_over(tmp_path, {"llm": LLM})
+        self.signed_in(store, {"account_token": SecretStr("account-token")})
+
+        self.signed_in(store, {"account_token": SecretStr(""), "server_id": ""})
+
+        assert "plex" not in yaml.safe_load(store.path.read_text())
+
+    def test_an_empty_change_writes_nothing(self, tmp_path, clean_config_env):
+        store = store_over(tmp_path, {"llm": LLM})
+
+        self.signed_in(store, {})
+
+        assert not store.path.exists()

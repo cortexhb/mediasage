@@ -28,6 +28,7 @@ from backend.api.routes.config import register_config_routes
 from backend.api.routes.health import register_health_routes
 from backend.api.routes.library import register_library_routes
 from backend.api.routes.playlists import register_playlist_routes
+from backend.api.routes.plex import register_plex_routes
 from backend.api.routes.recommend import register_recommend_routes
 from backend.api.routes.results import register_results_routes
 from backend.api.routes.setup import register_setup_routes
@@ -85,6 +86,7 @@ def create_app() -> FastAPI:
 
     register_health_routes(app)
     register_setup_routes(app)
+    register_plex_routes(app)
     register_config_routes(app)
     register_library_routes(app)
     register_analyze_routes(app)

@@ -10,9 +10,9 @@ import { routes } from './routes.ts'
 /** Enough of `/api/config` for the settings page to render. */
 const CONFIG = {
   version: '1.0.0',
-  plex_url: 'http://plex:32400',
   plex_connected: true,
-  plex_token_set: true,
+  plex_linked: true,
+  plex_server_name: 'Living Room',
   music_library: 'Music',
   llm_provider: 'anthropic',
   llm_configured: true,
@@ -76,9 +76,7 @@ describe('routes', () => {
 
     renderAt('/settings')
 
-    expect(
-      await screen.findByRole('textbox', { name: 'Plex Server URL' }),
-    ).toHaveValue('http://plex:32400')
+    expect(await screen.findByText('Connected to Living Room')).toBeVisible()
   })
 
   it('keeps the shell when a page loader fails', async () => {

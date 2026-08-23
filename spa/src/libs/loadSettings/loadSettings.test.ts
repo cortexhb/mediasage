@@ -8,9 +8,9 @@ import { loadSettings } from './loadSettings.ts'
 /** The settings a backend with nothing unusual about it reports. */
 const CONFIG = {
   version: '1.0.0',
-  plex_url: 'http://plex:32400',
   plex_connected: true,
-  plex_token_set: true,
+  plex_linked: true,
+  plex_server_name: 'Living Room',
   music_library: 'Music',
   llm_provider: 'anthropic',
   llm_configured: true,
@@ -59,7 +59,7 @@ describe('loadSettings', () => {
 
     const data = await loadSettings(args())
 
-    expect(data.config.plex_url).toBe('http://plex:32400')
+    expect(data.config.plex_server_name).toBe('Living Room')
     expect(data.setup.music_libraries).toEqual(['Music'])
   })
 

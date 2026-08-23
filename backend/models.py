@@ -392,9 +392,10 @@ class ConfigResponse(BaseModel):
     """The settings the UI shows: no credential, only whether one is set."""
 
     version: str
-    plex_url: str
     plex_connected: bool
-    plex_token_set: bool
+    plex_linked: bool  # True once a browser sign-in has stored a token
+    plex_server_name: str  # The chosen server, or empty before one is chosen
+    plex_server_id: str  # Which one the picker marks as current
     music_library: str
     llm_provider: str
     llm_configured: bool
@@ -428,9 +429,10 @@ class ConfigResponse(BaseModel):
 
         return cls(
             version=Version.current(),
-            plex_url=config.plex.url,
             plex_connected=plex_connected,
-            plex_token_set=bool(config.plex.token),
+            plex_linked=bool(config.plex.account_token),
+            plex_server_name=config.plex.server_name,
+            plex_server_id=config.plex.server_id,
             music_library=config.plex.music_library,
             llm_provider=config.llm.provider,
             llm_configured=config.llm.is_configured,
@@ -581,7 +583,6 @@ class SetupStatusResponse(BaseModel):
     data_dir: str = ""
     plex_connected: bool
     plex_error: str | None = None
-    plex_from_env: bool = False
     music_libraries: list[str] = []
     llm_configured: bool
     llm_provider: str = ""
@@ -592,20 +593,49 @@ class SetupStatusResponse(BaseModel):
     sync_progress: SyncProgress | None = None
 
 
-class ValidatePlexRequest(BaseModel):
-    """Request to validate Plex credentials during setup."""
+class PlexServerChoice(BaseModel):
+    """One server the signed-in account can reach.
 
-    plex_url: str
-    plex_token: SecretStr
-    music_library: str = "Music"
+    Here rather than in `backend/plex/link.py` because `backend.plex` already
+    reads this module, the way `PlexLibrary` reads `Track`.
+    """
+
+    # `clientIdentifier`, stable while the address is not.
+    id: str
+    name: str
+    owned: bool
 
 
-class ValidatePlexResponse(BaseModel):
-    """Response from Plex validation."""
+class PlexLinkResponse(BaseModel):
+    """A pin waiting to be approved, and where to approve it."""
 
-    success: bool
-    error: str | None = None
-    server_name: str | None = None
+    pin_id: int
+    code: str
+    url: str
+    expires_in: int
+
+
+class PlexLinkStatusResponse(BaseModel):
+    """Whether the pin has been approved yet, and what it unlocked."""
+
+    # Pending until the user approves it in their browser; then linked.
+    state: Literal["pending", "linked"]
+    servers: list[PlexServerChoice] = []
+
+
+class PlexServerRequest(BaseModel):
+    """Which of the listed servers to talk to."""
+
+    server_id: str
+
+
+class PlexLinkedResponse(BaseModel):
+    """What a sign-in left in force, as the Plex card shows it."""
+
+    linked: bool
+    connected: bool
+    server_name: str = ""
+    server_id: str = ""
     music_libraries: list[str] = []
 
 

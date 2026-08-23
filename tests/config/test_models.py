@@ -107,7 +107,7 @@ class TestConfigUpdate:
 
     def test_is_not_empty_when_a_value_is_supplied(self):
         """Any supplied value should make the update non-empty."""
-        assert ConfigUpdate(plex_url="http://plex:32400").is_empty is False
+        assert ConfigUpdate(music_library="Vinyl Rips").is_empty is False
 
     @pytest.mark.parametrize(
         ("field", "key", "value"),
@@ -145,9 +145,14 @@ class TestConfigUpdate:
 
     def test_plex_changes_are_keyed_for_the_section(self):
         """API field names should map onto PlexConfig field names."""
-        update = ConfigUpdate(plex_url="http://plex:32400", plex_token="tok")
+        update = ConfigUpdate(music_library="Vinyl Rips")
 
-        assert update.changes("plex") == {"url": "http://plex:32400", "token": "tok"}
+        assert update.changes("plex") == {"music_library": "Vinyl Rips"}
+
+    @pytest.mark.parametrize("field", ["plex_url", "plex_token", "account_token", "server_id"])
+    def test_plex_identity_cannot_be_submitted_as_a_setting(self, field):
+        """Only the sign-in writes it; a form offering it would overwrite a link."""
+        assert ConfigUpdate.model_validate({field: "anything"}).is_empty is True
 
     def test_llm_changes_include_provider(self):
         """The LLM section owns the provider field."""
@@ -157,13 +162,13 @@ class TestConfigUpdate:
 
     def test_touches_plex_only_for_plex_fields(self):
         """Should report whether the Plex client needs rebuilding."""
-        assert ConfigUpdate(plex_token="tok").touches("plex") is True
+        assert ConfigUpdate(music_library="Vinyl Rips").touches("plex") is True
         assert ConfigUpdate(llm_api_key="sk-test").touches("plex") is False
 
     def test_touches_llm_includes_provider(self):
         """A provider change alone should still rebuild the LLM client."""
         assert ConfigUpdate(llm_provider="openai").touches("llm") is True
-        assert ConfigUpdate(plex_token="tok").touches("llm") is False
+        assert ConfigUpdate(music_library="Vinyl Rips").touches("llm") is False
 
     def test_rejects_unknown_provider(self):
         """Should reject a provider outside the supported set."""
@@ -385,17 +390,12 @@ class TestCredentialsAreSecret:
 class TestSecretsReachTheConfigFile:
     """What `ConfigStore.save` writes must be the credential, not the mask."""
 
-    def test_a_plex_token_is_unwrapped_for_persistence(self):
-        """Left wrapped, the deployment would restart unconfigured."""
-        update = ConfigUpdate(plex_url="http://plex:32400", plex_token="tok")
-
-        assert update.changes("plex")["token"] == "tok"
-
     def test_an_api_key_is_unwrapped_for_persistence(self):
+        """Left wrapped, the deployment would restart unconfigured."""
         update = ConfigUpdate(llm_provider="anthropic", llm_api_key="sk-real")
 
         assert update.changes("llm")["api_key"] == "sk-real"
 
-    def test_a_blank_credential_is_not_written(self):
-        """An empty secret is falsy, so it never reaches the file."""
-        assert "token" not in ConfigUpdate(plex_url="http://plex:32400").changes("plex")
+    def test_an_omitted_credential_is_not_written(self):
+        """Absent, not blank: a save that names no key must not clear one."""
+        assert "api_key" not in ConfigUpdate(llm_provider="anthropic").changes("llm")

@@ -249,17 +249,21 @@ export type ConfigResponse = {
    */
   version: string
   /**
-   * Plex Url
-   */
-  plex_url: string
-  /**
    * Plex Connected
    */
   plex_connected: boolean
   /**
-   * Plex Token Set
+   * Plex Linked
    */
-  plex_token_set: boolean
+  plex_linked: boolean
+  /**
+   * Plex Server Name
+   */
+  plex_server_name: string
+  /**
+   * Plex Server Id
+   */
+  plex_server_id: string
   /**
    * Music Library
    */
@@ -342,16 +346,12 @@ export type ConfigResponse = {
  *
  * Owns the mapping from API field names to the section and key they write, so
  * neither the route nor the store has to restate it.
+ *
+ * No Plex identity here: the address and both tokens come from a browser
+ * sign-in, written by `/api/plex*`. `music_library` is all a form still says
+ * about Plex.
  */
 export type ConfigUpdate = {
-  /**
-   * Plex Url
-   */
-  plex_url?: string | null
-  /**
-   * Plex Token
-   */
-  plex_token?: null
   /**
    * Music Library
    */
@@ -1076,6 +1076,74 @@ export type PlexClientInfo = {
 }
 
 /**
+ * PlexLinkResponse
+ *
+ * A pin waiting to be approved, and where to approve it.
+ */
+export type PlexLinkResponse = {
+  /**
+   * Pin Id
+   */
+  pin_id: number
+  /**
+   * Code
+   */
+  code: string
+  /**
+   * Url
+   */
+  url: string
+  /**
+   * Expires In
+   */
+  expires_in: number
+}
+
+/**
+ * PlexLinkStatusResponse
+ *
+ * Whether the pin has been approved yet, and what it unlocked.
+ */
+export type PlexLinkStatusResponse = {
+  /**
+   * State
+   */
+  state: 'pending' | 'linked'
+  /**
+   * Servers
+   */
+  servers?: Array<PlexServerChoice>
+}
+
+/**
+ * PlexLinkedResponse
+ *
+ * What a sign-in left in force, as the Plex card shows it.
+ */
+export type PlexLinkedResponse = {
+  /**
+   * Linked
+   */
+  linked: boolean
+  /**
+   * Connected
+   */
+  connected: boolean
+  /**
+   * Server Name
+   */
+  server_name?: string
+  /**
+   * Server Id
+   */
+  server_id?: string
+  /**
+   * Music Libraries
+   */
+  music_libraries?: Array<string>
+}
+
+/**
  * PlexPlaylistInfo
  *
  * A playlist as the picker lists it.
@@ -1093,6 +1161,41 @@ export type PlexPlaylistInfo = {
    * Track Count
    */
   track_count: number
+}
+
+/**
+ * PlexServerChoice
+ *
+ * One server the signed-in account can reach.
+ *
+ * Here rather than in `backend/plex/link.py` because `backend.plex` already
+ * reads this module, the way `PlexLibrary` reads `Track`.
+ */
+export type PlexServerChoice = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Owned
+   */
+  owned: boolean
+}
+
+/**
+ * PlexServerRequest
+ *
+ * Which of the listed servers to talk to.
+ */
+export type PlexServerRequest = {
+  /**
+   * Server Id
+   */
+  server_id: string
 }
 
 /**
@@ -1397,10 +1500,6 @@ export type SetupStatusResponse = {
    */
   plex_error?: string | null
   /**
-   * Plex From Env
-   */
-  plex_from_env?: boolean
-  /**
    * Music Libraries
    */
   music_libraries?: Array<string>
@@ -1627,46 +1726,6 @@ export type ValidateAiResponse = {
 }
 
 /**
- * ValidatePlexRequest
- *
- * Request to validate Plex credentials during setup.
- */
-export type ValidatePlexRequest = {
-  /**
-   * Plex Url
-   */
-  plex_url: string
-  /**
-   * Music Library
-   */
-  music_library?: string
-}
-
-/**
- * ValidatePlexResponse
- *
- * Response from Plex validation.
- */
-export type ValidatePlexResponse = {
-  /**
-   * Success
-   */
-  success: boolean
-  /**
-   * Error
-   */
-  error?: string | null
-  /**
-   * Server Name
-   */
-  server_name?: string | null
-  /**
-   * Music Libraries
-   */
-  music_libraries?: Array<string>
-}
-
-/**
  * ValidationError
  */
 export type ValidationError = {
@@ -1701,16 +1760,12 @@ export type ValidationError = {
  *
  * Owns the mapping from API field names to the section and key they write, so
  * neither the route nor the store has to restate it.
+ *
+ * No Plex identity here: the address and both tokens come from a browser
+ * sign-in, written by `/api/plex*`. `music_library` is all a form still says
+ * about Plex.
  */
 export type ConfigUpdateWritable = {
-  /**
-   * Plex Url
-   */
-  plex_url?: string | null
-  /**
-   * Plex Token
-   */
-  plex_token?: string | null
   /**
    * Music Library
    */
@@ -1817,26 +1872,6 @@ export type ValidateAiRequestWritable = {
   context_window?: number
 }
 
-/**
- * ValidatePlexRequest
- *
- * Request to validate Plex credentials during setup.
- */
-export type ValidatePlexRequestWritable = {
-  /**
-   * Plex Url
-   */
-  plex_url: string
-  /**
-   * Plex Token
-   */
-  plex_token: string
-  /**
-   * Music Library
-   */
-  music_library?: string
-}
-
 export type GetHealthData = {
   body?: never
   path?: never
@@ -1870,32 +1905,6 @@ export type GetSetupStatusResponses = {
 export type GetSetupStatusResponse =
   GetSetupStatusResponses[keyof GetSetupStatusResponses]
 
-export type ValidatePlexData = {
-  body: ValidatePlexRequestWritable
-  path?: never
-  query?: never
-  url: '/api/setup/validate-plex'
-}
-
-export type ValidatePlexErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ValidatePlexError = ValidatePlexErrors[keyof ValidatePlexErrors]
-
-export type ValidatePlexResponses = {
-  /**
-   * Successful Response
-   */
-  200: ValidatePlexResponse
-}
-
-export type ValidatePlexResponse2 =
-  ValidatePlexResponses[keyof ValidatePlexResponses]
-
 export type ValidateAiData = {
   body: ValidateAiRequestWritable
   path?: never
@@ -1920,6 +1929,115 @@ export type ValidateAiResponses = {
 }
 
 export type ValidateAiResponse2 = ValidateAiResponses[keyof ValidateAiResponses]
+
+export type ForgetPlexLinkData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/plex/link'
+}
+
+export type ForgetPlexLinkResponses = {
+  /**
+   * Successful Response
+   */
+  200: PlexLinkedResponse
+}
+
+export type ForgetPlexLinkResponse =
+  ForgetPlexLinkResponses[keyof ForgetPlexLinkResponses]
+
+export type BeginPlexLinkData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/plex/link'
+}
+
+export type BeginPlexLinkResponses = {
+  /**
+   * Successful Response
+   */
+  200: PlexLinkResponse
+}
+
+export type BeginPlexLinkResponse =
+  BeginPlexLinkResponses[keyof BeginPlexLinkResponses]
+
+export type PollPlexLinkData = {
+  body?: never
+  path: {
+    /**
+     * Pin Id
+     */
+    pin_id: number
+  }
+  query?: never
+  url: '/api/plex/link/{pin_id}'
+}
+
+export type PollPlexLinkErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PollPlexLinkError = PollPlexLinkErrors[keyof PollPlexLinkErrors]
+
+export type PollPlexLinkResponses = {
+  /**
+   * Successful Response
+   */
+  200: PlexLinkStatusResponse
+}
+
+export type PollPlexLinkResponse =
+  PollPlexLinkResponses[keyof PollPlexLinkResponses]
+
+export type ListPlexServersData = {
+  body?: never
+  path?: never
+  query?: never
+  url: '/api/plex/servers'
+}
+
+export type ListPlexServersResponses = {
+  /**
+   * Successful Response
+   */
+  200: PlexLinkStatusResponse
+}
+
+export type ListPlexServersResponse =
+  ListPlexServersResponses[keyof ListPlexServersResponses]
+
+export type ChoosePlexServerData = {
+  body: PlexServerRequest
+  path?: never
+  query?: never
+  url: '/api/plex/server'
+}
+
+export type ChoosePlexServerErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ChoosePlexServerError =
+  ChoosePlexServerErrors[keyof ChoosePlexServerErrors]
+
+export type ChoosePlexServerResponses = {
+  /**
+   * Successful Response
+   */
+  200: PlexLinkedResponse
+}
+
+export type ChoosePlexServerResponse =
+  ChoosePlexServerResponses[keyof ChoosePlexServerResponses]
 
 export type GetConfigData = {
   body?: never

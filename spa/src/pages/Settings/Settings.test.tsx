@@ -12,9 +12,10 @@ import { Settings } from './Settings.tsx'
 const DATA: SettingsData = {
   config: {
     version: '1.0.0',
-    plex_url: 'http://plex:32400',
     plex_connected: true,
-    plex_token_set: true,
+    plex_linked: true,
+    plex_server_name: 'Living Room',
+    plex_server_id: 'abc123',
     music_library: 'Music',
     llm_provider: 'anthropic',
     llm_configured: true,
@@ -128,7 +129,7 @@ describe('Settings', () => {
       await saveWith(user)
 
       await screen.findByText('Settings saved')
-      expect(sent).toMatchObject({ plex_url: 'http://plex:32400' })
+      expect(sent).toMatchObject({ music_library: 'Music' })
     })
 
     it('navigates nowhere, so nothing else reloads with it', async () => {
@@ -247,12 +248,12 @@ describe('Settings', () => {
       backend()
 
       renderPage()
-      const token = await screen.findByLabelText('Plex Token')
-      await user.type(token, 'a-real-token')
+      const key = await screen.findByLabelText('API Key')
+      await user.type(key, 'sk-a-real-key')
       await saveWith(user)
 
       await screen.findByText('Settings saved')
-      expect(token).toHaveValue('')
+      expect(key).toHaveValue('')
     })
 
     it('adopts what was kept, so the library list follows a Plex change', async () => {
