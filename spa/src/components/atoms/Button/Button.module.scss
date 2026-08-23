@@ -1,0 +1,113 @@
+/**
+ * The app's buttons, from `frontend/style.css:580` and the variants that
+ * follow it at `:593`, `:626`, `:1686` and `:2092`.
+ *
+ * Variant is an attribute rather than a class, so a caller passes a value and
+ * never picks a class name.
+ */
+
+@use 'mixins' as ds;
+
+.button {
+  display: inline-flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+
+  @include ds.on-mobile {
+    min-height: 44px;
+  }
+
+  &[data-variant='primary'] {
+    padding: var(--spacing-sm) var(--spacing-xl);
+    color: var(--bg-primary);
+    background: var(--accent);
+
+    &:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+
+    /* The accent ring is invisible against the accent fill. */
+    &:focus-visible {
+      outline-color: var(--text-primary);
+    }
+
+    &:disabled {
+      background: var(--text-muted);
+    }
+  }
+
+  &[data-variant='secondary'] {
+    padding: var(--spacing-sm) var(--spacing-xl);
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+
+    &:hover:not(:disabled) {
+      background: var(--bg-hover);
+    }
+  }
+
+  &[data-variant='ghost'] {
+    padding: 10px var(--spacing-lg);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+
+    &:hover:not(:disabled) {
+      color: var(--text-primary);
+      background: var(--bg-tertiary);
+      border-color: var(--text-muted);
+    }
+  }
+
+  /* A header control, from `frontend/style.css:180`. Not a `.btn` there. */
+  &[data-variant='nav'] {
+    gap: 6px;
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-weight: 400;
+    color: var(--text-secondary);
+
+    &:hover:not(:disabled) {
+      color: var(--text-primary);
+      background: var(--bg-tertiary);
+    }
+
+    /* Set only while a route under this entry is open. */
+    &[aria-current] {
+      color: var(--accent);
+      background: var(--bg-secondary);
+    }
+
+    @include ds.on-coarse-pointer {
+      min-height: 44px;
+    }
+
+    @include ds.on-compact {
+      padding: var(--spacing-sm);
+      font-size: var(--font-size-sm);
+    }
+  }
+
+  &[data-variant='link'] {
+    padding: var(--spacing-sm) 0;
+    font-size: var(--font-size-sm);
+    font-weight: 400;
+    color: var(--text-muted);
+
+    &:hover:not(:disabled) {
+      color: var(--text-secondary);
+    }
+  }
+}

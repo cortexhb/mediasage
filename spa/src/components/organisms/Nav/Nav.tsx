@@ -18,6 +18,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router'
 
+import { Button } from '../../atoms/Button/Button.tsx'
+import { MenuLink } from '../../atoms/MenuLink/MenuLink.tsx'
+import { SettingsIcon } from '../../atoms/SettingsIcon/SettingsIcon.tsx'
 import styles from './Nav.module.scss'
 
 /** Both create modes, and the prefix that marks the disclosure active. */
@@ -60,10 +63,9 @@ export function Nav() {
   return (
     <nav className={styles.nav} aria-label="Main navigation">
       <div className={styles.nav__dropdown} ref={dropdown}>
-        <button
-          type="button"
+        <Button
+          variant="nav"
           ref={trigger}
-          className={styles.nav__trigger}
           aria-expanded={open}
           // Not `page`: the trigger is the section, not the page.
           aria-current={onPlaylist ? 'true' : undefined}
@@ -75,15 +77,15 @@ export function Nav() {
           <span className={styles.nav__chevron} aria-hidden="true">
             ▾
           </span>
-        </button>
+        </Button>
         {open && (
           <div className={styles.nav__menu}>
-            <DropdownItem to={`${PLAYLIST}/prompt`} onChosen={close}>
+            <MenuLink to={`${PLAYLIST}/prompt`} onChoose={close}>
               From Prompt
-            </DropdownItem>
-            <DropdownItem to={`${PLAYLIST}/seed`} onChosen={close}>
+            </MenuLink>
+            <MenuLink to={`${PLAYLIST}/seed`} onChoose={close}>
               From Seed Song
-            </DropdownItem>
+            </MenuLink>
           </div>
         )}
       </div>
@@ -94,57 +96,5 @@ export function Nav() {
         <SettingsIcon />
       </NavLink>
     </nav>
-  )
-}
-
-/**
- * One entry inside the disclosure, with the legacy checkmark for the mode in
- * use (`frontend/app.js:991`).
- *
- * It closes the disclosure itself. Watching the location instead would mean
- * setting state from an effect, and a click inside the dropdown is exempt
- * from the outside-click handler.
- */
-function DropdownItem({
-  to,
-  onChosen,
-  children,
-}: {
-  to: string
-  onChosen: () => void
-  children: string
-}) {
-  return (
-    <NavLink to={to} onClick={onChosen}>
-      {({ isActive }) => (
-        <>
-          <span className={styles.nav__check} aria-hidden="true">
-            {isActive ? '✓' : ''}
-          </span>
-          {children}
-        </>
-      )}
-    </NavLink>
-  )
-}
-
-/** Copied from `frontend/index.html:33`; the only icon the header carries. */
-function SettingsIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      xmlns="http://www.w3.org/2000/svg"
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
   )
 }

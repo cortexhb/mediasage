@@ -1,0 +1,25 @@
+/**
+ * The heading scale.
+ *
+ * `frontend/style.css` has no global heading rules: every heading is sized by
+ * whatever section contains it, so the same `h3` is one size in Settings and
+ * another in a modal. The scale is defined here instead, from the tokens, and
+ * a section that needs a different one says so in its own module.
+ */
+
+.heading {
+  font-weight: 700;
+  line-height: 1.2;
+
+  &[data-level='1'] {
+    font-size: var(--font-size-2xl);
+  }
+
+  &[data-level='2'] {
+    font-size: var(--font-size-xl);
+  }
+
+  &[data-level='3'] {
+    font-size: var(--font-size-lg);
+  }
+}

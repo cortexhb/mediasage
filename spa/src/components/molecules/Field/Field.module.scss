@@ -1,0 +1,11 @@
+/**
+ * The stack a labelled control sits in, from `frontend/style.css:580`'s
+ * `.form-group`. Everything in it is an atom; this is only the layout.
+ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+}

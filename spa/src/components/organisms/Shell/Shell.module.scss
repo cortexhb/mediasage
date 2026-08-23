@@ -20,17 +20,16 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* The heading is `atoms/Heading`; the brand colour is the shell's. */
 .shell__logo {
-  font-size: var(--font-size-xl);
-  font-weight: 700;
   color: var(--accent);
-}
 
-.shell__logoLink {
-  color: inherit;
-  text-decoration: none;
+  a {
+    color: inherit;
+    text-decoration: none;
 
-  &:hover {
-    opacity: 0.85;
+    &:hover {
+      opacity: 0.85;
+    }
   }
 }

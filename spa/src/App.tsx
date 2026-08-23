@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 
+import { Heading } from './components/atoms/Heading/Heading.tsx'
+import { Text } from './components/atoms/Text/Text.tsx'
 import styles from './App.module.scss'
 
 /** What the API reported about itself, or why it could not be reached. */
@@ -45,12 +47,12 @@ export default function App() {
 
   return (
     <>
-      <h2>Scaffold</h2>
-      {health.kind === 'loading' && <p>Reaching the API…</p>}
+      <Heading level={2}>Scaffold</Heading>
+      {health.kind === 'loading' && <Text>Reaching the API…</Text>}
       {health.kind === 'unreachable' && (
-        <p className={styles.unreachable}>
+        <Text tone="error" role="alert">
           API unreachable: {health.reason}. Start it on port 5765.
-        </p>
+        </Text>
       )}
       {health.kind === 'ok' && (
         <pre className={styles.payload}>

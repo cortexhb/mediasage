@@ -9,13 +9,16 @@
  */
 import { Link } from 'react-router'
 
+import { Heading } from '../../components/atoms/Heading/Heading.tsx'
+import { Text } from '../../components/atoms/Text/Text.tsx'
+
 export function NotFound() {
   return (
     <>
-      <h2>Page not found</h2>
-      <p>
+      <Heading level={2}>Page not found</Heading>
+      <Text>
         Nothing lives at this address. <Link to="/">Go home</Link>.
-      </p>
+      </Text>
     </>
   )
 }

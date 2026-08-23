@@ -1,33 +1,14 @@
 /**
  * The header navigation, ported from `frontend/style.css:129-262`.
  *
- * Every element takes one static class. State is selected off the ARIA the
- * markup already carries, so no modifier is chosen in JavaScript.
+ * The trigger is `atoms/Button`, the entries are `atoms/MenuLink`; what is
+ * left is the layout, the menu it opens, and the chevron.
  *
  * The compact rules that hide entries stay CSS rather than becoming a
  * media-query hook in JavaScript: no layout thrash, no first-paint flicker.
  */
 
 @use 'mixins' as ds;
-
-/* Shared by both flat entries; a placeholder emits no class of its own. */
-%entry {
-  color: var(--text-secondary);
-  text-decoration: none;
-  border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
-
-  &:hover {
-    color: var(--text-primary);
-    background: var(--bg-tertiary);
-  }
-
-  /* `NavLink` sets this only while its route is open. */
-  &[aria-current] {
-    color: var(--accent);
-    background: var(--bg-secondary);
-  }
-}
 
 .nav {
   display: flex;
@@ -43,39 +24,18 @@
   }
 }
 
-.nav__trigger {
-  @extend %entry;
-
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  padding: var(--spacing-sm) var(--spacing-md);
-  font-family: var(--font-family);
-  font-size: var(--font-size-base);
-  cursor: pointer;
-  background: transparent;
-  border: none;
-
-  @include ds.on-coarse-pointer {
-    min-height: 44px;
-  }
-
-  @include ds.on-compact {
-    padding: var(--spacing-sm);
-    font-size: var(--font-size-sm);
-  }
-}
-
 .nav__chevron {
   font-size: 0.75rem;
   opacity: 0.8;
   transition: transform var(--transition-fast);
 }
 
-.nav__trigger[aria-expanded='true'] .nav__chevron {
+/* The attribute is on the trigger, which is not this module's element. */
+[aria-expanded='true'] .nav__chevron {
   transform: rotate(180deg);
 }
 
+/* The open menu. It is absent from the DOM while closed. */
 .nav__menu {
   position: absolute;
   top: calc(100% + 6px);
@@ -89,48 +49,25 @@
   box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
 }
 
-/* The menu's entries. `NavLink` takes no class: a CSS Modules lookup is
-   `string | undefined`, which its `className` prop rejects. */
-.nav__menu a {
-  display: flex;
-  gap: var(--spacing-sm);
-  align-items: center;
-  width: 100%;
-  padding: 10px var(--spacing-sm);
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-  text-align: left;
+/* The flat entries, which are the root's only direct links. */
+.nav > a {
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
   text-decoration: none;
-  border-radius: var(--radius-sm);
-  transition: background var(--transition-fast);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
 
+  /* `NavLink` sets this only while its route is open. */
   &[aria-current] {
     color: var(--accent);
+    background: var(--bg-secondary);
   }
 
   &:hover {
+    color: var(--text-primary);
     background: var(--bg-tertiary);
   }
-
-  @include ds.on-coarse-pointer {
-    min-height: 44px;
-  }
-}
-
-/* Holds its width when empty, so the labels stay aligned. */
-.nav__check {
-  width: 1rem;
-  font-size: 0.75rem;
-  color: var(--accent);
-  text-align: center;
-}
-
-/* The flat entries, which are the root's only direct links. */
-.nav > a {
-  @extend %entry;
-
-  padding: var(--spacing-sm) var(--spacing-md);
-  font-size: var(--font-size-base);
 
   @include ds.on-mobile {
     min-height: 44px;
@@ -150,12 +87,6 @@
   align-items: center;
   padding: var(--spacing-sm);
   line-height: 0;
-
-  svg {
-    display: block;
-    width: 20px;
-    height: 20px;
-  }
 
   @include ds.on-mobile {
     @include ds.touch-target;

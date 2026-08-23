@@ -1,0 +1,14 @@
+/**
+ * A form label, from `frontend/style.css:487` and its `.optional-label`
+ * sibling at `:495`.
+ */
+
+.label {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.label__optional {
+  color: var(--text-muted);
+}

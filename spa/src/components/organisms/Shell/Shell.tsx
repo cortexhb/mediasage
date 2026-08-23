@@ -7,6 +7,7 @@
  */
 import { Link, Outlet } from 'react-router'
 
+import { Heading } from '../../atoms/Heading/Heading.tsx'
 import { Nav } from '../Nav/Nav.tsx'
 import styles from './Shell.module.scss'
 
@@ -14,11 +15,11 @@ export function Shell() {
   return (
     <div className={styles.shell}>
       <header className={styles.shell__header}>
-        <h1 className={styles.shell__logo}>
-          <Link to="/" className={styles.shell__logoLink}>
-            MediaSage
-          </Link>
-        </h1>
+        <div className={styles.shell__logo}>
+          <Heading level={1}>
+            <Link to="/">MediaSage</Link>
+          </Heading>
+        </div>
         <Nav />
       </header>
       <main id="main-content">

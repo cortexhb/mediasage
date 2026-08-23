@@ -1,0 +1,40 @@
+/**
+ * An entry in a dropdown, from `frontend/style.css:233-262`.
+ */
+
+@use 'mixins' as ds;
+
+.menuLink {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+  width: 100%;
+  padding: 10px var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  text-align: left;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+
+  /* `NavLink` sets this only while its route is open. */
+  &[aria-current] {
+    color: var(--accent);
+  }
+
+  &:hover {
+    background: var(--bg-tertiary);
+  }
+
+  @include ds.on-coarse-pointer {
+    min-height: 44px;
+  }
+}
+
+/* Holds its width when empty, so the labels stay aligned. */
+.menuLink__check {
+  width: 1rem;
+  font-size: 0.75rem;
+  color: var(--accent);
+  text-align: center;
+}

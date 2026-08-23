@@ -1,0 +1,28 @@
+/**
+ * A paragraph, in one of the colours the app speaks in.
+ *
+ * Tone is an attribute rather than a class, so a caller passes a value and
+ * never picks a class name.
+ */
+
+.text {
+  &[data-tone='muted'] {
+    font-size: var(--font-size-sm);
+    color: var(--text-muted);
+  }
+
+  &[data-tone='secondary'] {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+  }
+
+  &[data-tone='error'] {
+    font-size: var(--font-size-sm);
+    color: var(--error);
+  }
+
+  &[data-tone='success'] {
+    font-size: var(--font-size-sm);
+    color: var(--success);
+  }
+}

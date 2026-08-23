@@ -1,0 +1,31 @@
+/**
+ * A text control, from `frontend/style.css`'s form inputs.
+ */
+
+@use 'mixins' as ds;
+
+.input {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+
+  &:focus {
+    border-color: var(--accent);
+    outline: none;
+  }
+
+  /* Set on a value the deployment supplies, which the form must not edit. */
+  &:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  @include ds.on-mobile {
+    min-height: 44px;
+  }
+}

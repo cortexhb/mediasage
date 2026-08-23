@@ -1,0 +1,11 @@
+/**
+ * The stack a labelled select sits in. Same shape as `molecules/Field`; kept
+ * apart so neither reaches into the other's module.
+ */
+
+.selectField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+}
