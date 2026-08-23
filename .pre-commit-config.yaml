@@ -1,0 +1,42 @@
+# `frontend/` is the working reference the React port is verified against and
+# is never edited until it is deleted whole. See spa/docs/migration.md.
+exclude: ^frontend/
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0  # Use the ref you want to point at
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^.idea/.*
+      - id: check-executables-have-shebangs
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.4
+    hooks:
+      - id: ruff-check
+        args: [ --fix ]
+      - id: ruff-format
+
+  - repo: https://github.com/facebook/pyrefly-pre-commit
+    # Keep in step with the pyrefly pin in pyproject.toml.
+    rev: 1.2.0
+    hooks:
+      - id: pyrefly-check
+        # pre-commit runs pyrefly in its own venv, which has none of our
+        # dependencies; without this every import is unresolved.
+        args: [--python-interpreter-path, .venv/bin/python]
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    # uv version.
+    rev: 0.12.5
+    hooks:
+      - id: uv-sync
+        args: [ "--locked" ]
+      - id: uv-lock
+      - id: uv-audit
+        name: uv-audit
+        files: ^(uv\.lock|pyproject\.toml|uv\.toml)$
+        args:
+          - --upgrade
