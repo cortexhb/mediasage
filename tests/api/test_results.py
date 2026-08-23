@@ -6,16 +6,28 @@ import pytest
 
 from backend.results import ResultListResponse
 
-# Ids the store never mints. Each has to be a 400 rather than a lookup miss.
-BAD_IDS = ("ZZZZZZZZ", "abc", "0" * 20, "deadbeef-x")
+# A canonical uuid4, the one shape `results_store` mints.
+GOOD_ID = "0f8fad5b-7dcb-11e0-9753-00215ad9d078"
+
+# Ids the store never mints, each a 400 rather than a lookup miss. The last
+# three are forms `uuid.UUID()` accepts but `save()` never writes.
+BAD_IDS = (
+    "ZZZZZZZZ",
+    "abc",
+    "0123456789abcdef",
+    "deadbeef-x",
+    "0f8fad5b7dcb11e0975300215ad9d078",
+    "{0f8fad5b-7dcb-11e0-9753-00215ad9d078}",
+    "urn:uuid:0f8fad5b-7dcb-11e0-9753-00215ad9d078",
+)
 
 
 @pytest.fixture
 def store():
     with (
-        patch("backend.api.routes.results.results_store.page") as page,
-        patch("backend.api.routes.results.results_store.get") as get,
-        patch("backend.api.routes.results.results_store.remove") as remove,
+        patch("backend.api.routes.results.listing.results_store.page") as page,
+        patch("backend.api.routes.results.detail.results_store.get") as get,
+        patch("backend.api.routes.results.detail.results_store.remove") as remove,
     ):
         page.return_value = ResultListResponse(results=[], total=0)
         get.return_value = None
@@ -52,7 +64,7 @@ class TestFetch:
         assert client.get(f"/api/results/{result_id}").status_code == 400
 
     def test_a_well_formed_id_that_is_gone_is_404(self, client, store):
-        assert client.get("/api/results/deadbeef").status_code == 404
+        assert client.get(f"/api/results/{GOOD_ID}").status_code == 404
 
     def test_a_malformed_id_never_reaches_the_store(self, client, store):
         _, get, _ = store
@@ -62,13 +74,13 @@ class TestFetch:
 
 class TestDelete:
     def test_deleting_something_gone_is_404(self, client, store):
-        assert client.delete("/api/results/deadbeef").status_code == 404
+        assert client.delete(f"/api/results/{GOOD_ID}").status_code == 404
 
     def test_deleting_succeeds_with_no_body(self, client, store):
         _, _, remove = store
         remove.return_value = True
 
-        response = client.delete("/api/results/deadbeef")
+        response = client.delete(f"/api/results/{GOOD_ID}")
 
         assert response.status_code == 204
         assert response.content == b""

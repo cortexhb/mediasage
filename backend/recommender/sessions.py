@@ -14,11 +14,9 @@ import time
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Final
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
-from backend.config import RecommendConfig
 from backend.config.store import config_store
 from backend.library import AlbumCandidate
 from backend.recommender.models import (
@@ -28,18 +26,9 @@ from backend.recommender.models import (
     FamiliarityPreference,
     Mode,
     RecommendSession,
-    TasteProfile,
 )
 
 logger = logging.getLogger(__name__)
-
-# Hex characters of randomness in a session id.
-ID_LENGTH: Final = 12
-
-
-def settings() -> RecommendConfig:
-    """The configured expiry, cap and history length, read at call time."""
-    return config_store.get().recommend
 
 
 class SessionStore(BaseModel):
@@ -55,9 +44,13 @@ class SessionStore(BaseModel):
     _lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     def create(self, session: RecommendSession) -> str:
-        """Store a new session and return the id it answers to."""
+        """Store a new session and return the id it answers to.
+
+        A whole uuid4, canonical form: nothing reads the id back apart from
+        this map, and an insert here overwrites rather than reporting a clash.
+        """
         with self._lock:
-            session_id = f"rec_{uuid.uuid4().hex[:ID_LENGTH]}"
+            session_id = str(uuid.uuid4())
             self._sessions[session_id] = (session, time.time())
             # Swept after the insert, not before: sweeping first would leave the
             # store holding one more than the cap until the next read.
@@ -117,18 +110,14 @@ class SessionStore(BaseModel):
         mode: Mode,
         filters: dict[str, list[str]],
         familiarity_pref: FamiliarityPreference,
-        album_candidates: list[AlbumCandidate] | None = None,
-        taste_profile: TasteProfile | None = None,
+        album_candidates: list[AlbumCandidate],
     ) -> None:
         """Set up one generation round, resetting the cost it will accrue."""
         def apply(session: RecommendSession) -> None:
             session.mode = mode
             session.filters = filters
             session.familiarity_pref = familiarity_pref
-            if album_candidates is not None:
-                session.album_candidates = album_candidates
-            if taste_profile is not None:
-                session.taste_profile = taste_profile
+            session.album_candidates = album_candidates
             session.total_tokens = 0
             session.total_cost = 0.0
 
@@ -149,7 +138,7 @@ class SessionStore(BaseModel):
 
     def remember(self, session_id: str, shown: list[AlbumRef]) -> None:
         """Add albums to what the next round must not repeat."""
-        limit = settings().recent_limit
+        limit = config_store.get().recommend.recent_limit
 
         def apply(session: RecommendSession) -> None:
             seen = {ref.key for ref in session.previously_recommended}
@@ -166,7 +155,7 @@ class SessionStore(BaseModel):
 
         The caller holds the lock.
         """
-        limits = settings()
+        limits = config_store.get().recommend
         now = time.time()
         for session_id in [
             key for key, (_, touched) in self._sessions.items()

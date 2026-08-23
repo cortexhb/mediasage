@@ -2,13 +2,13 @@
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Self
 
 import pytest
 
 from backend.db import db
 from backend.library.models import AlbumMetadata
-from backend.library.tables import Track, TrackGenre, genre_rows
+from backend.library.tables import Track, TrackGenre
 
 
 def plex_track(
@@ -40,6 +40,9 @@ class FakePlexClient:
 
     Paging is derived from `tracks`, so a subclass only has to say which tracks
     exist and how their albums are described.
+
+    The sync reaches Plex as `client.connection` and `client.library`; the fake
+    stands in for all three, so both point back at itself.
     """
 
     server_id: str | None = "test-server"
@@ -54,6 +57,14 @@ class FakePlexClient:
             albums if albums is not None else {"100": AlbumMetadata(genres=["Rock"], year=1994)}
         )
         self.starts: list[int] = []
+
+    @property
+    def connection(self) -> Self:
+        return self
+
+    @property
+    def library(self) -> Self:
+        return self
 
     def machine_identifier(self) -> str | None:
         return self.server_id
@@ -78,9 +89,9 @@ def seed_tracks(temp_db):
     def write(*rows: dict[str, Any]) -> None:
         with db.session() as session:
             for row in rows:
-                track = Track(**row)
-                session.add(track)
-                for entry in genre_rows(track.rating_key, track.genres):
+                session.add(Track(**row))
+                # From the row, not the instance: column defaults land on insert.
+                for entry in TrackGenre.rows_for(row["rating_key"], row.get("genres") or []):
                     session.add(TrackGenre(**entry))
 
     return write

@@ -8,6 +8,7 @@ fixed. Entry point: `LiveVersionRule.of`.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from pydantic import BaseModel, PrivateAttr
 
@@ -41,6 +42,14 @@ class LiveVersionRule(BaseModel):
             keywords=config.live_keywords,
             match_dated_titles=config.dated_titles_are_live,
         )
+
+    def matches_plex(self, plex_track: Any) -> bool:
+        """Whether a raw Plex track looks like a live recording.
+
+        Reads `parentTitle` rather than calling `track.album()`: the album title
+        is already on the listing, and the call would be one request per track.
+        """
+        return self.matches(plex_track.title, getattr(plex_track, "parentTitle", "") or "")
 
     def matches(self, title: str, album: str) -> bool:
         """Whether a track's title or album marks it as a live recording."""

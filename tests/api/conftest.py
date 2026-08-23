@@ -1,9 +1,11 @@
-"""Fixtures for the HTTP layer: an application, and the stores behind it.
+"""Fixtures for the HTTP layer: an application, and what its routes resolve.
 
-Every guard reads its store through `backend.api.guards`, so that is the one
-place a test patches to say what the application can reach.
+A route declares its dependencies, so a test says what the application can
+reach by overriding them on the app rather than by patching a module. Rebuilds
+are absorbed for every test: saving settings must never open a real connection.
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,7 +18,10 @@ from backend.config import (
     DefaultsConfig,
     MediasageConfig,
     PlexConfig,
+    config_store,
 )
+from backend.llm import LLMClient
+from backend.plex import PlexClient, PlexNotConnected, plex_store
 
 # Local providers are reached by URL and must carry one; cloud ones must not.
 LOCAL_PROVIDERS = ("ollama", "custom")
@@ -53,22 +58,21 @@ def mediasage_config(
     )
 
 
-def connected_plex(**attributes) -> MagicMock:
+def connected_plex_mock(**attributes) -> MagicMock:
     """A Plex client that reports itself connected."""
     plex = MagicMock(**attributes)
-    plex.is_connected.return_value = True
+    plex.connection.is_connected.return_value = True
     return plex
 
 
-def plex_store_of(client: object | None) -> MagicMock:
-    """A stand-in for `plex_store` whose `get()` returns `client`.
+def serve_live_config(app) -> None:
+    """Re-read the configuration dependency on every request.
 
-    For a test that installs its own patches rather than taking the `plex`
-    fixture -- the setup wizard's, which also need `init` absorbed.
+    FastAPI binds `config_store.get` once, at import; a test that patches
+    `ConfigStore.get` afterwards would not be seen by the bound method. This
+    override looks the method up per call, so patching works as it reads.
     """
-    store = MagicMock()
-    store.get.return_value = client
-    return store
+    app.dependency_overrides[config_store.get] = lambda: config_store.get()
 
 
 @pytest.fixture
@@ -78,21 +82,78 @@ def client() -> TestClient:
     Built per test rather than shared: `create_app` mounts routes, and a test
     that changes what is mounted must not leak into the next one.
     """
-    return TestClient(create_app())
+    built = TestClient(create_app())
+    serve_live_config(built.app)
+    return built
+
+
+@pytest.fixture(autouse=True)
+def rebuilds(monkeypatch) -> SimpleNamespace:
+    """Absorb the client a settings save builds.
+
+    Patched at the constructor: that is what would open a connection, and
+    autouse because no test may open one. Several tests assert on whether a
+    rebuild happened at all.
+    """
+    plex = MagicMock()
+    llm = MagicMock()
+    monkeypatch.setattr(PlexClient, "of", plex)
+    monkeypatch.setattr(LLMClient, "of", llm)
+    return SimpleNamespace(plex=plex, llm=llm)
+
+
+def serve_plex(app, monkeypatch, client: MagicMock | None) -> None:
+    """Answer every Plex dependency from one client, or from none at all.
+
+    None says nothing is configured, which is what a route that requires Plex
+    must turn into a 503. The store itself holds it too: one route reaches for
+    Plex only on the branch where the cache cannot answer.
+    """
+    connected = client is not None and client.connection.is_connected()
+
+    def required():
+        if not connected:
+            raise PlexNotConnected("Plex not connected")
+        return client
+
+    monkeypatch.setattr(plex_store, "client", client)
+    app.dependency_overrides.update({
+        plex_store.require: required,
+        plex_store.get: lambda: client,
+        plex_store.is_connected: lambda: connected,
+    })
 
 
 @pytest.fixture
-def plex(request):
-    """Patch the Plex store to hand back `request.param`, or a connected client.
-
-    Patching the store rather than the client also absorbs the `init()` calls
-    that the config and setup endpoints make.
-    """
+def plex(request, client, monkeypatch):
+    """Resolve the Plex dependencies to `request.param`, or a connected client."""
     # `hasattr`, not a default: None is a meaningful parameter here -- it is
     # how a test says nothing is configured at all.
-    client = request.param if hasattr(request, "param") else connected_plex()
+    served = request.param if hasattr(request, "param") else connected_plex_mock()
 
-    store = MagicMock()
-    store.get.return_value = client
-    with patch("backend.api.guards.plex_store", store):
-        yield client
+    serve_plex(client.app, monkeypatch, served)
+    yield served
+    client.app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def answering():
+    """Patch both probes to say the candidate settings work.
+
+    Patched at the probe's own seam rather than at `probes.rejected`: a route
+    that stopped probing must not still pass.
+    """
+    probe = MagicMock()
+    probe.connection.server_name = "Test Server"
+    probe.connection.is_connected.return_value = True
+    probe.connection.music_libraries.return_value = ["Music"]
+
+    # Patched by module name, not on the class: the class is also what a route
+    # rebuilds through, and `rebuilds` has to still see that call.
+    with (
+        patch("backend.api.probes.PlexClient") as plex,
+        patch("backend.api.probes.LLMClient") as llm,
+    ):
+        plex.of.return_value = probe
+        llm.of.return_value.complete.return_value = MagicMock(content="ok")
+        yield

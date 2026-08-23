@@ -12,7 +12,7 @@ removes that obligation, and removes the string-built SQL with it.
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, field_validator
-from sqlalchemy import ColumnElement, and_, exists, or_, select
+from sqlalchemy import ColumnElement, exists, or_, select
 
 from backend.library.constants import DECADE_SPAN
 from backend.library.tables import Track, TrackGenre
@@ -55,6 +55,18 @@ class TrackFilter(BaseModel):
     @classmethod
     def drop_blanks(cls, values: list[str]) -> list[str]:
         return [v.strip() for v in values if v and v.strip()]
+
+    @classmethod
+    def of_query(cls, genres: str | None, decades: str | None) -> TrackFilter:
+        """Build from the comma-separated form a query parameter arrives in.
+
+        Splitting only: `drop_blanks` trims each part and discards the empties,
+        so an absent parameter and a string of commas both mean no filter.
+        """
+        return cls(
+            genres=(genres or "").split(","),
+            decades=(decades or "").split(","),
+        )
 
     @property
     def genre_keys(self) -> list[str]:
@@ -114,11 +126,6 @@ class TrackFilter(BaseModel):
             return None
 
         inner = select(Track.parent_rating_key).where(
-            has_album_key(), *self.clauses(include_genres=True)
+            Track.has_album_key(), *self.clauses(include_genres=True)
         )
         return Track.parent_rating_key.in_(inner)
-
-
-def has_album_key() -> ColumnElement[bool]:
-    """Tracks that belong to an identifiable album."""
-    return and_(Track.parent_rating_key.is_not(None), Track.parent_rating_key != "")

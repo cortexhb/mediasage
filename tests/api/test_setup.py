@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.api import create_app
 from backend.config import (
     LLM_SECTION_ADAPTER,
     BudgetConfig,
@@ -13,25 +14,21 @@ from backend.config import (
     PlexConfig,
 )
 from backend.library import SyncStatus
-from tests.api.conftest import plex_store_of
+from tests.api.conftest import serve_live_config, serve_plex
 
 
 @pytest.fixture
-def client():
-    """Create test client with mocked dependencies.
+def client(monkeypatch):
+    """A client over a freshly built application, with Plex unconfigured.
 
-    Patches lifespan-triggered side effects (config loading, Plex/LLM init,
-    library cache DB creation) so tests don't depend on real environment.
+    Nothing is patched while the app is built: a route module imported under a
+    patched `ConfigStore.get` would bind the mock as its dependency, and
+    FastAPI would then ask the request for the mock's own arguments.
     """
-    from backend.api import create_app
-
-    with (
-        patch("backend.config.store.ConfigStore.get", return_value=create_mock_config()),
-        patch("backend.api.guards.init_llm"),
-        patch("backend.api.routes.setup.library"),
-        patch("backend.api.app.upgrade_to_head"),
-    ):
-        return TestClient(create_app())
+    built = TestClient(create_app())
+    serve_live_config(built.app)
+    serve_plex(built.app, monkeypatch, None)
+    return built
 
 
 # Local providers need an endpoint; cloud ones must not carry one.
@@ -78,22 +75,21 @@ def create_mock_config(**overrides) -> MediasageConfig:
 class TestSetupStatus:
     """Tests for GET /api/setup/status."""
 
-    def test_status_returns_all_fields(self, client, tmp_path):
+    def test_status_returns_all_fields(self, client, tmp_path, monkeypatch):
         """Should return full checklist state."""
         mock_plex = MagicMock()
-        mock_plex.is_connected.return_value = True
-        mock_plex.error = None
-        mock_plex.music_libraries.return_value = ["Music"]
+        mock_plex.connection.is_connected.return_value = True
+        mock_plex.connection.error = None
+        mock_plex.connection.music_libraries.return_value = ["Music"]
+        serve_plex(client.app, monkeypatch, mock_plex)
 
         with (
             patch("backend.config.store.ConfigStore.get", return_value=create_mock_config()),
-            patch("backend.api.guards.plex_store", plex_store_of(mock_plex)),
-            patch("backend.api.routes.setup.library") as mock_library,
-            patch("backend.api.routes.setup.DATA_DIR", tmp_path),
-            patch("backend.config.store.ConfigStore.read_user_yaml", return_value={}),
+            patch("backend.api.routes.setup.status.library") as mock_library,
+            patch("backend.db.engine.DATA_DIR", tmp_path),
         ):
-            mock_library.has_tracks.return_value = True
-            mock_library.sync_status.return_value = SyncStatus(
+            mock_library.library_sync.has_tracks.return_value = True
+            mock_library.library_sync.status.return_value = SyncStatus(
                 track_count=1000,
                 synced_at="2026-01-01T00:00:00",
                 is_syncing=False,
@@ -107,7 +103,6 @@ class TestSetupStatus:
         assert data["llm_configured"] is True
         assert data["library_synced"] is True
         assert data["track_count"] == 1000
-        assert data["setup_complete"] is False
         assert data["music_libraries"] == ["Music"]
 
     def test_status_unconfigured(self, client, tmp_path):
@@ -116,13 +111,11 @@ class TestSetupStatus:
             patch("backend.config.store.ConfigStore.get", return_value=create_mock_config(
                 plex_url="", plex_token="", llm_api_key=""
             )),
-            patch("backend.api.guards.plex_store", plex_store_of(None)),
-            patch("backend.api.routes.setup.library") as mock_library,
-            patch("backend.api.routes.setup.DATA_DIR", tmp_path),
-            patch("backend.config.store.ConfigStore.read_user_yaml", return_value={}),
+            patch("backend.api.routes.setup.status.library") as mock_library,
+            patch("backend.db.engine.DATA_DIR", tmp_path),
         ):
-            mock_library.has_tracks.return_value = False
-            mock_library.sync_status.return_value = SyncStatus(
+            mock_library.library_sync.has_tracks.return_value = False
+            mock_library.library_sync.status.return_value = SyncStatus(
                 track_count=0,
                 synced_at=None,
                 is_syncing=False,
@@ -136,26 +129,6 @@ class TestSetupStatus:
         assert data["plex_connected"] is False
         assert data["llm_configured"] is False
         assert data["library_synced"] is False
-        assert data["setup_complete"] is False
-
-    def test_status_setup_complete(self, client, tmp_path):
-        """Should reflect setup_complete from config.user.yaml."""
-        with (
-            patch("backend.config.store.ConfigStore.get", return_value=create_mock_config()),
-            patch("backend.api.guards.plex_store", plex_store_of(None)),
-            patch("backend.api.routes.setup.library") as mock_library,
-            patch("backend.api.routes.setup.DATA_DIR", tmp_path),
-            patch("backend.config.store.ConfigStore.read_user_yaml", return_value={"setup": {"complete": True}}),
-        ):
-            mock_library.has_tracks.return_value = False
-            mock_library.sync_status.return_value = SyncStatus(
-                track_count=0, synced_at=None, is_syncing=False, sync_progress=None, error=None
-            )
-
-            response = client.get("/api/setup/status")
-
-        assert response.status_code == 200
-        assert response.json()["setup_complete"] is True
 
 
 class TestSetupValidatePlex:
@@ -164,14 +137,13 @@ class TestSetupValidatePlex:
     def test_validate_plex_success(self, client):
         """Should return success when Plex connects."""
         mock_temp_client = MagicMock()
-        mock_temp_client.is_connected.return_value = True
-        mock_temp_client.music_libraries.return_value = ["Music", "Audiobooks"]
-        mock_temp_client.server_name = "My Plex Server"
+        mock_temp_client.connection.is_connected.return_value = True
+        mock_temp_client.connection.music_libraries.return_value = ["Music", "Audiobooks"]
+        mock_temp_client.connection.server_name = "My Plex Server"
 
         with (
-            patch("backend.api.routes.setup.PlexClient.of", return_value=mock_temp_client),
-            patch("backend.api.guards.plex_store", plex_store_of(None)),
-            patch("backend.config.store.ConfigStore.apply"),
+            patch("backend.api.probes.PlexClient.of", return_value=mock_temp_client),
+            patch("backend.config.store.ConfigStore.commit"),
         ):
             response = client.post("/api/setup/validate-plex", json={
                 "plex_url": "http://plex:32400",
@@ -188,10 +160,10 @@ class TestSetupValidatePlex:
     def test_validate_plex_failure(self, client):
         """Should return error when Plex connection fails."""
         mock_temp_client = MagicMock()
-        mock_temp_client.is_connected.return_value = False
-        mock_temp_client.error = "Invalid Plex token - unauthorized"
+        mock_temp_client.connection.is_connected.return_value = False
+        mock_temp_client.connection.error = "Invalid Plex token - unauthorized"
 
-        with patch("backend.api.routes.setup.PlexClient.of", return_value=mock_temp_client):
+        with patch("backend.api.probes.PlexClient.of", return_value=mock_temp_client):
             response = client.post("/api/setup/validate-plex", json={
                 "plex_url": "http://plex:32400",
                 "plex_token": "bad-token",
@@ -202,6 +174,49 @@ class TestSetupValidatePlex:
         data = response.json()
         assert data["success"] is False
         assert "unauthorized" in data["error"].lower()
+
+
+    def test_a_refused_server_saves_nothing(self, client):
+        """A credential the wizard could not prove must not reach disk."""
+        refused = MagicMock()
+        refused.connection.is_connected.return_value = False
+        refused.connection.error = "Invalid Plex token - unauthorized"
+
+        with (
+            patch("backend.api.probes.PlexClient.of", return_value=refused),
+            patch("backend.config.store.ConfigStore.commit") as commit,
+        ):
+            client.post("/api/setup/validate-plex", json={
+                "plex_url": "http://plex:32400",
+                "plex_token": "bad-token",
+                "music_library": "Music",
+            })
+
+        commit.assert_not_called()
+
+    def test_the_merged_candidate_is_probed_not_the_form(self, client):
+        """A wizard field is one part of a section; the rest still applies."""
+        config = create_mock_config()
+        tuned = config.model_copy(update={"plex": config.plex.model_copy(update={"page_size": 250})})
+        answering = MagicMock()
+        answering.connection.server_name = "My Plex Server"
+        answering.connection.is_connected.return_value = True
+        answering.connection.music_libraries.return_value = ["Music"]
+
+        with (
+            patch("backend.config.store.ConfigStore.get", return_value=tuned),
+            patch("backend.api.probes.PlexClient") as build,
+            patch("backend.config.store.ConfigStore.commit", return_value=tuned),
+        ):
+            build.of.return_value = answering
+            client.post("/api/setup/validate-plex", json={
+                "plex_url": "http://plex:32400",
+                "plex_token": "abc123",
+                "music_library": "Music",
+            })
+
+        probed = build.of.call_args.args[0]
+        assert (probed.url, probed.page_size) == ("http://plex:32400", 250)
 
 
 class TestSetupValidateAI:
@@ -222,14 +237,13 @@ class TestSetupValidateAI:
     def test_a_reachable_provider_validates(self, client):
         """A successful completion is the whole test."""
         with (
-            patch("backend.api.routes.setup.LLMClient") as mock_client,
+            patch("backend.api.probes.LLMClient") as mock_client,
             patch(
-                "backend.config.store.ConfigStore.apply",
+                "backend.config.store.ConfigStore.commit",
                 return_value=create_mock_config(),
             ),
-            patch("backend.api.guards.init_llm"),
         ):
-            mock_client.return_value.complete.return_value = MagicMock(content="ok")
+            mock_client.of.return_value.complete.return_value = MagicMock(content="ok")
             response = client.post("/api/setup/validate-ai", json=self._payload())
 
         assert response.status_code == 200
@@ -240,14 +254,13 @@ class TestSetupValidateAI:
     def test_a_local_provider_validates_through_the_same_path(self, client):
         """No per-provider branch: a local endpoint is probed like any other."""
         with (
-            patch("backend.api.routes.setup.LLMClient") as mock_client,
+            patch("backend.api.probes.LLMClient") as mock_client,
             patch(
-                "backend.config.store.ConfigStore.apply",
+                "backend.config.store.ConfigStore.commit",
                 return_value=create_mock_config(llm_provider="ollama"),
             ),
-            patch("backend.api.guards.init_llm"),
         ):
-            mock_client.return_value.complete.return_value = MagicMock(content="ok")
+            mock_client.of.return_value.complete.return_value = MagicMock(content="ok")
             response = client.post(
                 "/api/setup/validate-ai",
                 json=self._payload(
@@ -263,8 +276,8 @@ class TestSetupValidateAI:
 
     def test_a_failing_provider_is_reported(self, client):
         """Whatever the provider raises becomes the form's error."""
-        with patch("backend.api.routes.setup.LLMClient") as mock_client:
-            mock_client.return_value.complete.side_effect = RuntimeError("nope")
+        with patch("backend.api.probes.LLMClient") as mock_client:
+            mock_client.of.return_value.complete.side_effect = RuntimeError("nope")
             response = client.post("/api/setup/validate-ai", json=self._payload())
 
         assert response.status_code == 200
@@ -274,13 +287,23 @@ class TestSetupValidateAI:
 
     def test_an_unauthorised_key_says_so(self, client):
         """A 401 is turned into something a setup form can show."""
-        with patch("backend.api.routes.setup.LLMClient") as mock_client:
-            mock_client.return_value.complete.side_effect = RuntimeError(
+        with patch("backend.api.probes.LLMClient") as mock_client:
+            mock_client.of.return_value.complete.side_effect = RuntimeError(
                 "Error code: 401 - Unauthorized"
             )
             response = client.post("/api/setup/validate-ai", json=self._payload())
 
         assert response.json()["error"] == "Invalid API key"
+
+    def test_a_refused_provider_saves_nothing(self, client):
+        with (
+            patch("backend.api.probes.LLMClient") as mock_client,
+            patch("backend.config.store.ConfigStore.commit") as commit,
+        ):
+            mock_client.of.return_value.complete.side_effect = RuntimeError("nope")
+            client.post("/api/setup/validate-ai", json=self._payload())
+
+        commit.assert_not_called()
 
     def test_validate_unknown_provider(self, client):
         """Should reject unknown providers."""
@@ -292,6 +315,8 @@ class TestSetupValidateAI:
         data = response.json()
         assert data["success"] is False
         assert "Unknown provider" in data["error"]
+        # Echoed rather than mapped: the label map has no entry to give.
+        assert data["provider_name"] == "nonexistent"
 
     def test_a_missing_model_is_rejected(self, client):
         """Nothing is guessed: a provider without a model cannot be probed."""
@@ -308,24 +333,3 @@ class TestSetupValidateAI:
 
         assert response.json()["success"] is False
         assert "context window is required" in response.json()["error"]
-
-
-class TestSetupComplete:
-    """Tests for POST /api/setup/complete."""
-
-    def test_complete_saves_flag(self, client):
-        """Should save setup.complete to config.user.yaml."""
-        with patch("backend.config.store.ConfigStore.save") as mock_save:
-            response = client.post("/api/setup/complete")
-
-        assert response.status_code == 200
-        assert response.json()["success"] is True
-        mock_save.assert_called_once_with({"setup": {"complete": True}})
-
-    def test_complete_handles_save_error(self, client):
-        """Should still return success even if save fails (best-effort)."""
-        with patch("backend.config.store.ConfigStore.save", side_effect=Exception("disk full")):
-            response = client.post("/api/setup/complete")
-
-        assert response.status_code == 200
-        assert response.json()["success"] is True

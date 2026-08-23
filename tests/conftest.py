@@ -40,6 +40,25 @@ def installed_config(monkeypatch) -> MediasageConfig:
 
 
 @pytest.fixture
+def tuned(monkeypatch, installed_config):
+    """Reinstall the configuration with one section's fields overridden.
+
+    Tunables are read straight off the store at their point of use, so a test
+    that needs a different one changes the configuration rather than patching
+    a reader that no longer exists.
+    """
+    def install(section: str, **overrides) -> MediasageConfig:
+        current = config_store.get()
+        config = current.model_copy(update={
+            section: getattr(current, section).model_copy(update=overrides)
+        })
+        monkeypatch.setattr(config_store, "config", config)
+        return config
+
+    return install
+
+
+@pytest.fixture
 def clean_config_env(monkeypatch):
     """Remove every config env var so a test sees only what it sets itself."""
     for var in CONFIG_ENV_VARS:
@@ -55,12 +74,12 @@ def temp_db(tmp_path):
     Migrations build the schema, so tests exercise what the application
     actually ships rather than a parallel definition.
     """
-    from backend.db import db, upgrade_to_head
+    from backend.db import db, migrations
     from backend.library import library_sync
     from backend.library.models import SyncRun
 
     db.configure(f"sqlite:///{tmp_path / 'test.db'}")
-    upgrade_to_head()
+    migrations.upgrade_to_head()
     library_sync._run = SyncRun()
 
     yield db

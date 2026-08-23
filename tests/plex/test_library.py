@@ -8,9 +8,10 @@ from requests.exceptions import ConnectionError as RequestsConnectionError
 
 from backend.config.store import config_store
 from backend.library import AlbumMetadata
-from backend.plex import library
+from backend.models import Track
 from backend.plex.connection import PlexFetchError, PlexQueryError
 from backend.plex.filters import PlexFilter
+from backend.plex.library import PlexLibrary
 from tests.plex.conftest import choice, make_connection, raw_track
 
 
@@ -38,43 +39,44 @@ class TestTotalTracks:
 
     def test_it_comes_from_the_section(self, connection, section):
         section.totalViewSize.return_value = 4200
-        assert library.total_tracks(connection) == 4200
+        assert PlexLibrary(connection=connection).total_tracks() == 4200
 
     def test_a_disconnected_library_reports_zero(self):
-        assert library.total_tracks(make_connection()) == 0
+        assert PlexLibrary(connection=make_connection()).total_tracks() == 0
 
     def test_a_failing_call_reports_zero(self, connection, section):
         section.totalViewSize.side_effect = RuntimeError("boom")
-        assert library.total_tracks(connection) == 0
+        assert PlexLibrary(connection=connection).total_tracks() == 0
 
 
 class TestIterRawTracks:
     """Paging is what makes the sync resumable."""
 
     def test_it_pages_until_a_short_page(self, connection, section):
-        paged(section, fake_items(2500), library.configured_page_size())
-        pages = list(library.iter_raw_tracks(connection))
+        paged(section, fake_items(2500), config_store.get().plex.page_size)
+        pages = list(PlexLibrary(connection=connection).iter_raw_tracks())
         assert [len(page) for page in pages] == [1000, 1000, 500]
 
-    def test_each_request_is_bounded(self, connection, section):
+    def test_each_request_is_bounded_by_the_configured_page(self, connection, section, tuned):
+        tuned("plex", page_size=5)
         paged(section, fake_items(10), 5)
-        list(library.iter_raw_tracks(connection, page_size=5))
+        list(PlexLibrary(connection=connection).iter_raw_tracks())
 
         first = section.search.call_args_list[0].kwargs
         assert first["libtype"] == "track"
         assert (first["container_size"], first["maxresults"]) == (5, 5)
 
     def test_it_resumes_from_an_offset(self, connection, section):
-        paged(section, fake_items(10), library.configured_page_size())
-        list(library.iter_raw_tracks(connection, start=4))
+        paged(section, fake_items(10), config_store.get().plex.page_size)
+        list(PlexLibrary(connection=connection).iter_raw_tracks(start=4))
         assert section.search.call_args_list[0].kwargs["container_start"] == 4
 
     def test_an_empty_library_yields_nothing(self, connection, section):
         section.search.return_value = []
-        assert list(library.iter_raw_tracks(connection)) == []
+        assert list(PlexLibrary(connection=connection).iter_raw_tracks()) == []
 
     def test_a_disconnected_library_yields_nothing(self):
-        assert list(library.iter_raw_tracks(make_connection())) == []
+        assert list(PlexLibrary(connection=make_connection()).iter_raw_tracks()) == []
 
     def test_a_failing_page_is_retried(self, connection, section, no_sleep):
         calls = []
@@ -86,24 +88,24 @@ class TestIterRawTracks:
             return fake_items(3)
 
         section.search.side_effect = search
-        assert len(list(library.iter_raw_tracks(connection))) == 1
+        assert len(list(PlexLibrary(connection=connection).iter_raw_tracks())) == 1
 
     def test_exhausted_retries_propagate(self, connection, section, no_sleep):
         section.search.side_effect = RequestsConnectionError("refused")
         with pytest.raises(PlexFetchError):
-            list(library.iter_raw_tracks(connection))
+            list(PlexLibrary(connection=connection).iter_raw_tracks())
 
 
 class TestAllRawTracks:
     """The whole library at once, for callers that can hold it."""
 
     def test_it_flattens_every_page(self, connection, section):
-        paged(section, fake_items(2500), library.configured_page_size())
-        assert len(library.all_raw_tracks(connection)) == 2500
+        paged(section, fake_items(2500), config_store.get().plex.page_size)
+        assert len(PlexLibrary(connection=connection).all_raw_tracks()) == 2500
 
     def test_a_failure_is_empty_not_fatal(self, connection, section, no_sleep):
         section.search.side_effect = RequestsConnectionError("refused")
-        assert library.all_raw_tracks(connection) == []
+        assert PlexLibrary(connection=connection).all_raw_tracks() == []
 
 
 class TestAlbumMetadataFetch:
@@ -124,7 +126,7 @@ class TestAlbumMetadataFetch:
             return albums if kwargs.get("container_start", 0) == 0 else []
 
         section.search.side_effect = search
-        metadata = library.album_metadata(connection)
+        metadata = PlexLibrary(connection=connection).album_metadata()
 
         assert metadata["0"] == AlbumMetadata(genres=["Rock"], year=1999)
         assert metadata["1"] == AlbumMetadata(genres=["Jazz"], year=1999)
@@ -142,7 +144,7 @@ class TestAlbumMetadataFetch:
             lambda **kw: [album] if kw.get("container_start", 0) == 0 else []
         )
 
-        assert library.album_metadata(connection)["1"].genres == []
+        assert PlexLibrary(connection=connection).album_metadata()["1"].genres == []
 
     def test_a_server_without_genre_filters_still_yields_years(self, connection, section):
         album = fake_items(1)[0]
@@ -152,7 +154,7 @@ class TestAlbumMetadataFetch:
             lambda **kw: [album] if kw.get("container_start", 0) == 0 else []
         )
 
-        assert library.album_metadata(connection)["0"] == AlbumMetadata(year=1985)
+        assert PlexLibrary(connection=connection).album_metadata()["0"] == AlbumMetadata(year=1985)
 
     def test_one_failing_genre_does_not_fail_the_rest(self, connection, section):
         album = fake_items(1)[0]
@@ -167,10 +169,10 @@ class TestAlbumMetadataFetch:
             return [album] if kwargs.get("container_start", 0) == 0 else []
 
         section.search.side_effect = search
-        assert library.album_metadata(connection)["0"].genres == ["Rock"]
+        assert PlexLibrary(connection=connection).album_metadata()["0"].genres == ["Rock"]
 
     def test_a_disconnected_library_has_no_albums(self):
-        assert library.album_metadata(make_connection()) == {}
+        assert PlexLibrary(connection=make_connection()).album_metadata() == {}
 
 
 class TestStats:
@@ -183,7 +185,7 @@ class TestStats:
         ]
         section.totalViewSize.return_value = 500
 
-        stats = library.stats(connection)
+        stats = PlexLibrary(connection=connection).stats()
 
         assert stats.total_tracks == 500
         assert [genre.name for genre in stats.genres] == ["Alternative", "Rock"]
@@ -192,16 +194,16 @@ class TestStats:
     def test_counts_are_absent_because_plex_does_not_report_them(self, connection, section):
         section.listFilterChoices.side_effect = [[choice("Rock")], []]
         section.totalViewSize.return_value = 1
-        assert library.stats(connection).genres[0].count is None
+        assert PlexLibrary(connection=connection).stats().genres[0].count is None
 
     def test_a_broken_server_raises_rather_than_reading_as_empty(self, connection, section):
         section.listFilterChoices.side_effect = RuntimeError("boom")
         with pytest.raises(PlexQueryError):
-            library.stats(connection)
+            PlexLibrary(connection=connection).stats()
 
     def test_a_disconnected_library_raises(self):
         with pytest.raises(PlexQueryError):
-            library.stats(make_connection())
+            PlexLibrary(connection=make_connection()).stats()
 
 
 class TestFiltered:
@@ -211,13 +213,13 @@ class TestFiltered:
         self, connection, section, library_settings
     ):
         section.search.return_value = [raw_track("1")]
-        library.filtered(connection, PlexFilter(genres=["Rock"], exclude_live=False))
+        PlexLibrary(connection=connection).filtered(PlexFilter(genres=["Rock"], exclude_live=False))
 
         assert section.search.call_args.kwargs == {"libtype": "track", "genre": ["Rock"]}
 
     def test_a_limited_query_samples_at_random(self, connection, section, library_settings):
         section.search.return_value = [raw_track(str(i)) for i in range(20)]
-        tracks = library.filtered(connection, PlexFilter(exclude_live=False), limit=5)
+        tracks = PlexLibrary(connection=connection).filtered(PlexFilter(exclude_live=False), limit=5)
 
         assert section.search.call_args.kwargs["sort"] == "random"
         assert len(tracks) == 5
@@ -230,7 +232,7 @@ class TestFiltered:
             raw_track("2", "Song (Live)"),
             raw_track("3", "Song", album="Live at Wembley"),
         ]
-        tracks = library.filtered(connection, PlexFilter(exclude_live=True))
+        tracks = PlexLibrary(connection=connection).filtered(PlexFilter(exclude_live=True))
         assert [track.rating_key for track in tracks] == ["1"]
 
     def test_the_configured_keywords_decide_what_is_live(
@@ -239,16 +241,16 @@ class TestFiltered:
         library_settings(live_keywords=["unplugged"], dated_titles_are_live=False)
         section.search.return_value = [raw_track("1", "Song (Live)"), raw_track("2", "Unplugged")]
 
-        tracks = library.filtered(connection, PlexFilter(exclude_live=True))
+        tracks = PlexLibrary(connection=connection).filtered(PlexFilter(exclude_live=True))
         assert [track.rating_key for track in tracks] == ["1"]
 
     def test_a_failing_query_raises(self, connection, section, library_settings):
         section.search.side_effect = RuntimeError("boom")
         with pytest.raises(PlexQueryError):
-            library.filtered(connection, PlexFilter())
+            PlexLibrary(connection=connection).filtered(PlexFilter())
 
     def test_a_disconnected_library_returns_nothing(self, library_settings):
-        assert library.filtered(make_connection(), PlexFilter()) == []
+        assert PlexLibrary(connection=make_connection()).filtered(PlexFilter()) == []
 
 
 class TestCount:
@@ -256,29 +258,29 @@ class TestCount:
 
     def test_an_unfiltered_count_uses_the_total(self, connection, section, library_settings):
         section.totalViewSize.return_value = 4200
-        assert library.count(connection, PlexFilter(exclude_live=False)) == 4200
+        assert PlexLibrary(connection=connection).count(PlexFilter(exclude_live=False)) == 4200
         section.search.assert_not_called()
 
     def test_a_filtered_count_counts_the_rows(self, connection, section, library_settings):
         section.search.return_value = [raw_track("1"), raw_track("2")]
-        assert library.count(connection, PlexFilter(genres=["Rock"], exclude_live=False)) == 2
+        assert PlexLibrary(connection=connection).count(PlexFilter(genres=["Rock"], exclude_live=False)) == 2
 
     def test_live_versions_are_excluded_from_the_count(
         self, connection, section, library_settings
     ):
         section.search.return_value = [raw_track("1", "Song"), raw_track("2", "Song (Live)")]
-        assert library.count(connection, PlexFilter(exclude_live=True)) == 1
+        assert PlexLibrary(connection=connection).count(PlexFilter(exclude_live=True)) == 1
 
     def test_a_failing_count_raises_rather_than_returning_a_sentinel(
         self, connection, section, library_settings
     ):
         section.search.side_effect = RuntimeError("boom")
         with pytest.raises(PlexQueryError):
-            library.count(connection, PlexFilter(genres=["Rock"]))
+            PlexLibrary(connection=connection).count(PlexFilter(genres=["Rock"]))
 
     def test_a_disconnected_library_raises(self, library_settings):
         with pytest.raises(PlexQueryError):
-            library.count(make_connection(), PlexFilter())
+            PlexLibrary(connection=make_connection()).count(PlexFilter())
 
 
 class TestSearch:
@@ -288,7 +290,7 @@ class TestSearch:
         section.searchTracks.return_value = [raw_track("1", "Karma Police")]
         section.searchArtists.return_value = []
 
-        tracks = library.search(connection, "karma", limit=10)
+        tracks = PlexLibrary(connection=connection).search("karma", limit=10)
 
         assert [track.title for track in tracks] == ["Karma Police"]
         assert section.searchTracks.call_args.kwargs == {"title": "karma", "limit": 10}
@@ -301,7 +303,7 @@ class TestSearch:
         artist.tracks.return_value = [raw_track("7", "Paranoid Android", artist="Radiohead")]
         section.searchArtists.return_value = [artist]
 
-        tracks = library.search(connection, "radiohead", limit=10)
+        tracks = PlexLibrary(connection=connection).search("radiohead", limit=10)
 
         assert [track.rating_key for track in tracks] == ["7"]
         assert section.searchArtists.call_args.kwargs == {"title": "radiohead", "limit": 10}
@@ -315,23 +317,23 @@ class TestSearch:
         artist.tracks.return_value = [found, raw_track("2", "Creep (Acoustic)")]
         section.searchArtists.return_value = [artist]
 
-        tracks = library.search(connection, "creep", limit=10)
+        tracks = PlexLibrary(connection=connection).search("creep", limit=10)
         assert [track.rating_key for track in tracks] == ["1", "2"]
 
     def test_the_limit_is_honoured(self, connection, section, library_settings):
         section.searchTracks.return_value = [raw_track("1"), raw_track("2"), raw_track("3")]
-        assert len(library.search(connection, "song", limit=2)) == 2
+        assert len(PlexLibrary(connection=connection).search("song", limit=2)) == 2
 
     def test_a_full_page_of_titles_skips_the_artist_search(
         self, connection, section, library_settings
     ):
         section.searchTracks.return_value = [raw_track("1"), raw_track("2")]
-        library.search(connection, "song", limit=2)
+        PlexLibrary(connection=connection).search("song", limit=2)
         section.searchArtists.assert_not_called()
 
     def test_a_failing_search_is_empty_not_fatal(self, connection, section, library_settings):
         section.searchTracks.side_effect = RuntimeError("boom")
-        assert library.search(connection, "song") == []
+        assert PlexLibrary(connection=connection).search("song") == []
 
 
 class TestTrackByKey:
@@ -339,15 +341,16 @@ class TestTrackByKey:
 
     def test_it_converts_what_plex_returns(self, connection, server):
         server.fetchItem.return_value = raw_track("42", "Song")
-        track = library.track_by_key(connection, "42")
+        track = PlexLibrary(connection=connection).track_by_key("42")
+        assert track is not None
         assert (track.rating_key, track.title) == ("42", "Song")
 
     def test_an_unresolvable_key_is_none(self, connection, server):
         server.fetchItem.side_effect = RuntimeError("gone")
-        assert library.track_by_key(connection, "42") is None
+        assert PlexLibrary(connection=connection).track_by_key("42") is None
 
     def test_a_disconnected_server_is_none(self):
-        assert library.track_by_key(make_connection(), "42") is None
+        assert PlexLibrary(connection=make_connection()).track_by_key("42") is None
 
 
 class TestThumbPath:
@@ -364,18 +367,18 @@ class TestThumbPath:
     )
     def test_it_falls_back_down_the_hierarchy(self, connection, server, attributes, expected):
         server.fetchItem.return_value = SimpleNamespace(**attributes)
-        assert library.thumb_path(connection, "1") == expected
+        assert PlexLibrary(connection=connection).thumb_path("1") == expected
 
     def test_an_unresolvable_key_has_no_thumb(self, connection, server):
         server.fetchItem.side_effect = RuntimeError("gone")
-        assert library.thumb_path(connection, "1") is None
+        assert PlexLibrary(connection=connection).thumb_path("1") is None
 
 
-class TestToTrack:
+class TestTrackOfPlex:
     """Converting a raw Plex object into the API's model."""
 
     def test_it_reads_the_fields_the_api_returns(self):
-        track = library.to_track(raw_track("1", "Song", artist="Artist", album="Album"))
+        track = Track.of_plex(raw_track("1", "Song", artist="Artist", album="Album"))
 
         assert (track.rating_key, track.title, track.artist, track.album) == (
             "1", "Song", "Artist", "Album",
@@ -383,35 +386,28 @@ class TestToTrack:
         assert track.genres == ["Rock"]
 
     def test_art_is_proxied_rather_than_linked_to_plex(self):
-        assert library.to_track(raw_track("9")).art_url == "/api/art/9"
+        assert Track.of_plex(raw_track("9")).art_url == "/api/art/9"
 
     def test_a_missing_artist_and_album_get_placeholders(self):
         raw = raw_track("1")
         raw.grandparentTitle = None
         raw.parentTitle = None
-        track = library.to_track(raw)
+        track = Track.of_plex(raw)
         assert (track.artist, track.album) == ("Unknown Artist", "Unknown Album")
 
     def test_the_year_falls_back_to_the_track(self):
         raw = raw_track("1", year=None)
         raw.year = 1977
-        assert library.to_track(raw).year == 1977
+        assert Track.of_plex(raw).year == 1977
 
 
-class TestConfiguredPageSize:
+class TestPageSize:
     """A NAS answers a big page slower than a desktop, so the size is tunable."""
 
-    def test_it_follows_the_configuration(self, installed_config):
-        assert library.configured_page_size() == installed_config.plex.page_size
-
-    def test_a_bulk_fetch_uses_it(self, connection, section, monkeypatch):
-        installed = config_store.get()
-        smaller = installed.model_copy(update={
-            "plex": installed.plex.model_copy(update={"page_size": 7})
-        })
-        monkeypatch.setattr(config_store, "config", smaller)
+    def test_a_bulk_fetch_uses_it(self, connection, section, tuned):
+        tuned("plex", page_size=7)
         paged(section, fake_items(10), 7)
 
-        list(library.iter_raw_tracks(connection))
+        list(PlexLibrary(connection=connection).iter_raw_tracks())
 
         assert section.search.call_args_list[0].kwargs["container_size"] == 7

@@ -1,11 +1,15 @@
 """The local mirror of the Plex music library.
 
-`sync` writes it, `tracks` and `albums` read it, `filters` expresses what to
-keep, and `tables` defines the rows. Nothing here names a SQL dialect.
+`sync` writes it and answers for its state, `track_cache` and `album_cache`
+read it, `filters` expresses what to keep, and `tables` defines the rows.
+Nothing here names a SQL dialect.
+
+`library_sync` runs the sync and reports what the cache holds, since every one
+of those answers comes off the row it writes.
 """
 
-from backend.library import albums, tracks
-from backend.library.filters import DecadeRange, TrackFilter, has_album_key
+from backend.library.albums import AlbumCache, album_cache
+from backend.library.filters import DecadeRange, TrackFilter
 from backend.library.live import LiveVersionRule
 from backend.library.models import (
     AlbumCandidate,
@@ -23,17 +27,12 @@ from backend.library.models import (
     TrackRecord,
     TrackRow,
 )
-from backend.library.sync import (
-    clear_cache,
-    has_tracks,
-    is_stale,
-    library_sync,
-    server_changed,
-    sync_status,
-)
-from backend.library.tables import SyncState, Track, TrackGenre, genre_rows
+from backend.library.sync import library_sync
+from backend.library.tables import SyncState, Track, TrackGenre
+from backend.library.tracks import TrackCache, track_cache
 
 __all__ = [
+    "AlbumCache",
     "AlbumCandidate",
     "AlbumFamiliarity",
     "AlbumMetadata",
@@ -50,18 +49,12 @@ __all__ = [
     "SyncState",
     "SyncStatus",
     "Track",
+    "TrackCache",
     "TrackFilter",
     "TrackGenre",
     "TrackRecord",
     "TrackRow",
-    "albums",
-    "clear_cache",
-    "genre_rows",
-    "has_album_key",
-    "has_tracks",
-    "is_stale",
+    "album_cache",
     "library_sync",
-    "server_changed",
-    "sync_status",
-    "tracks",
+    "track_cache",
 ]

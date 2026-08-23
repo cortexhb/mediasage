@@ -28,9 +28,13 @@ from backend.config.settings import (
     BASE_CONFIG_PATH,
     USER_CONFIG_PATH,
     MediasageConfig,
-    load_config,
 )
-from backend.config.store import ConfigSaveError, ConfigStore, config_store
+from backend.config.store import (
+    ConfigChange,
+    ConfigSaveError,
+    ConfigStore,
+    config_store,
+)
 
 __all__ = [
     "BASE_CONFIG_PATH",
@@ -39,6 +43,7 @@ __all__ = [
     "ArtConfig",
     "BudgetConfig",
     "CloudLLMConfig",
+    "ConfigChange",
     "ConfigSaveError",
     "ConfigSection",
     "ConfigStore",
@@ -56,6 +61,5 @@ __all__ = [
     "ResearchConfig",
     "Role",
     "config_store",
-    "load_config",
     "settings",
 ]

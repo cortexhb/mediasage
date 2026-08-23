@@ -1,6 +1,7 @@
 """Tests for ``/api/recommend`` -- the endpoints around the round."""
 
-from unittest.mock import MagicMock, patch
+import uuid
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -10,21 +11,29 @@ from backend.recommender import (
     FilterSuggestion,
     RecommendSession,
     SessionStore,
+    pipeline_store,
 )
 
 
 @pytest.fixture
-def pipeline():
+def pipeline(client):
     """A pipeline whose stages answer instantly, with a real session store."""
     built = MagicMock()
     built.sessions = SessionStore()
-    built.gap_analysis.return_value = ["energy", "era"]
-    built.generate_questions.return_value = [
+    # `stages` returns itself, so a test scripts a stage without naming a session.
+    stages = built.stages
+    stages.return_value = stages
+    stages.selection.gap_analysis.return_value = ["energy", "era"]
+    stages.selection.generate_questions.return_value = [
         ClarifyingQuestion(question_text="How loud?", options=["Quiet"], dimension="energy")
     ]
-    built.suggest_filters.return_value = FilterSuggestion(genres=["Rock"], decades=["1990s"])
-    with patch("backend.api.guards.pipeline", return_value=built):
-        yield built
+    stages.selection.suggest_filters.return_value = FilterSuggestion(
+        genres=["Rock"], decades=["1990s"]
+    )
+    client.app.dependency_overrides[pipeline_store.require] = lambda: built
+    client.app.dependency_overrides[pipeline_store.available] = lambda: built
+    yield built
+    client.app.dependency_overrides.clear()
 
 
 class TestQuestions:
@@ -33,7 +42,7 @@ class TestQuestions:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["session_id"].startswith("rec_")
+        assert uuid.UUID(data["session_id"]).version == 4
         assert data["questions"][0]["question_text"] == "How loud?"
 
     def test_the_session_holds_the_questions(self, client, pipeline):
@@ -45,7 +54,7 @@ class TestQuestions:
 
     def test_a_failure_leaves_no_stranded_session(self, client, pipeline):
         """A session with no questions would strand the user on an empty form."""
-        pipeline.gap_analysis.side_effect = RuntimeError("model refused")
+        pipeline.stages.selection.gap_analysis.side_effect = RuntimeError("model refused")
 
         response = client.post("/api/recommend/questions", json={"prompt": "test"})
 
@@ -93,7 +102,7 @@ class TestSwitchMode:
     def test_an_expired_session_is_404(self, client, pipeline):
         response = client.post(
             "/api/recommend/switch-mode",
-            json={"session_id": "rec_gone", "mode": "discovery"},
+            json={"session_id": "gone", "mode": "discovery"},
         )
 
         assert response.status_code == 404
@@ -110,7 +119,7 @@ class TestAnalyzePrompt:
 
     def test_a_failure_returns_everything(self, client, pipeline):
         """Not worth blocking on: the user narrows them by hand."""
-        pipeline.suggest_filters.side_effect = RuntimeError("model refused")
+        pipeline.stages.selection.suggest_filters.side_effect = RuntimeError("model refused")
 
         response = client.post(
             "/api/recommend/analyze-prompt",
@@ -124,7 +133,7 @@ class TestAnalyzePrompt:
 class TestGenerate:
     def test_an_expired_session_is_404(self, client, pipeline):
         response = client.post(
-            "/api/recommend/generate", json={"session_id": "rec_gone", "answers": []}
+            "/api/recommend/generate", json={"session_id": "gone", "answers": []}
         )
 
         assert response.status_code == 404
@@ -153,7 +162,7 @@ class TestGenerate:
     def test_a_negative_album_cap_is_rejected(self, client, pipeline):
         response = client.post(
             "/api/recommend/generate",
-            json={"session_id": "rec_1", "answers": [], "max_albums": -1},
+            json={"session_id": "unknown", "answers": [], "max_albums": -1},
         )
 
         assert response.status_code == 422

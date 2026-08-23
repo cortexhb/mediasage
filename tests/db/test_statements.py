@@ -1,10 +1,11 @@
 """Tests for the one module that knows dialect names."""
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.dialects import mysql, postgresql, sqlite
-from sqlmodel import select
+from sqlalchemy.dialects.sqlite.dml import OnConflictDoUpdate
 
-from backend.db import upsert
+from backend.db import Upsert
 from backend.library.tables import Track
 
 ROW = {
@@ -24,41 +25,46 @@ ROW = {
 }
 
 
+def write(rows: list[dict]) -> Upsert:
+    """An upsert of `rows` into tracks, keyed the way sync keys it."""
+    return Upsert(table=Track.__table__, rows=rows, keys=["rating_key"])
+
+
 class TestDialectSupport:
     """Both shipped backends build the same statement shape."""
 
     @pytest.mark.parametrize("dialect", [sqlite.dialect(), postgresql.dialect()])
     def test_supported_dialects_compile(self, dialect):
-        statement = upsert(dialect, Track.__table__, [ROW], ["rating_key"])
+        statement = write([ROW]).statement(dialect)
         assert "ON CONFLICT" in str(statement.compile(dialect=dialect)).upper()
 
     def test_an_unsupported_dialect_is_refused(self):
         with pytest.raises(NotImplementedError, match="mysql"):
-            upsert(mysql.dialect(), Track.__table__, [ROW], ["rating_key"])
+            write([ROW]).statement(mysql.dialect())
 
     def test_empty_rows_are_refused(self):
         with pytest.raises(ValueError, match="at least one row"):
-            upsert(sqlite.dialect(), Track.__table__, [], ["rating_key"])
+            write([])
 
 
 class TestConflictBehaviour:
     """The conflict target is excluded from the update set."""
 
     def test_key_columns_are_not_overwritten(self):
-        statement = upsert(sqlite.dialect(), Track.__table__, [ROW], ["rating_key"])
-        assert "rating_key" not in statement._post_values_clause.update_values_to_set
+        statement = write([ROW]).statement(sqlite.dialect())
+        conflict = statement._post_values_clause
+        assert isinstance(conflict, OnConflictDoUpdate)
+        assert "rating_key" not in conflict.update_values_to_set
 
     def test_existing_rows_are_updated_in_place(self, temp_db):
         with temp_db.session() as session:
-            dialect = session.get_bind().dialect
-            session.execute(upsert(dialect, Track.__table__, [ROW], ["rating_key"]))
+            session.execute(write([ROW]).statement(session.get_bind().dialect))
 
         changed = {**ROW, "title": "Renamed", "year": 2001}
         with temp_db.session() as session:
-            dialect = session.get_bind().dialect
-            session.execute(upsert(dialect, Track.__table__, [changed], ["rating_key"]))
+            session.execute(write([changed]).statement(session.get_bind().dialect))
 
         with temp_db.session() as session:
-            rows = session.exec(select(Track)).all()
+            rows = session.scalars(select(Track)).all()
             assert len(rows) == 1
             assert (rows[0].title, rows[0].year) == ("Renamed", 2001)

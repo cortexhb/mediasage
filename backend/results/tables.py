@@ -4,17 +4,19 @@ One row per playlist or album recommendation the app produced, holding the full
 response snapshot so history can be re-rendered without calling a model again.
 """
 
+import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Column, Index
+from sqlalchemy import Index
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
-from sqlmodel import Field, SQLModel
 
-from backend.library.tables import utc_now
+from backend.db.base import Base
+from backend.library.tables import UTC_NOW
 
 
-class Result(SQLModel, table=True):
+class Result(Base):
     """A saved playlist or album recommendation.
 
     `snapshot` is the serialized response the UI renders; the flat columns
@@ -24,16 +26,16 @@ class Result(SQLModel, table=True):
     __tablename__ = "results"
 
     # Assigned by `backend.results.store.save`; empty until a row is written.
-    id: str = Field(default="", primary_key=True)
-    type: str
-    title: str
-    prompt: str
-    snapshot: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
-    track_count: int = 0
-    artist: str | None = None
-    art_rating_key: str | None = None
-    subtitle: str | None = None
-    created_at: datetime = Field(default_factory=utc_now)
+    id: Mapped[str] = mapped_column(primary_key=True, default="")
+    type: Mapped[str]
+    title: Mapped[str]
+    prompt: Mapped[str]
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    track_count: Mapped[int] = mapped_column(default=0)
+    artist: Mapped[str | None] = mapped_column(default=None)
+    art_rating_key: Mapped[str | None] = mapped_column(default=None)
+    subtitle: Mapped[str | None] = mapped_column(default=None)
+    created_at: Mapped[datetime] = mapped_column(default=UTC_NOW)
 
     # History reads newest first, filtered by type or not at all. No DESC: both
     # backends scan an index backwards, and an expression index defeats
@@ -42,3 +44,27 @@ class Result(SQLModel, table=True):
         Index("idx_results_type_created", "type", "created_at"),
         Index("idx_results_created_at", "created_at"),
     )
+
+    def payload(self) -> dict[str, Any]:
+        """This row's columns, as values a Core insert can be given.
+
+        Columns still unset are left out rather than sent as NULL, so the
+        insert applies their defaults -- `created_at` above is one.
+        """
+        return {
+            column.key: value
+            for column in self.__table__.columns
+            if (value := getattr(self, column.key, None)) is not None
+        }
+
+    @staticmethod
+    def is_valid_id(result_id: str) -> bool:
+        """Whether an id is one `ResultStore.save` could have minted.
+
+        Round-tripped through `str`, because `UUID()` also accepts braces, a
+        `urn:` prefix and undashed hex -- none of which the store ever writes.
+        """
+        try:
+            return str(uuid.UUID(result_id)) == result_id
+        except ValueError:
+            return False

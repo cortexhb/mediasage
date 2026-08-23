@@ -1,14 +1,14 @@
 """Tests for the migration that replaced the hand-rolled SQLite schema."""
 
 import sqlite3
+import uuid
 
 import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import inspect
-from sqlmodel import SQLModel
 
-from backend.db import db, upgrade_to_head
+from backend.db import Base, db, migrations
 from backend.library.tables import Track
 from backend.results.tables import Result
 
@@ -110,7 +110,16 @@ def legacy_database(tmp_path):
 def schema_diffs() -> list:
     """What autogenerate would still want to change after migrating."""
     with db.connection() as conn:
-        return compare_metadata(MigrationContext.configure(conn), SQLModel.metadata)
+        return compare_metadata(MigrationContext.configure(conn), Base.metadata)
+
+
+class TestConfig:
+    """The app must find its revisions without an `alembic.ini` beside it."""
+
+    def test_script_location_is_the_shipped_directory(self):
+        location = migrations.config().get_main_option("script_location")
+        assert location == str(migrations.directory)
+        assert (migrations.directory / "env.py").exists()
 
 
 class TestFreshDatabase:
@@ -132,7 +141,7 @@ class TestLegacyDatabase:
     """An existing install keeps its results and loses its triggers."""
 
     def test_triggers_are_gone(self, legacy_database):
-        upgrade_to_head()
+        migrations.upgrade_to_head()
         with db.connection() as conn:
             triggers = conn.exec_driver_sql(
                 "SELECT name FROM sqlite_master WHERE type = 'trigger'"
@@ -140,23 +149,50 @@ class TestLegacyDatabase:
         assert triggers == []
 
     def test_results_survive_intact(self, legacy_database):
-        upgrade_to_head()
+        """The row is what no sync can rebuild; only its id is reissued."""
+        migrations.upgrade_to_head()
         with db.connection() as conn:
             row = conn.exec_driver_sql(
-                "SELECT id, snapshot, track_count, subtitle FROM results"
+                "SELECT snapshot, track_count, subtitle FROM results"
             ).fetchone()
-        assert row == ("abc", '{"x": 1}', 3, "sub")
+        assert row == ('{"x": 1}', 3, "sub")
+
+    def test_a_legacy_result_id_is_reissued_as_a_uuid(self, legacy_database):
+        """The route validates the id as a uuid4, so a hex one would 400."""
+        migrations.upgrade_to_head()
+        with db.connection() as conn:
+            row = conn.exec_driver_sql("SELECT id FROM results").fetchone()
+        assert row is not None
+        found = row[0]
+
+        assert found != "abc"
+        assert uuid.UUID(found).version == 4
+
+    def test_reissuing_is_idempotent(self, legacy_database):
+        """A second run must not hand an already-migrated row a new id."""
+        migrations.upgrade_to_head()
+        with db.connection() as conn:
+            issued = conn.exec_driver_sql("SELECT id FROM results").fetchone()
+        assert issued is not None
+
+        migrations.upgrade_to_head()
+        with db.connection() as conn:
+            again = conn.exec_driver_sql("SELECT id FROM results").fetchone()
+        assert again is not None
+        assert again[0] == issued[0]
 
     def test_the_cache_is_dropped_for_a_re_sync(self, legacy_database):
-        upgrade_to_head()
+        migrations.upgrade_to_head()
         with db.connection() as conn:
-            assert conn.exec_driver_sql("SELECT COUNT(*) FROM tracks").fetchone()[0] == 0
+            cached = conn.exec_driver_sql("SELECT COUNT(*) FROM tracks").fetchone()
+        assert cached is not None
+        assert cached[0] == 0
 
     def test_the_schema_matches_the_models(self, legacy_database):
-        upgrade_to_head()
+        migrations.upgrade_to_head()
         assert schema_diffs() == []
 
     def test_migrating_twice_is_a_no_op(self, legacy_database):
-        upgrade_to_head()
-        upgrade_to_head()
+        migrations.upgrade_to_head()
+        migrations.upgrade_to_head()
         assert schema_diffs() == []

@@ -7,10 +7,11 @@ consume; `backend.library.tables` holds the rows they are built from.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, Field, field_validator
 
+from backend.library.live import LiveVersionRule
 from backend.library.tables import Track
 
 # Which stage of the sync is running, for progress display.
@@ -54,6 +55,14 @@ class DecadeCount(BaseModel):
 
     name: str
     count: int | None = None
+
+    @classmethod
+    def of_plex(cls, choice: str) -> Self:
+        """A decade as Plex offers it, labelled as the UI writes one.
+
+        Plex files decades as "1990"; every other decade in the app is "1990s".
+        """
+        return cls(name=choice if not choice or choice.endswith("s") else f"{choice}s")
 
 
 class LibraryStats(BaseModel):
@@ -153,18 +162,23 @@ class SyncResult(BaseModel):
     error: str | None = None
 
 
-def usable_genres(value: Any) -> list[str]:
-    """Keep only the genres that can be written.
+class GenreCarrier(BaseModel):
+    """Genre cleaning, for the models built straight from a Plex object.
 
-    Plex sometimes reports a genre that is not a string; one of those must not
-    fail a whole sync.
+    A mixin rather than a base carrying the field: `TrackRow` is written in
+    column order, and inheriting `genres` would move it to the front.
     """
-    if not isinstance(value, list):
-        return []
-    return [genre for genre in value if isinstance(genre, str) and genre.strip()]
+
+    @field_validator("genres", mode="before", check_fields=False)
+    @classmethod
+    def drop_unusable_genres(cls, value: Any) -> list[str]:
+        """Plex sometimes reports a non-string genre; it must not fail a sync."""
+        if not isinstance(value, list):
+            return []
+        return [genre for genre in value if isinstance(genre, str) and genre.strip()]
 
 
-class AlbumMetadata(BaseModel):
+class AlbumMetadata(GenreCarrier):
     """What an album contributes to each of its tracks.
 
     Plex files genre and year on the album, not the track, so the sync reads
@@ -174,13 +188,8 @@ class AlbumMetadata(BaseModel):
     genres: list[str] = []
     year: int | None = None
 
-    @field_validator("genres", mode="before")
-    @classmethod
-    def drop_unusable_genres(cls, value: Any) -> list[str]:
-        return usable_genres(value)
 
-
-class TrackRow(BaseModel):
+class TrackRow(GenreCarrier):
     """One track staged for writing, in `tracks` column order.
 
     Built from a Plex object before the batch is upserted, so the raw plexapi
@@ -201,10 +210,40 @@ class TrackRow(BaseModel):
     last_viewed_at: str | None = None
     sync_token: str
 
-    @field_validator("genres", mode="before")
     @classmethod
-    def drop_unusable_genres(cls, value: Any) -> list[str]:
-        return usable_genres(value)
+    def of_plex(
+        cls,
+        track: Any,
+        album_metadata: dict[str, AlbumMetadata],
+        token: str,
+        live_rule: LiveVersionRule,
+    ) -> Self:
+        """Read one plexapi track object into a row ready for writing.
+
+        Genre and year come from the album, not the track: Plex stores them
+        there and a per-track lookup would be a request each.
+        """
+        title = track.title
+        album = getattr(track, "parentTitle", "") or ""
+        parent_key = str(getattr(track, "parentRatingKey", "") or "")
+        album_data = album_metadata.get(parent_key) or AlbumMetadata()
+        last_viewed = getattr(track, "lastViewedAt", None)
+
+        return cls(
+            rating_key=str(track.ratingKey),
+            title=title,
+            artist=getattr(track, "grandparentTitle", "") or "Unknown Artist",
+            album=album,
+            duration_ms=track.duration or 0,
+            year=album_data.year,
+            genres=album_data.genres,
+            user_rating=getattr(track, "userRating", None),
+            is_live=live_rule.matches(title, album),
+            parent_rating_key=parent_key,
+            view_count=getattr(track, "viewCount", 0) or 0,
+            last_viewed_at=last_viewed.isoformat() if last_viewed else None,
+            sync_token=token,
+        )
 
     def columns(self) -> dict[str, Any]:
         """Column-keyed values for the upsert."""

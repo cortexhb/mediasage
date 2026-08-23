@@ -1,7 +1,7 @@
 """Connecting to a Plex server, and surviving its bad days.
 
 Owns the server handle, the reconnect cooldown, and the retry loop every bulk
-fetch runs through. Entry points: `PlexConnection`, `with_retries`.
+fetch runs through. Entry point: `PlexConnection`.
 
 A large sync is the hardest thing this app asks of a Plex server, and an
 overloaded server fails with a transient error rather than a clean one. Those
@@ -26,10 +26,9 @@ import logging
 
 from plexapi.exceptions import NotFound, Unauthorized
 from plexapi.server import PlexServer
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, SecretStr
 from requests.exceptions import ConnectionError, Timeout
 
-from backend.config import PlexConfig
 from backend.config.store import config_store
 from backend.plex.models import FetchedItems
 
@@ -56,50 +55,6 @@ class PlexQueryError(Exception):
     """A Plex library query failed."""
 
 
-def settings() -> PlexConfig:
-    """The configured Plex timings, read at call time."""
-    return config_store.get().plex
-
-
-def is_transient(error: Exception) -> bool:
-    """Whether a Plex error is worth retrying."""
-    if isinstance(error, ConnectionError | Timeout):
-        return True
-    if isinstance(error, Unauthorized | NotFound):
-        return False
-    return any(marker in str(error).lower() for marker in TRANSIENT_MARKERS)
-
-
-def with_retries(label: str, fetch: Callable[[], Any]) -> Any:
-    """Run a Plex fetch, backing off on transient failures.
-
-    Args:
-        label: Description of the fetch, used in log messages
-        fetch: Zero-argument callable performing the request
-
-    Returns:
-        Whatever `fetch` returns
-
-    Raises:
-        PlexFetchError: On permanent failure, or once retries are exhausted
-    """
-    last: Exception | None = None
-    for attempt, delay in enumerate((*settings().retry_backoff, None)):
-        try:
-            return fetch()
-        except Exception as error:
-            last = error
-            if delay is None or not is_transient(error):
-                break
-            logger.warning(
-                "Plex fetch %s failed (attempt %d), retrying in %.0fs: %s",
-                label, attempt + 1, delay, error,
-            )
-            time.sleep(delay)
-
-    raise PlexFetchError(f"Plex fetch {label} failed: {last}") from last
-
-
 class PlexConnection(BaseModel):
     """A Plex server and one of its music libraries.
 
@@ -111,7 +66,7 @@ class PlexConnection(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     url: str
-    token: str
+    token: SecretStr
     music_library: str = "Music"
 
     # Defaulted rather than required so a test can build one without a config.
@@ -136,7 +91,9 @@ class PlexConnection(BaseModel):
             return
 
         try:
-            self._server = PlexServer(self.url, self.token, timeout=self.connect_timeout)
+            self._server = PlexServer(
+                self.url, self.token.get_secret_value(), timeout=self.connect_timeout
+            )
             self._library = self._server.library.section(self.music_library)
             self._error = None
         except Unauthorized:
@@ -157,6 +114,44 @@ class PlexConnection(BaseModel):
         self._server = None
         self._library = None
         self._error = message
+
+    @staticmethod
+    def is_transient(error: Exception) -> bool:
+        """Whether a Plex error is worth retrying."""
+        if isinstance(error, ConnectionError | Timeout):
+            return True
+        if isinstance(error, Unauthorized | NotFound):
+            return False
+        return any(marker in str(error).lower() for marker in TRANSIENT_MARKERS)
+
+    def with_retries(self, label: str, fetch: Callable[[], Any]) -> Any:
+        """Run a Plex fetch, backing off on transient failures.
+
+        Args:
+            label: Description of the fetch, used in log messages
+            fetch: Zero-argument callable performing the request
+
+        Returns:
+            Whatever `fetch` returns
+
+        Raises:
+            PlexFetchError: On permanent failure, or once retries are exhausted
+        """
+        last: Exception | None = None
+        for attempt, delay in enumerate((*config_store.get().plex.retry_backoff, None)):
+            try:
+                return fetch()
+            except Exception as error:
+                last = error
+                if delay is None or not self.is_transient(error):
+                    break
+                logger.warning(
+                    "Plex fetch %s failed (attempt %d), retrying in %.0fs: %s",
+                    label, attempt + 1, delay, error,
+                )
+                time.sleep(delay)
+
+        raise PlexFetchError(f"Plex fetch {label} failed: {last}") from last
 
     def is_connected(self) -> bool:
         """Whether both handles are live, reconnecting at most once a cooldown."""

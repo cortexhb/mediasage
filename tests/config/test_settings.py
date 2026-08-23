@@ -4,7 +4,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from backend.config import load_config
+from backend.config import LocalLLMConfig, MediasageConfig
 
 # Minimum a config file must carry for the LLM section to validate.
 # Every provider must declare a window; these tests only care that it is set.
@@ -33,7 +33,7 @@ class TestSourcePrecedence:
         )
         clean_config_env.setenv("MEDIASAGE_PLEX__URL", "http://env:32400")
 
-        assert load_config(config_file).plex.url == "http://env:32400"
+        assert MediasageConfig.load(config_file).plex.url == "http://env:32400"
 
     def test_yaml_used_when_no_env_var(self, tmp_path, clean_config_env):
         """YAML value should be used when env var not set."""
@@ -41,13 +41,13 @@ class TestSourcePrecedence:
             tmp_path, {"plex": {"url": "http://yaml:32400"}, "llm": CLOUD_LLM}
         )
 
-        assert load_config(config_file).plex.url == "http://yaml:32400"
+        assert MediasageConfig.load(config_file).plex.url == "http://yaml:32400"
 
     def test_default_used_when_no_env_or_yaml(self, tmp_path, clean_config_env):
         """Default should be used when neither env nor YAML set."""
         config_file = write_config(tmp_path, {"llm": CLOUD_LLM})
 
-        assert load_config(config_file).plex.music_library == "Music"
+        assert MediasageConfig.load(config_file).plex.music_library == "Music"
 
     def test_empty_string_env_var_is_used(self, tmp_path, clean_config_env):
         """Empty string env var should still take priority."""
@@ -56,7 +56,7 @@ class TestSourcePrecedence:
         )
         clean_config_env.setenv("MEDIASAGE_PLEX__URL", "")
 
-        assert load_config(config_file).plex.url == ""
+        assert MediasageConfig.load(config_file).plex.url == ""
 
 
 class TestUnconfiguredProvider:
@@ -67,21 +67,21 @@ class TestUnconfiguredProvider:
         config_file = write_config(tmp_path, {"plex": {"url": "http://plex:32400"}})
 
         with pytest.raises(ValidationError):
-            load_config(config_file)
+            MediasageConfig.load(config_file)
 
     def test_missing_provider_is_rejected(self, tmp_path, clean_config_env):
         """An LLM section without a provider should refuse to load."""
         config_file = write_config(tmp_path, {"llm": {"api_key": "sk-test"}})
 
         with pytest.raises(ValidationError):
-            load_config(config_file)
+            MediasageConfig.load(config_file)
 
     def test_unknown_provider_is_rejected(self, tmp_path, clean_config_env):
         """A provider outside the supported set should refuse to load."""
         config_file = write_config(tmp_path, {"llm": {"provider": "notaprovider", "context_window": 128_000}})
 
         with pytest.raises(ValidationError):
-            load_config(config_file)
+            MediasageConfig.load(config_file)
 
     def test_local_provider_without_endpoint_is_rejected(self, tmp_path, clean_config_env):
         """A local provider is useless without a URL to call."""
@@ -90,7 +90,7 @@ class TestUnconfiguredProvider:
         )
 
         with pytest.raises(ValidationError):
-            load_config(config_file)
+            MediasageConfig.load(config_file)
 
     def test_local_provider_without_context_window_is_rejected(self, tmp_path, clean_config_env):
         """Prompts cannot be sized without knowing the window."""
@@ -99,7 +99,7 @@ class TestUnconfiguredProvider:
         )
 
         with pytest.raises(ValidationError):
-            load_config(config_file)
+            MediasageConfig.load(config_file)
 
 
 class TestLoadConfig:
@@ -120,13 +120,13 @@ class TestLoadConfig:
             },
         )
 
-        config = load_config(config_file)
+        config = MediasageConfig.load(config_file)
 
         assert config.plex.url == "http://plex.local:32400"
-        assert config.plex.token == "yaml-token"
+        assert config.plex.token.get_secret_value() == "yaml-token"
         assert config.plex.music_library == "My Music"
         assert config.llm.provider == "anthropic"
-        assert config.llm.api_key == "sk-yaml-key"
+        assert config.llm.api_key.get_secret_value() == "sk-yaml-key"
         assert config.defaults.track_count == 40
 
     def test_env_vars_override_yaml(self, tmp_path, clean_config_env):
@@ -143,28 +143,28 @@ class TestLoadConfig:
         clean_config_env.setenv("MEDIASAGE_PLEX__TOKEN", "env-token")
         clean_config_env.setenv("MEDIASAGE_LLM__API_KEY", "env-key")
 
-        config = load_config(config_file)
+        config = MediasageConfig.load(config_file)
 
         assert config.plex.url == "http://env:32400"
-        assert config.plex.token == "env-token"
-        assert config.llm.api_key == "env-key"
+        assert config.plex.token.get_secret_value() == "env-token"
+        assert config.llm.api_key.get_secret_value() == "env-key"
 
     def test_api_key_is_provider_independent(self, tmp_path, clean_config_env):
         """One key serves whichever provider is selected."""
         config_file = write_config(tmp_path, {"llm": {"provider": "anthropic", "context_window": 200_000}})
         clean_config_env.setenv("MEDIASAGE_LLM__API_KEY", "the-key")
 
-        assert load_config(config_file).llm.api_key == "the-key"
+        assert MediasageConfig.load(config_file).llm.api_key.get_secret_value() == "the-key"
 
         config_file = write_config(tmp_path, {"llm": {"provider": "openai", "context_window": 128_000}})
 
-        assert load_config(config_file).llm.api_key == "the-key"
+        assert MediasageConfig.load(config_file).llm.api_key.get_secret_value() == "the-key"
 
     def test_models_are_not_guessed(self, tmp_path, clean_config_env):
         """A provider named without models leaves them blank rather than guessing."""
         config_file = write_config(tmp_path, {"llm": {"provider": "openai", "context_window": 128_000}})
 
-        config = load_config(config_file)
+        config = MediasageConfig.load(config_file)
 
         assert config.llm.model_analysis == ""
         assert config.llm.model_generation == ""
@@ -184,7 +184,7 @@ class TestLoadConfig:
             },
         )
 
-        config = load_config(config_file)
+        config = MediasageConfig.load(config_file)
 
         assert config.llm.model_analysis == "custom-analysis-model"
         assert config.llm.model_generation == "custom-gen-model"
@@ -193,7 +193,7 @@ class TestLoadConfig:
         """Plex and UI sections still have defaults; only the LLM is never guessed."""
         config_file = write_config(tmp_path, {"llm": CLOUD_LLM})
 
-        config = load_config(config_file)
+        config = MediasageConfig.load(config_file)
 
         assert config.plex.music_library == "Music"
         assert config.defaults.track_count == 25
@@ -206,10 +206,10 @@ class TestLoadConfig:
         )
         isolated_user_config.write_text(yaml.dump({"plex": {"url": "http://user:32400"}}))
 
-        config = load_config(config_file)
+        config = MediasageConfig.load(config_file)
 
         assert config.plex.url == "http://user:32400"
-        assert config.plex.token == "base"
+        assert config.plex.token.get_secret_value() == "base"
 
     def test_secrets_are_stored_as_given(self, tmp_path, clean_config_env):
         """Tokens and keys round-trip unchanged."""
@@ -221,10 +221,10 @@ class TestLoadConfig:
             },
         )
 
-        config = load_config(config_file)
+        config = MediasageConfig.load(config_file)
 
-        assert config.plex.token == "secret-token"
-        assert config.llm.api_key == "secret-api-key"
+        assert config.plex.token.get_secret_value() == "secret-token"
+        assert config.llm.api_key.get_secret_value() == "secret-api-key"
 
 
 class TestLocalProviderConfig:
@@ -245,7 +245,7 @@ class TestLocalProviderConfig:
             },
         )
 
-        config = load_config(config_file)
+        config = MediasageConfig.load(config_file)
 
         assert config.llm.provider == "ollama"
         assert config.llm.endpoint_url == "http://192.168.1.100:11434"
@@ -267,7 +267,10 @@ class TestLocalProviderConfig:
 
         clean_config_env.setenv("MEDIASAGE_LLM__ENDPOINT_URL", "http://env-host:11434")
 
-        assert load_config(config_file).llm.endpoint_url == "http://env-host:11434"
+        llm = MediasageConfig.load(config_file).llm
+
+        assert isinstance(llm, LocalLLMConfig)
+        assert llm.endpoint_url == "http://env-host:11434"
 
     def test_loads_custom_provider_config(self, tmp_path, clean_config_env):
         """Should load custom provider config from YAML."""
@@ -284,7 +287,7 @@ class TestLocalProviderConfig:
             },
         )
 
-        config = load_config(config_file)
+        config = MediasageConfig.load(config_file)
 
         assert config.llm.provider == "custom"
         assert config.llm.endpoint_url == "http://localhost:5000/v1"
@@ -296,13 +299,13 @@ class TestLocalProviderConfig:
 
         clean_config_env.setenv("MEDIASAGE_LLM__CONTEXT_WINDOW", "16384")
 
-        assert load_config(config_file).llm.context_window == 16384
+        assert MediasageConfig.load(config_file).llm.context_window == 16384
 
     def test_cloud_provider_is_not_local(self, tmp_path, clean_config_env):
         """A hosted provider carries no endpoint or window."""
         config_file = write_config(tmp_path, {"llm": CLOUD_LLM})
 
-        config = load_config(config_file)
+        config = MediasageConfig.load(config_file)
 
         assert config.llm.is_local is False
         assert not hasattr(config.llm, "endpoint_url")

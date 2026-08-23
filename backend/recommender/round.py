@@ -5,6 +5,9 @@ work and reports each step as it starts one. Everything between -- selection,
 research, grounding, the pitch and its fact-check -- lives here rather than in
 the endpoint, so the flow can be read and tested without an HTTP client.
 
+`save` puts a finished round into history, as `PlaylistGeneration.save` does
+for a playlist: the same store, and the same refusal to raise over it.
+
 Every stage after selection is best-effort: research, fact extraction and
 validation each degrade to a warning on the result rather than losing the
 albums that were already picked. Selection is the exception -- with no albums
@@ -13,7 +16,7 @@ there is nothing to show.
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from typing import Any, Final
 from urllib.parse import quote
 
@@ -33,6 +36,7 @@ from backend.recommender.models import (
     TasteProfile,
 )
 from backend.recommender.pipeline import RecommendationPipeline
+from backend.results import Result, results_store
 
 logger = logging.getLogger(__name__)
 
@@ -71,11 +75,6 @@ STILL_UNVERIFIED: Final = (
 NO_ALBUMS: Final = (
     "No matching albums found. Try broadening your prompt or adjusting filters."
 )
-NO_PROFILE: Final = (
-    "Discovery mode requires a library profile. "
-    "Please sync your library and start a new recommendation."
-)
-
 
 class Step(BaseModel):
     """One stage of the round, reported as it starts."""
@@ -102,9 +101,10 @@ class RoundInputs(BaseModel):
     answers: AnswerSet = Field(default_factory=AnswerSet)
     familiarity_pref: FamiliarityPreference = "any"
     candidates: list[AlbumCandidate] = Field(default_factory=list)
-    profile: TasteProfile | None = None
+    profile: TasteProfile = Field(default_factory=TasteProfile)
     already_shown: list[AlbumRef] = Field(default_factory=list)
-    max_exclusion_albums: int | None = None
+    # Owned albums listed in the discovery prompt; 0 takes the configured cap.
+    max_exclusion_albums: int = 0
 
     @property
     def is_discovery(self) -> bool:
@@ -127,12 +127,13 @@ class RecommendationRound:
     ) -> None:
         """
         Args:
-            pipeline: The stages, bound to the LLM this round spends
+            pipeline: The session store and the stages, over the LLM this round spends
             research_client: `AlbumResearch`, for MusicBrainz, Wikipedia and reviews
             inputs: What the request resolved to
             abandoned: Asked between stages; True stops the round early
         """
         self.pipeline = pipeline
+        self.stages = pipeline.stages(inputs.session_id)
         self.research_client = research_client
         self.inputs = inputs
         self.abandoned = abandoned
@@ -197,16 +198,54 @@ class RecommendationRound:
             research_warning=self.warning,
         )
 
+    def save(self, result: RecommendGenerateResponse) -> str | None:
+        """Record the round in history, or None when that failed.
+
+        History is a convenience: losing it must not lose the albums the user
+        is looking at, so nothing here is allowed to raise.
+        """
+        primary = next((rec for rec in result.recommendations if rec.rank == "primary"), None)
+        try:
+            return results_store.save(
+                Result(
+                    type="album_recommendation",
+                    title=(
+                        f"{primary.album} by {primary.artist}"
+                        if primary
+                        else "Album Recommendation"
+                    ),
+                    prompt=self.inputs.prompt,
+                    snapshot=result.model_dump(mode="json"),
+                    track_count=len(result.recommendations),
+                    artist=primary.artist if primary else None,
+                    # A discovery pick is not in the library: no art key.
+                    art_rating_key=(
+                        primary.track_rating_keys[0]
+                        if primary and primary.track_rating_keys
+                        else None
+                    ),
+                    subtitle=(
+                        primary.pitch.hook if primary and primary.pitch.hook
+                        else self.inputs.prompt
+                    ),
+                )
+            )
+        except Exception as err:
+            logger.warning("Failed to save recommendation result: %s", err)
+            return None
+
     # -- stages ----------------------------------------------------------
 
-    async def _familiarity(self) -> dict[str, AlbumFamiliarity] | None:
+    async def _familiarity(self) -> dict[str, AlbumFamiliarity]:
         """How much of each candidate has been played, when that matters.
 
         Only read for a library round that asked for it: it is one query per
-        round, and discovery has nothing in the library to have played.
+        round, and discovery has nothing in the library to have played. Empty
+        when it was not asked for or the query failed -- an unknown play count
+        and a zero one shape the prompt the same way.
         """
         if self.inputs.familiarity_pref == "any" or self.inputs.is_discovery:
-            return None
+            return {}
 
         keys = [
             candidate.parent_rating_key
@@ -214,24 +253,21 @@ class RecommendationRound:
             if candidate.parent_rating_key
         ]
         if not keys:
-            return None
+            return {}
 
         try:
-            return await asyncio.to_thread(library.albums.familiarity, keys)
+            return await asyncio.to_thread(library.album_cache.familiarity, keys)
         except Exception as err:
             logger.warning("Familiarity query failed: %s", err)
-            return None
+            return {}
 
     async def _select(
-        self, familiarity: dict[str, AlbumFamiliarity] | None
+        self, familiarity: Mapping[str, AlbumFamiliarity]
     ) -> list[AlbumRecommendation]:
         """Pick the albums, from the library or from outside it."""
         if self.inputs.is_discovery:
-            if self.inputs.profile is None:
-                raise ValueError(NO_PROFILE)
             return await asyncio.to_thread(
-                self.pipeline.select_discovery_albums,
-                session_id=self.inputs.session_id,
+                self.stages.selection.select_discovery_albums,
                 prompt=self.inputs.prompt,
                 answers=self.inputs.answers,
                 profile=self.inputs.profile,
@@ -240,8 +276,7 @@ class RecommendationRound:
             )
 
         return await asyncio.to_thread(
-            self.pipeline.select_albums,
-            session_id=self.inputs.session_id,
+            self.stages.selection.select_albums,
             prompt=self.inputs.prompt,
             answers=self.inputs.answers,
             candidates=self.inputs.candidates,
@@ -258,7 +293,7 @@ class RecommendationRound:
         """
         try:
             found = await self.research_client.of_album(
-                primary.artist, primary.album, full=True, year=primary.year
+                primary.ref, full=True, year=primary.year
             )
         except Exception as err:
             logger.warning("Primary research failed: %s", err)
@@ -275,8 +310,8 @@ class RecommendationRound:
 
         if self.inputs.is_discovery:
             valid = await asyncio.to_thread(
-                self.pipeline.validate_discovery_album,
-                self.inputs.session_id, primary, found, self.inputs.prompt,
+                self.stages.facts.matches_request,
+                primary, found, self.inputs.prompt,
             )
             if not valid:
                 logger.info("Primary discovery album failed validation")
@@ -288,7 +323,7 @@ class RecommendationRound:
         """Light research for a pick shown as one line: art, year, label."""
         try:
             found = await self.research_client.of_album(
-                secondary.artist, secondary.album, full=False, year=secondary.year
+                secondary.ref, full=False, year=secondary.year
             )
         except Exception as err:
             logger.warning("Secondary research failed for %s: %s", secondary.album, err)
@@ -302,8 +337,7 @@ class RecommendationRound:
         """Read the primary's research into facts the pitch is held to."""
         try:
             self.facts[primary.ref.key] = await asyncio.to_thread(
-                self.pipeline.extract_facts,
-                session_id=self.inputs.session_id,
+                self.stages.facts.extract,
                 ref=primary.ref,
                 research=self.research[primary.ref.key],
             )
@@ -313,17 +347,16 @@ class RecommendationRound:
     async def _write(
         self,
         recommendations: list[AlbumRecommendation],
-        familiarity: dict[str, AlbumFamiliarity] | None,
+        familiarity: Mapping[str, AlbumFamiliarity],
     ) -> list[AlbumRecommendation]:
         """Write every pitch, grounded in whatever was found."""
         return await asyncio.to_thread(
-            self.pipeline.write_pitches,
-            session_id=self.inputs.session_id,
+            self.stages.pitches.write,
             recommendations=recommendations,
             prompt=self.inputs.prompt,
             answers=self.inputs.answers,
-            research=self.research or None,
-            facts=self.facts or None,
+            research=self.research,
+            facts=self.facts,
             familiarity_pref=self.inputs.familiarity_pref,
             familiarity=familiarity,
         )
@@ -340,8 +373,8 @@ class RecommendationRound:
 
         try:
             validation = await asyncio.to_thread(
-                self.pipeline.validate_pitch,
-                session_id=self.inputs.session_id, pitch=primary.pitch, facts=facts,
+                self.stages.pitches.fact_check,
+                pitch=primary.pitch, facts=facts,
             )
             if validation.valid:
                 return
@@ -349,15 +382,14 @@ class RecommendationRound:
             logger.info("Pitch validation found %d issues, rewriting", len(validation.issues))
             yield self._step("rewriting")
             await asyncio.to_thread(
-                self.pipeline.rewrite_pitch,
-                session_id=self.inputs.session_id,
+                self.stages.pitches.rewrite,
                 rec=primary, facts=facts, issues=validation,
                 prompt=self.inputs.prompt, answers=self.inputs.answers,
             )
 
             rechecked = await asyncio.to_thread(
-                self.pipeline.validate_pitch,
-                session_id=self.inputs.session_id, pitch=primary.pitch, facts=facts,
+                self.stages.pitches.fact_check,
+                pitch=primary.pitch, facts=facts,
             )
             if not rechecked.valid:
                 logger.warning("Pitch still has %d issues after rewrite", len(rechecked.issues))
@@ -399,8 +431,8 @@ class RecommendationRound:
         """
         if rec.art_url or not found.earliest_release_mbid:
             return
-        art_url = await self.research_client.cover_art(
-            found.earliest_release_mbid, release_group_mbid=found.musicbrainz_id
+        art_url = await self.research_client.covers.front(
+            found.earliest_release_mbid, found.musicbrainz_id
         )
         if art_url:
             rec.art_url = f"/api/external-art?url={quote(art_url, safe='')}"

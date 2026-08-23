@@ -4,23 +4,20 @@ A model rarely returns a title byte-for-byte: it drops "(Reissue)", writes
 "and" for "&", or loses an accent. Three passes, cheapest first -- exact key,
 then substring, then fuzzy -- so an exact answer costs a dict lookup.
 
-Entry points: `AlbumMatcher`, `selection_matcher`, `pitch_matcher`.
+Entry points: `AlbumMatcher.for_selection` and `AlbumMatcher.for_pitches`.
 """
 
 import logging
-from typing import Any
-
-from pydantic import BaseModel, ConfigDict
-from rapidfuzz import fuzz
+from typing import Any, Self
 
 from backend.config.store import config_store
-from backend.matching import simplify
 from backend.recommender.models import AlbumRef
+from backend.utils import FuzzyMatcher
 
 logger = logging.getLogger(__name__)
 
 
-class AlbumMatcher(BaseModel):
+class AlbumMatcher(FuzzyMatcher):
     """How close a name has to be before it counts as the same album.
 
     Scores are rapidfuzz ratios over simplified text, 0-100. A candidate must
@@ -28,11 +25,31 @@ class AlbumMatcher(BaseModel):
     score wins.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     artist_min: int
     combined_min: int = 0
     album_min: int = 0
+
+    @classmethod
+    def for_selection(cls) -> Self:
+        """Picking a library album from what the model chose.
+
+        A wrong match here plays the wrong record, so both halves of the name
+        have to hold up.
+        """
+        matching = config_store.get().matching
+        return cls(
+            artist_min=matching.album_artist_min, combined_min=matching.album_combined_min
+        )
+
+    @classmethod
+    def for_pitches(cls) -> Self:
+        """Attaching a written pitch to the album it was written for.
+
+        The album list was in the prompt, so the artist is near-certain and
+        only the title is at risk of having been truncated.
+        """
+        matching = config_store.get().matching
+        return cls(artist_min=matching.pitch_artist_min, album_min=matching.pitch_album_min)
 
     def find(self, wanted: AlbumRef, entries: dict[str, Any]) -> Any | None:
         """The entry `wanted` names, or None when nothing is close enough.
@@ -68,9 +85,6 @@ class AlbumMatcher(BaseModel):
 
     def _by_score(self, wanted: AlbumRef, entries: dict[str, Any]) -> Any | None:
         """The closest candidate clearing every floor."""
-        wanted_artist = simplify(wanted.artist)
-        wanted_album = simplify(wanted.album)
-
         best: Any | None = None
         best_score = 0.0
         for key, value in entries.items():
@@ -78,10 +92,10 @@ class AlbumMatcher(BaseModel):
             if candidate is None:
                 continue
 
-            artist_score = fuzz.ratio(wanted_artist, simplify(candidate.artist))
+            artist_score = self.ratio(wanted.artist, candidate.artist)
             if artist_score < self.artist_min:
                 continue
-            album_score = fuzz.ratio(wanted_album, simplify(candidate.album))
+            album_score = self.ratio(wanted.album, candidate.album)
             if album_score < self.album_min:
                 continue
             combined = (artist_score + album_score) / 2
@@ -93,27 +107,3 @@ class AlbumMatcher(BaseModel):
         if best is not None:
             logger.info("Fuzzy matched %s (score: %.0f)", wanted, best_score)
         return best
-
-
-def selection_matcher() -> AlbumMatcher:
-    """Picking a library album from what the model chose.
-
-    A wrong match here plays the wrong record, so both halves of the name have
-    to hold up.
-    """
-    matching = config_store.get().matching
-    return AlbumMatcher(
-        artist_min=matching.album_artist_min, combined_min=matching.album_combined_min
-    )
-
-
-def pitch_matcher() -> AlbumMatcher:
-    """Attaching a written pitch to the album it was written for.
-
-    The album list was in the prompt, so the artist is near-certain and only
-    the title is at risk of having been truncated.
-    """
-    matching = config_store.get().matching
-    return AlbumMatcher(
-        artist_min=matching.pitch_artist_min, album_min=matching.pitch_album_min
-    )

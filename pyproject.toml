@@ -25,8 +25,8 @@ dependencies = [
     "langchain-google-genai>=4.3.5",
     "langchain-ollama>=1.1.0",
     "ollama>=0.6.2",
-    "sqlmodel>=0.0.39",
     "alembic>=1.19.1",
+    "sqlalchemy>=2.0.52",
 ]
 
 [dependency-groups]
@@ -58,7 +58,7 @@ convention = "google"
 
 [tool.pyrefly]
 python-version = "3.14"
-search-path = ["backend", "tests", "."]
+search-path = ["."]
 preset = "default"
 
 [tool.pytest.ini_options]

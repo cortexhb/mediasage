@@ -5,9 +5,16 @@ route reports, so there is no second shape to keep in step. `backend.models`
 keeps the request models, which validate HTTP input rather than describe Plex.
 """
 
-from typing import Any
+import re
+from typing import Any, Final
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
+
+# Platform and product tokens marking a player that needs an active session.
+MOBILE_KEYWORDS: Final = frozenset({"ios", "android", "iphone", "ipad", "ipod", "tvos"})
+
+# Splits a product/platform string into comparable tokens.
+_TOKENS: Final = re.compile(r"[\s,/]+")
 
 
 class PlexPlaylistInfo(BaseModel):
@@ -26,8 +33,17 @@ class PlexClientInfo(BaseModel):
     product: str
     platform: str
     is_playing: bool = False
-    # Mobile and TV players only accept a queue while already playing.
-    is_mobile: bool = False
+
+    @computed_field
+    @property
+    def is_mobile(self) -> bool:
+        """Whether this player needs an active session before it takes a queue.
+
+        Derived rather than stored: the UI warns on it, and the only evidence
+        either discovery path offers is the product and platform text.
+        """
+        tokens = set(_TOKENS.split(f"{self.product} {self.platform}".lower()))
+        return bool(tokens & MOBILE_KEYWORDS)
 
 
 class PlaylistResult(BaseModel):

@@ -1,4 +1,4 @@
-"""Own the schema with SQLModel, replacing the hand-rolled SQLite one.
+"""Own the schema with the ORM, replacing the hand-rolled SQLite one.
 
 Revision ID: 0001_orm_schema
 Revises:
@@ -119,7 +119,7 @@ def upgrade() -> None:
 
 
 def create_results() -> None:
-    """Create `results` as SQLModel declares it, history indexes included."""
+    """Create `results` as the model declares it, history indexes included."""
     op.create_table(
         "results",
         sa.Column("id", sa.String(), nullable=False),

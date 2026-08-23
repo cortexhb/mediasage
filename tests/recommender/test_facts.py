@@ -1,6 +1,6 @@
 """Tests for turning raw research into facts a pitch can be held to."""
 
-from backend.recommender import facts
+from backend.recommender.facts import SUMMARY_CHARS, Facts
 from backend.recommender.models import AlbumRecommendation, AlbumRef, ExtractedFacts, ResearchData
 from tests.recommender.conftest import prompts_of
 
@@ -27,7 +27,7 @@ class TestExtract:
             "vocal_approach": "Mostly Icelandic, Vonlenska on 2 tracks only",
         })
 
-        extracted = facts.extract(call, REF, research())
+        extracted = Facts(call=call).extract(REF, research())
 
         assert isinstance(extracted, ExtractedFacts)
         assert extracted.origin_story == "Recorded in Reykjavik"
@@ -37,7 +37,7 @@ class TestExtract:
     def test_every_source_reaches_the_prompt(self, metered):
         call, llm = metered({})
 
-        facts.extract(call, REF, research())
+        Facts(call=call).extract(REF, research())
 
         _, user = prompts_of(llm.generate)
         assert "Ágætis byrjun is the second album" in user
@@ -52,7 +52,7 @@ class TestExtract:
         call, llm = metered({})
         long_summary = "x" * 3000
 
-        facts.extract(call, REF, ResearchData(wikipedia_summary=long_summary))
+        Facts(call=call).extract(REF, ResearchData(wikipedia_summary=long_summary))
 
         assert long_summary in prompts_of(llm.generate)[1]
 
@@ -60,21 +60,21 @@ class TestExtract:
         """It comes from MusicBrainz, so the fact-checker treats it as authoritative."""
         call, _ = metered({"track_listing": ["Something The Model Invented"]})
 
-        extracted = facts.extract(call, REF, research())
+        extracted = Facts(call=call).extract(REF, research())
 
         assert extracted.track_listing == ["Intro", "Svefn-g-englar", "Starálfur"]
 
     def test_no_sources_says_so(self, metered):
         call, llm = metered({"source_coverage": "No Wikipedia or review sources available"})
 
-        extracted = facts.extract(call, REF, ResearchData())
+        extracted = Facts(call=call).extract(REF, ResearchData())
 
         assert "No sources available." in prompts_of(llm.generate)[1]
         assert isinstance(extracted, ExtractedFacts)
 
     def test_a_non_object_reply_yields_empty_facts(self, metered):
         call, _ = metered(["not an object"])
-        assert facts.extract(call, REF, ResearchData()) == ExtractedFacts()
+        assert Facts(call=call).extract(REF, ResearchData()) == ExtractedFacts()
 
 
 class TestMatchesRequest:
@@ -83,16 +83,16 @@ class TestMatchesRequest:
 
     def test_a_matching_pick_passes(self, metered):
         call, _ = metered({"valid": True})
-        assert facts.matches_request(call, self.rec(), research(), "atmospheric") is True
+        assert Facts(call=call).matches_request(self.rec(), research(), "atmospheric") is True
 
     def test_a_mismatched_pick_fails(self, metered):
         call, _ = metered({"valid": False})
-        assert facts.matches_request(call, self.rec(), research(), "death metal") is False
+        assert Facts(call=call).matches_request(self.rec(), research(), "death metal") is False
 
-    def test_an_unreadable_answer_counts_as_a_failure(self, metered):
+    def test_an_answer_that_is_not_an_object_counts_as_a_failure(self, metered):
         """Better to say a pick could not be verified than to show it as verified."""
-        call, _ = metered("not json at all")
-        assert facts.matches_request(call, self.rec(), research(), "test") is False
+        call, _ = metered("a sentence, not an object")
+        assert Facts(call=call).matches_request(self.rec(), research(), "test") is False
 
     def test_the_summary_is_short(self, metered):
         """Enough to tell a genre and era; the full text is for the pitch."""
@@ -100,8 +100,8 @@ class TestMatchesRequest:
         long_research = research()
         long_research.wikipedia_summary = "y" * 2000
 
-        facts.matches_request(call, self.rec(), long_research, "test")
+        Facts(call=call).matches_request(self.rec(), long_research, "test")
 
         _, user = prompts_of(llm.generate)
-        assert "y" * facts.SUMMARY_CHARS in user
-        assert "y" * (facts.SUMMARY_CHARS + 1) not in user
+        assert "y" * SUMMARY_CHARS in user
+        assert "y" * (SUMMARY_CHARS + 1) not in user

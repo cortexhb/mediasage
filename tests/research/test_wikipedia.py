@@ -3,10 +3,8 @@
 import httpx
 
 from backend.config import ResearchConfig
-from backend.research.wikipedia import Wikipedia, useful_sections
+from backend.research.wikipedia import Wikipedia
 from tests.research.conftest import FakeHttp, response
-
-DROP = ResearchConfig().wikipedia_drop_sections
 
 
 def extract(text: str) -> dict:
@@ -14,9 +12,17 @@ def extract(text: str) -> dict:
     return {"query": {"pages": {"1234": {"extract": text}}}}
 
 
-def build(*answers: object, config: ResearchConfig | None = None) -> tuple[Wikipedia, FakeHttp]:
+def build(
+    *answers: httpx.Response | Exception, config: ResearchConfig | None = None
+) -> tuple[Wikipedia, FakeHttp]:
     http = FakeHttp(*answers)
     return Wikipedia(http, config or ResearchConfig()), http
+
+
+def sections(text: str, config: ResearchConfig | None = None) -> str:
+    """`Wikipedia.useful_sections` over a client carrying those settings."""
+    client, _ = build(config=config or ResearchConfig())
+    return client.useful_sections(text)
 
 
 class TestUsefulSections:
@@ -24,12 +30,12 @@ class TestUsefulSections:
         """The lead has no title, so it is never matched by a drop keyword."""
         article = "Nevermind is the second studio album.\n\n== Charts ==\nrows"
 
-        assert "second studio album" in useful_sections(article, 8000, DROP)
+        assert "second studio album" in sections(article)
 
     def test_drops_a_table_rendered_as_prose(self):
         article = "Lead.\n\n== Charts ==\nUS 1 UK 7\n\n== Recording ==\nSound City."
 
-        kept = useful_sections(article, 8000, DROP)
+        kept = sections(article)
 
         assert "US 1 UK 7" not in kept
         assert "Sound City" in kept
@@ -37,26 +43,32 @@ class TestUsefulSections:
     def test_a_dropped_section_ends_at_the_next_header(self):
         article = "Lead.\n\n== Personnel ==\nnames\n\n== Legacy ==\nit mattered"
 
-        assert "it mattered" in useful_sections(article, 8000, DROP)
+        assert "it mattered" in sections(article)
 
     def test_the_drop_list_is_configurable(self):
         """A deployment that wants the personnel list can keep it."""
         article = "Lead.\n\n== Personnel ==\nKurt Cobain"
 
-        assert "Kurt Cobain" in useful_sections(article, 8000, ["chart"])
+        assert "Kurt Cobain" in sections(
+            article, ResearchConfig(wikipedia_drop_sections=["chart"])
+        )
 
     def test_it_cuts_on_a_paragraph_break(self):
         article = "A" * 40 + "\n\n" + "B" * 200
 
-        kept = useful_sections(article, 60, [])
+        kept = sections(
+            article, ResearchConfig(wikipedia_max_chars=60, wikipedia_drop_sections=[])
+        )
 
         assert kept == "A" * 40
 
     def test_a_paragraph_longer_than_the_cap_is_cut_hard(self):
-        assert len(useful_sections("A" * 500, 100, [])) == 100
+        config = ResearchConfig(wikipedia_max_chars=100, wikipedia_drop_sections=[])
+
+        assert len(sections("A" * 500, config)) == 100
 
     def test_a_short_article_is_returned_whole(self):
-        assert useful_sections("short", 8000, DROP) == "short"
+        assert sections("short") == "short"
 
 
 class TestSummary:
@@ -104,7 +116,10 @@ class TestSummary:
             response(extract("A" * 500)), config=ResearchConfig(wikipedia_max_chars=50)
         )
 
-        assert len(await client.summary("https://en.wikipedia.org/wiki/X")) == 50
+        summary = await client.summary("https://en.wikipedia.org/wiki/X")
+
+        assert summary is not None
+        assert len(summary) == 50
 
 
 class TestArticleFor:
@@ -114,6 +129,7 @@ class TestArticleFor:
 
         found = await client.article_for("https://www.wikidata.org/wiki/Q207289")
 
+        assert found is not None
         assert found.endswith("/Nevermind")
         assert "Q207289" in http.urls[0]
 

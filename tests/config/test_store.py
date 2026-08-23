@@ -3,7 +3,13 @@
 import pytest
 import yaml
 
-from backend.config import ConfigSaveError, ConfigStore, ConfigUpdate, load_config
+from backend.config import (
+    ConfigSaveError,
+    ConfigStore,
+    ConfigUpdate,
+    LocalLLMConfig,
+    MediasageConfig,
+)
 
 
 class TestReadUserYaml:
@@ -122,14 +128,14 @@ class TestSave:
     def test_writes_and_merges_sections(self, tmp_path):
         """Should merge new sections into whatever the file already holds."""
         path = tmp_path / "config.user.yaml"
-        path.write_text(yaml.dump({"plex": {"token": "old"}, "setup": {"complete": True}}))
+        path.write_text(yaml.dump({"plex": {"token": "old"}, "llm": {"provider": "openai"}}))
         store = ConfigStore(user_config_path=path)
 
         store.save({"plex": {"url": "http://new:32400"}})
 
         written = yaml.safe_load(path.read_text())
         assert written["plex"] == {"token": "old", "url": "http://new:32400"}
-        assert written["setup"] == {"complete": True}
+        assert written["llm"] == {"provider": "openai"}
 
     def test_blank_values_are_not_written(self, tmp_path):
         """Should keep the saved file free of blanks that shadow defaults."""
@@ -147,20 +153,34 @@ class TestSave:
         with pytest.raises(ConfigSaveError):
             store.save({"plex": {"url": "http://new:32400"}})
 
+# The smallest loadable llm section; these tests are about the plex half.
+LLM = {"provider": "openai", "context_window": 128_000}
+
+
+def store_over(tmp_path, config_data) -> ConfigStore:
+    """A store holding `config_data`, writing user edits inside `tmp_path`."""
+    base = tmp_path / "config.yaml"
+    base.write_text(yaml.dump(config_data))
+    store = ConfigStore(user_config_path=tmp_path / "config.user.yaml")
+    store.config = MediasageConfig.load(base)
+    return store
+
+
+def applied(store: ConfigStore, update: ConfigUpdate) -> MediasageConfig:
+    """Compute a change and keep it, the way a route does minus the probe.
+
+    Local to the tests: production never runs the two back to back, it proves
+    the candidate works in between.
+    """
+    return store.commit(store.candidate(update))
+
 
 class TestApply:
     """Tests for applying an update from the UI."""
 
-    def _store(self, tmp_path, config_data):
-        base = tmp_path / "config.yaml"
-        base.write_text(yaml.dump(config_data))
-        store = ConfigStore(user_config_path=tmp_path / "config.user.yaml")
-        store.config = load_config(base)
-        return store
-
     def test_updates_plex_and_persists(self, tmp_path, clean_config_env):
         """Should update the in-memory config and write the change out."""
-        store = self._store(
+        store = store_over(
             tmp_path,
             {
                 "plex": {"url": "http://old:32400", "token": "tok"},
@@ -168,20 +188,20 @@ class TestApply:
             },
         )
 
-        config = store.apply(ConfigUpdate(plex_url="http://new:32400"))
+        config = applied(store, ConfigUpdate(plex_url="http://new:32400"))
 
         assert config.plex.url == "http://new:32400"
-        assert config.plex.token == "tok"
+        assert config.plex.token.get_secret_value() == "tok"
         assert yaml.safe_load(store.path.read_text())["plex"] == {"url": "http://new:32400"}
 
     def test_provider_switch_clears_the_previous_models(self, tmp_path, clean_config_env):
         """The old provider's model names do not survive; nothing is guessed in their place."""
-        store = self._store(
+        store = store_over(
             tmp_path,
             {"llm": {"provider": "anthropic", "model_analysis": "claude-old", "context_window": 200_000}},
         )
 
-        config = store.apply(ConfigUpdate(llm_provider="openai"))
+        config = applied(store, ConfigUpdate(llm_provider="openai"))
 
         assert config.llm.provider == "openai"
         assert config.llm.model_analysis == ""
@@ -189,9 +209,9 @@ class TestApply:
 
     def test_explicit_model_survives_a_provider_switch(self, tmp_path, clean_config_env):
         """An explicitly supplied model should be kept."""
-        store = self._store(tmp_path, {"llm": {"provider": "anthropic", "context_window": 200_000}})
+        store = store_over(tmp_path, {"llm": {"provider": "anthropic", "context_window": 200_000}})
 
-        config = store.apply(ConfigUpdate(llm_provider="openai", model_analysis="gpt-mine"))
+        config = applied(store, ConfigUpdate(llm_provider="openai", model_analysis="gpt-mine"))
 
         assert config.llm.model_analysis == "gpt-mine"
         assert config.llm.model_generation == ""
@@ -200,9 +220,9 @@ class TestApply:
         self, tmp_path, clean_config_env
     ):
         """A provider switch changes which section class holds the settings."""
-        store = self._store(tmp_path, {"llm": {"provider": "openai", "context_window": 128_000}})
+        store = store_over(tmp_path, {"llm": {"provider": "openai", "context_window": 128_000}})
 
-        config = store.apply(
+        config = applied(store,
             ConfigUpdate(
                 llm_provider="custom",
                 endpoint_url="http://localhost:5000/v1",
@@ -210,17 +230,74 @@ class TestApply:
             )
         )
 
-        assert config.llm.is_local is True
-        assert config.llm.endpoint_url == "http://localhost:5000/v1"
-        assert config.llm.context_window == 8192
+        llm = config.llm
+
+        assert isinstance(llm, LocalLLMConfig)
+        assert llm.is_local is True
+        assert llm.endpoint_url == "http://localhost:5000/v1"
+        assert llm.context_window == 8192
 
     def test_nothing_is_written_when_update_is_empty(self, tmp_path, clean_config_env):
         """An empty update should leave the file untouched."""
-        store = self._store(
+        store = store_over(
             tmp_path,
             {"plex": {"url": "http://old:32400"}, "llm": {"provider": "openai", "context_window": 128_000}},
         )
 
-        store.apply(ConfigUpdate())
+        applied(store, ConfigUpdate())
 
         assert not store.path.exists()
+
+
+class TestCandidate:
+    """A candidate is computed without keeping it."""
+
+    def test_nothing_is_written(self, tmp_path, clean_config_env):
+        store = store_over(tmp_path, {"plex": {"url": "http://old:32400"}, "llm": LLM})
+
+        store.candidate(ConfigUpdate(plex_url="http://new:32400"))
+
+        assert not store.path.exists()
+
+    def test_nothing_is_published(self, tmp_path, clean_config_env):
+        """The held configuration is untouched until the change is committed."""
+        store = store_over(tmp_path, {"plex": {"url": "http://old:32400"}, "llm": LLM})
+
+        store.candidate(ConfigUpdate(plex_url="http://new:32400"))
+
+        assert store.get().plex.url == "http://old:32400"
+
+    def test_the_change_carries_what_it_would_write(self, tmp_path, clean_config_env):
+        store = store_over(tmp_path, {"plex": {"url": "http://old:32400"}, "llm": LLM})
+
+        change = store.candidate(ConfigUpdate(plex_url="http://new:32400"))
+
+        assert change.config.plex.url == "http://new:32400"
+        assert change.sections == {"plex": {"url": "http://new:32400"}}
+
+    def test_an_empty_update_writes_no_section(self, tmp_path, clean_config_env):
+        store = store_over(tmp_path, {"plex": {"url": "http://old:32400"}, "llm": LLM})
+
+        assert store.candidate(ConfigUpdate()).sections == {}
+
+
+class TestCommit:
+    """The write happens before the change reaches memory."""
+
+    def test_a_failed_write_publishes_nothing(self, tmp_path, clean_config_env):
+        """Otherwise the process runs on settings that will not survive a restart."""
+        store = store_over(tmp_path, {"plex": {"url": "http://old:32400"}, "llm": LLM})
+        change = store.candidate(ConfigUpdate(plex_url="http://new:32400"))
+        store.user_config_path = tmp_path / "missing-dir" / "config.user.yaml"
+
+        with pytest.raises(ConfigSaveError):
+            store.commit(change)
+
+        assert store.get().plex.url == "http://old:32400"
+
+    def test_a_written_change_is_published(self, tmp_path, clean_config_env):
+        store = store_over(tmp_path, {"plex": {"url": "http://old:32400"}, "llm": LLM})
+
+        store.commit(store.candidate(ConfigUpdate(plex_url="http://new:32400")))
+
+        assert store.get().plex.url == "http://new:32400"

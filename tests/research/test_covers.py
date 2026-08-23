@@ -9,7 +9,9 @@ from tests.research.conftest import FakeHttp, response
 CDN = "https://ia800123.us.archive.org/front.jpg"
 
 
-def build(*answers: object, config: ResearchConfig | None = None) -> tuple[CoverArt, FakeHttp]:
+def build(
+    *answers: httpx.Response | Exception, config: ResearchConfig | None = None
+) -> tuple[CoverArt, FakeHttp]:
     http = FakeHttp(*answers)
     return CoverArt(http, config or ResearchConfig()), http
 

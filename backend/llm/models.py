@@ -2,8 +2,8 @@
 
 `LLMResponse` is the provider-neutral result every completion returns, built
 from LangChain's `AIMessage` so token counts are the ones the provider actually
-reported rather than an estimate. `TokenBudget` answers how much of the library
-fits in one prompt. The `Ollama*` models describe Ollama's admin API and are
+reported rather than an estimate. `LLMResponse.parsed` reads the reply back out as
+structure. `TokenBudget` answers how much of the library fits in one prompt. The `Ollama*` models describe Ollama's admin API and are
 used only by `backend.llm.ollama`.
 """
 
@@ -12,6 +12,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from backend.config import BudgetConfig, LLMConfig, Role
+from backend.llm.json_parse import ModelReply
 
 
 class TokenBudget(BaseModel):
@@ -57,6 +58,14 @@ class LLMResponse(BaseModel):
     @property
     def total_tokens(self) -> int:
         return self.input_tokens + self.output_tokens
+
+    def parsed(self) -> Any:
+        """The reply decoded as JSON, repairing what models get wrong.
+
+        Raises:
+            JSONParseError: If nothing usable can be recovered
+        """
+        return ModelReply(content=self.content).parsed()
 
     def cost(self, config: LLMConfig) -> float:
         """Cost in USD at the prices the user declared for this call's role."""

@@ -13,12 +13,13 @@ reach it" is an expected answer, not a fault.
 """
 
 import logging
-from typing import Any
+from typing import Any, Self
 
 import httpx
 import ollama
 from pydantic import BaseModel, ConfigDict
 
+from backend.config import config_store
 from backend.llm.constants import CONTEXT_LENGTH_SUFFIX, NUM_CTX_PARAMETER
 from backend.llm.models import (
     OllamaModel,
@@ -37,6 +38,16 @@ class OllamaClient(BaseModel):
 
     base_url: str
     timeout: float
+
+    @classmethod
+    def configured(cls, base_url: str = "") -> Self:
+        """A client for `base_url`, or for whatever endpoint is configured.
+
+        The settings form probes a URL before it is saved, so the typed one
+        wins over the stored one.
+        """
+        llm = config_store.get().llm
+        return cls(base_url=base_url or llm.local_endpoint, timeout=llm.probe_timeout)
 
     @property
     def api(self) -> ollama.Client:

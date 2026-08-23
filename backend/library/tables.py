@@ -11,17 +11,23 @@ same, and nothing here depends on a dialect. See docs/track_genres_consistency.m
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from functools import partial
+from typing import Any, Final, Self
 
-from sqlalchemy import CheckConstraint, Column, Index
+from sqlalchemy import CheckConstraint, ColumnElement, ForeignKey, Index, and_
+from sqlalchemy.orm import Mapped, Session, mapped_column
 from sqlalchemy.types import JSON
-from sqlmodel import Field, SQLModel
+
+from backend.db.base import Base
 
 # The single row `sync_state` is constrained to hold.
 SYNC_STATE_ID = 1
 
+# A default factory takes no arguments; aware, so it compares against synced_at.
+UTC_NOW: Final = partial(datetime.now, UTC)
 
-class Track(SQLModel, table=True):
+
+class Track(Base):
     """One track, as cached from Plex.
 
     `genres` holds the album's genre list; `track_genres` carries the same data
@@ -31,26 +37,32 @@ class Track(SQLModel, table=True):
 
     __tablename__ = "tracks"
 
-    rating_key: str = Field(primary_key=True)
-    title: str
-    artist: str
-    album: str
-    duration_ms: int = 0
-    year: int | None = Field(default=None, index=True)
-    genres: list[str] = Field(default_factory=list, sa_column=Column(JSON))
-    user_rating: int | None = None
-    is_live: bool = Field(default=False, index=True)
-    parent_rating_key: str | None = Field(default=None, index=True)
-    view_count: int = 0
-    last_viewed_at: str | None = None
+    rating_key: Mapped[str] = mapped_column(primary_key=True)
+    title: Mapped[str]
+    artist: Mapped[str]
+    album: Mapped[str]
+    duration_ms: Mapped[int] = mapped_column(default=0)
+    year: Mapped[int | None] = mapped_column(default=None, index=True)
+    # Nullable since the first migration; rows written before genres were kept hold NULL.
+    genres: Mapped[list[str] | None] = mapped_column(JSON, default=list)
+    user_rating: Mapped[int | None] = mapped_column(default=None)
+    is_live: Mapped[bool] = mapped_column(default=False, index=True)
+    parent_rating_key: Mapped[str | None] = mapped_column(default=None, index=True)
+    view_count: Mapped[int] = mapped_column(default=0)
+    last_viewed_at: Mapped[str | None] = mapped_column(default=None)
 
     # Which sync wrote this row; older tokens are swept on success.
-    sync_token: str | None = None
+    sync_token: Mapped[str | None] = mapped_column(default=None)
 
     __table_args__ = (Index("idx_tracks_artist", "artist"),)
 
+    @classmethod
+    def has_album_key(cls) -> ColumnElement[bool]:
+        """Tracks that belong to an identifiable album."""
+        return and_(cls.parent_rating_key.is_not(None), cls.parent_rating_key != "")
 
-class TrackGenre(SQLModel, table=True):
+
+class TrackGenre(Base):
     """One genre of one track, normalized out of `Track.genres`.
 
     Written only by the sync, in the same transaction as the track itself.
@@ -61,16 +73,38 @@ class TrackGenre(SQLModel, table=True):
     __tablename__ = "track_genres"
 
     # Cascade replaces the old delete trigger; the engine sweeps orphans.
-    rating_key: str = Field(
-        primary_key=True, foreign_key="tracks.rating_key", ondelete="CASCADE"
+    rating_key: Mapped[str] = mapped_column(
+        ForeignKey("tracks.rating_key", ondelete="CASCADE"), primary_key=True
     )
-    genre_lower: str = Field(primary_key=True)
-    genre: str
+    genre_lower: Mapped[str] = mapped_column(primary_key=True)
+    genre: Mapped[str]
 
     __table_args__ = (Index("idx_track_genres_lower", "genre_lower", "rating_key"),)
 
+    @classmethod
+    def rows_for(cls, rating_key: str, genres: list[Any]) -> list[dict[str, str]]:
+        """Normalize a track's genres into `track_genres` rows, deduplicated.
 
-class SyncState(SQLModel, table=True):
+        Args:
+            rating_key: The track the genres belong to
+            genres: Raw genre values; non-strings and blanks are dropped
+
+        Returns:
+            One row per distinct lowercased genre
+        """
+        seen: dict[str, str] = {}
+        for value in genres:
+            if not isinstance(value, str) or not value.strip():
+                continue
+            seen.setdefault(value.lower(), value)
+
+        return [
+            {"rating_key": rating_key, "genre_lower": lowered, "genre": original}
+            for lowered, original in seen.items()
+        ]
+
+
+class SyncState(Base):
     """Bookkeeping for the last and the in-flight sync.
 
     A single row, so `id` is constrained to one value. `sync_token` and
@@ -80,39 +114,26 @@ class SyncState(SQLModel, table=True):
 
     __tablename__ = "sync_state"
 
-    id: int = Field(default=SYNC_STATE_ID, primary_key=True)
-    plex_server_id: str | None = None
-    last_sync_at: str | None = None
-    track_count: int = 0
-    sync_duration_ms: int | None = None
-    sync_cursor: int = 0
-    sync_token: str | None = None
+    id: Mapped[int] = mapped_column(primary_key=True, default=SYNC_STATE_ID)
+    plex_server_id: Mapped[str | None] = mapped_column(default=None)
+    last_sync_at: Mapped[str | None] = mapped_column(default=None)
+    track_count: Mapped[int] = mapped_column(default=0)
+    sync_duration_ms: Mapped[int | None] = mapped_column(default=None)
+    sync_cursor: Mapped[int] = mapped_column(default=0)
+    sync_token: Mapped[str | None] = mapped_column(default=None)
 
     __table_args__ = (CheckConstraint(f"id = {SYNC_STATE_ID}", name="sync_state_single_row"),)
 
+    @classmethod
+    def load(cls, session: Session) -> Self:
+        """The single row, created on first use.
 
-def utc_now() -> datetime:
-    """Timezone-aware now, as a Python-side default rather than a SQL one."""
-    return datetime.now(UTC)
-
-
-def genre_rows(rating_key: str, genres: list[Any]) -> list[dict[str, str]]:
-    """Normalize a track's genres into `track_genres` rows, deduplicated.
-
-    Args:
-        rating_key: The track the genres belong to
-        genres: Raw genre values; non-strings and blanks are dropped
-
-    Returns:
-        One row per distinct lowercased genre
-    """
-    seen: dict[str, str] = {}
-    for value in genres:
-        if not isinstance(value, str) or not value.strip():
-            continue
-        seen.setdefault(value.lower(), value)
-
-    return [
-        {"rating_key": rating_key, "genre_lower": lowered, "genre": original}
-        for lowered, original in seen.items()
-    ]
+        Flushed rather than committed: the caller's transaction owns when this
+        lands, and a sync writes the checkpoint alongside the rows it counts.
+        """
+        state = session.get(cls, SYNC_STATE_ID)
+        if state is None:
+            state = cls(id=SYNC_STATE_ID)
+            session.add(state)
+            session.flush()
+        return state

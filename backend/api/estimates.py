@@ -1,5 +1,9 @@
 """What a run will cost, before it is paid for.
 
+Each preview response knows how to estimate itself from the filters and the
+configuration, so an endpoint hands over what it counted and returns the model.
+Entry points: `FilterPreviewResponse.of`, `AlbumPreviewResponse.of`.
+
 Both preview endpoints answer the same question -- how many tokens and how
 many dollars -- from measured prompt sizes rather than from a live call. The
 numbers below were measured against real runs; they move when a prompt is
@@ -11,10 +15,12 @@ per-call figures below are not: they are the size of prompts this repository
 ships, so they move with a prompt rewrite rather than with a deployment.
 """
 
-from typing import Final
+from typing import Final, Self
+
+from pydantic import BaseModel
 
 from backend.config import MediasageConfig
-from backend.models import AlbumPreviewResponse, FilterPreviewRequest, FilterPreviewResponse
+from backend.models import FilterPreviewRequest
 
 # --- Playlist generation: analysis, generation, narrative ---------------
 
@@ -46,54 +52,79 @@ ALBUM_GENERATION_INPUT: Final = 600 + 400 + 2000
 ALBUM_GENERATION_OUTPUT: Final = 200 + 300 + 500
 
 
-def _capped(available: int, limit: int) -> int:
-    """How many rows are actually sent; a limit of zero means all of them."""
-    if available <= 0:
-        return 0
-    return min(available, limit) if limit > 0 else available
+
+class Preview(BaseModel):
+    """What one run will send to a model, and what that will cost."""
+
+    @staticmethod
+    def capped(available: int, limit: int) -> int:
+        """How many rows are actually sent; a limit of zero means all of them."""
+        if available <= 0:
+            return 0
+        return min(available, limit) if limit > 0 else available
 
 
-def playlist(
-    request: FilterPreviewRequest, matching_tracks: int, config: MediasageConfig
-) -> FilterPreviewResponse:
-    """What one playlist generation will send and what it will cost."""
-    tracks_to_send = _capped(matching_tracks, request.max_tracks_to_ai)
+class FilterPreviewResponse(Preview):
+    """What one playlist generation will send, and what it will cost."""
 
-    generation_input = tracks_to_send * config.budget.tokens_per_track
-    generation_output = request.track_count * PLAYLIST_TOKENS_PER_PICK
+    # -1 when the count is unknown, which is what an unsynced cache reports.
+    matching_tracks: int
+    tracks_to_send: int
+    estimated_input_tokens: int
+    estimated_output_tokens: int
+    estimated_cost: float
 
-    return FilterPreviewResponse(
-        matching_tracks=matching_tracks,
-        tracks_to_send=tracks_to_send,
-        estimated_input_tokens=PLAYLIST_ANALYSIS_INPUT + generation_input,
-        estimated_output_tokens=PLAYLIST_ANALYSIS_OUTPUT + generation_output,
-        estimated_cost=(
-            config.llm.estimate_cost(
-                "analysis", PLAYLIST_ANALYSIS_INPUT, PLAYLIST_ANALYSIS_OUTPUT
-            )
-            + config.llm.estimate_cost("generation", generation_input, generation_output)
-        ),
-    )
+    @classmethod
+    def of(
+        cls, request: FilterPreviewRequest, matching_tracks: int, config: MediasageConfig
+    ) -> Self:
+        """Estimate one generation over `matching_tracks` of the library."""
+        tracks_to_send = cls.capped(matching_tracks, request.max_tracks_to_ai)
+
+        generation_input = tracks_to_send * config.budget.tokens_per_track
+        generation_output = request.track_count * PLAYLIST_TOKENS_PER_PICK
+
+        return cls(
+            matching_tracks=matching_tracks,
+            tracks_to_send=tracks_to_send,
+            estimated_input_tokens=PLAYLIST_ANALYSIS_INPUT + generation_input,
+            estimated_output_tokens=PLAYLIST_ANALYSIS_OUTPUT + generation_output,
+            estimated_cost=(
+                config.llm.estimate_cost(
+                    "analysis", PLAYLIST_ANALYSIS_INPUT, PLAYLIST_ANALYSIS_OUTPUT
+                )
+                + config.llm.estimate_cost("generation", generation_input, generation_output)
+            ),
+        )
 
 
-def albums(
-    matching_albums: int, max_albums: int, config: MediasageConfig
-) -> AlbumPreviewResponse:
-    """What one recommendation round will send and what it will cost."""
-    albums_to_send = _capped(matching_albums, max_albums)
+class AlbumPreviewResponse(Preview):
+    """What one recommendation round will send, and what it will cost."""
 
-    generation_input = (
-        ALBUM_GENERATION_INPUT + albums_to_send * config.budget.tokens_per_album
-    )
+    matching_albums: int
+    albums_to_send: int
+    estimated_input_tokens: int = 0
+    estimated_cost: float = 0.0
 
-    return AlbumPreviewResponse(
-        matching_albums=matching_albums,
-        albums_to_send=albums_to_send,
-        estimated_input_tokens=ALBUM_ANALYSIS_INPUT + generation_input,
-        estimated_cost=(
-            config.llm.estimate_cost("analysis", ALBUM_ANALYSIS_INPUT, ALBUM_ANALYSIS_OUTPUT)
-            + config.llm.estimate_cost(
-                "generation", generation_input, ALBUM_GENERATION_OUTPUT
-            )
-        ),
-    )
+    @classmethod
+    def of(cls, matching_albums: int, max_albums: int, config: MediasageConfig) -> Self:
+        """Estimate one round over `matching_albums` of the library."""
+        albums_to_send = cls.capped(matching_albums, max_albums)
+
+        generation_input = (
+            ALBUM_GENERATION_INPUT + albums_to_send * config.budget.tokens_per_album
+        )
+
+        return cls(
+            matching_albums=matching_albums,
+            albums_to_send=albums_to_send,
+            estimated_input_tokens=ALBUM_ANALYSIS_INPUT + generation_input,
+            estimated_cost=(
+                config.llm.estimate_cost(
+                    "analysis", ALBUM_ANALYSIS_INPUT, ALBUM_ANALYSIS_OUTPUT
+                )
+                + config.llm.estimate_cost(
+                    "generation", generation_input, ALBUM_GENERATION_OUTPUT
+                )
+            ),
+        )

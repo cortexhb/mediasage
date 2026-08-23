@@ -484,11 +484,99 @@ is what made them testable without patching module state.
 
 What deliberately stayed a module constant: prompt text and the token estimates measured from it
 (`api/estimates.py` — they move with a prompt rewrite, not with a deployment), protocol shapes and
-regexes, the release-group scoring weights, and identifier widths. `api/estimates.py` had its own
+regexes, and the release-group scoring weights. `api/estimates.py` had its own
 `PLAYLIST_TOKENS_PER_TRACK` duplicating `budget.tokens_per_track`; it now reads the config field.
+
+### Done: one id format
+
+Every generated id is `str(uuid.uuid4())`. Three widths went with it — `ID_LENGTH = 12` truncating
+a uuid4 in `recommender/sessions.py`, `ID_BYTES = 8` in `results/store.py`, `TOKEN_BYTES = 8` in
+`library/sync.py` — along with `RESULT_ID`, a regex that claimed to be the shape the store mints
+and accepted `{8,16}` while the store only ever wrote 16. `routes/results.py` now validates by
+parsing, round-tripped through `str` so braces and `urn:` forms are still refused.
+
+`0002_uuid_result_ids` reissues existing `results.id` values: the route rejects the old hex ids, so
+without it a saved result would list and then 400 when opened. Idempotent, and nothing references
+the column. `api/routes/art.py`'s ETag is untouched — an md5 of the thumb path, not an id.
 
 A root `installed_config` autouse fixture installs a complete configuration for every test, since
 tunables are now read at call time; `tests/config/` opts out so it can still assert on loading.
+
+### Done: stages as classes, helpers on their owners
+
+`selection.py`, `pitches.py` and `facts.py` took `call: MeteredClient` as the first argument of
+every public function — a class wearing a module. Each is now a class over `Stage`, a one-field
+base in `calls.py` holding the client the stage spends through. `RecommendationPipeline` builds
+them per session (`_selection`, `_facts`, `_pitches`), so nothing else changed at the call sites.
+
+`Pitches.validate` is named `fact_check`: pydantic's `BaseModel` carries a deprecated `validate`
+classmethod, and shadowing it is a `bad-override` under pyrefly even though it runs.
+
+The pure helpers moved onto the classes that used them: `plain_text` (static) and `trimmed` onto
+`Reviews`, `useful_sections`/`_capped`/`_title_of` onto `Wikipedia`. `trimmed` and
+`useful_sections` read their caps off `self.config` instead of taking them per call.
+
+`CoverArt._front_of` is gone: `front` walks the two endpoints itself, so the wrapper that called
+the same helper twice no longer exists.
+
+Deliberately left as module-level: `prompts.py` (text builders with no state), `dimensions.py` (a
+fixed catalogue), the `settings()` config accessors (the project-wide read-at-call-time idiom),
+`as_list`/`as_dict` in `calls.py`, and `safety.py`'s `is_safe`/`fetch_safely` — security policy
+with no owner, called with a client that belongs to someone else.
+
+### Done: `analyzer.py` as a class
+
+`Analyzer` holds the two clients its calls read, injected rather than fetched. `analyze_prompt` and
+`analyze_track` are methods; the two prompt-building f-strings are staticmethods beside them.
+
+The route's `plex` and `llm` parameters were declared for the guards alone while the analyzer read
+both stores itself. They are now passed in, which deletes both the apology in the route docstring
+and the `RuntimeError("Plex client not initialized")` branch -- unreachable behind `guards.Plex`,
+and a 500 where the guard already answers 503.
+
+`backend/analyzer.py` became `backend/analyzer/`, which settles its TODO: the two system prompts
+and the two builders are in `prompts.py`, `Analyzer` is in `analysis.py`. `from backend.analyzer
+import Analyzer` still resolves, so the route did not change.
+
+`prompts.GENRE_LIMIT = 30` names what was a bare `[:30]`. Left a module constant rather than a
+config field: it is a property of the prompt, not of a deployment. Worth revisiting if a library
+with hundreds of tags reports bad suggestions.
+
+`tests/test_analyzer.py` rewritten and split to mirror -- 6 tests that mocked two stores became 22
+across `tests/analyzer/test_analysis.py` and `test_prompts.py`.
+
+### Done: the TODOs left in the tree
+
+- **`generator.py` prompts.** Became `backend/generator/`, mirroring the analyzer: `prompts.py`
+  holds both system prompts plus `selection()` and `narrative()`, `playlists.py` holds the rest.
+  `NARRATIVE_TRACK_LIMIT` names what was a bare `[:15]`.
+- **`llm/client.py`, "half of this is model, half is business logic".** Split. `chat.ChatModels`
+  owns configuration to chat model -- names per role, the kwargs every integration takes, the cache.
+  `client.LLMClient` owns the completion. `LLMError` moved to `errors.py`, which both raise.
+  `LLMClient.parse_json_response` was a third thing that belonged to neither; it is now
+  `LLMResponse.parsed()`, on the object that holds the content. Named `parsed`, not `json`, because
+  pydantic's deprecated `BaseModel.json` makes that a `bad-override`.
+- **`test_album.py`, "why are tests for cover art using research???".** Because `AlbumResearch`
+  had a `cover_art` passthrough that composed nothing. Deleted; `round.py` asks `.covers.front`
+  directly, and the tests in `tests/research/test_covers.py` are the only ones left.
+- **`matching.py`, "belongs in playlists" / "utils.py".** Module gone. `threshold` and
+  `artist_variants` are in `generator/playlists.py` beside `_tracks_match`, their only caller;
+  `simplify` is in the new `backend/utils.py`.
+- **`research/safety.py`, "generic, utils.py".** `is_safe` and `fetch_safely` are in
+  `backend/utils.py`; nothing about them was research-specific.
+- **`results/store.py`, "none of these should be floating".** Four module functions became
+  `ResultStore`, reached as `results_store` like every other store. A plain class, not a model: it
+  carries no fields. Tests could not patch methods on a pydantic instance either.
+- **`llm/chat.py` type error.** `init_chat_model` widens to `BaseChatModel | _ConfigurableModel`
+  under the general overload. Narrowed with an `isinstance` guard that raises `LLMError`, so a
+  LangChain change is loud rather than an `invoke` on the wrong object.
+
+Scripted-LLM fixtures now set response *content* and let the real parser decode it, so a stage is
+tested against what a model actually sends rather than against a mocked parse.
+
+Still open: `json_parse.py` "Convert to structured responses later", and three new ones in
+`backend/api/` -- `guards.py` on floating functions and singletons, `estimates.py` on floating
+functions, `clients.py` on being ugly.
 
 ### Remaining modules
 
@@ -526,6 +614,185 @@ To decide during planning: module/package layout, where the seams go, dependency
   Seven hardcoded `delenv` lists replaced with a `clean_config_env` fixture.
 - Two `asyncio.create_task` calls kept no reference, so a running sync could be garbage collected
   mid-flight.
+
+### Done: nothing broken gets saved
+
+Two ways into the same settings had drifted apart. The wizard proved a dependency before writing;
+`POST /api/config` wrote whatever it was handed and rebuilt the client *after* persisting, so a
+wrong token reached disk and survived a restart. And `ConfigStore.apply` published the new config
+to memory before the file write that can raise `ConfigSaveError` -- a failed save left the process
+running on settings that were nowhere on disk.
+
+- **`ConfigStore` splits into `candidate` and `commit`.** `candidate(update)` computes the
+  `ConfigChange` an update would produce and keeps nothing; `commit(change)` writes first, then
+  publishes. `apply` is the two called together, for a caller with nothing to prove.
+- **`backend/api/probes.py`** holds `PlexProbe` and `LLMProbe`, both `.of(...)` over a candidate
+  section, neither raising: every way a dependency can refuse is an answer a form has to show.
+  `rejected(update, config)` is the gate both routes call.
+- **What is probed is gated on `ConfigUpdate.reconnects(section)`**, not `touches`. `CONNECTING`
+  names the fields that decide whether a dependency answers at all; editing a price is a number the
+  UI reports back, and must not spend a completion nor fail because a provider is down.
+- **Both routes probe the *merged candidate*, not the form.** A wizard field is one part of a
+  section; the deployment's own tuning still applies to the connection being tested.
+
+`PROVIDER_LABELS` and the SDK-error-to-form-error mapping moved to `probes.py` with the probing
+they belong to.
+
+### Done: the nullables that were never nullable
+
+Three different things were wearing `X | None`, and only one of them meant anything.
+
+**"None means use the default."** A parameter typed nullable so the body could do `x or config.x`.
+Nobody ever passed None on purpose -- it was the *absence* of an argument, spelled twice, and the
+type said "this can be None" to every reader and every checker forever. Gone:
+
+- `AlbumResearch.__init__` takes its `http` and `config`; `AlbumResearch.configured()` is the
+  constructor that reads the store, the same shape as `PlexClient.of` and `LLMClient.of`.
+- `iter_raw_tracks(page_size)`, `is_stale(max_age_hours)` and `dimensions.fill(count)` are gone
+  outright -- no production caller passed any of them. Two existed only so one test could avoid
+  patching the configuration it was actually testing.
+- `max_exclusion_albums` is an `int` end to end; 0 takes the configured cap, which is what the
+  route was already spelling as `request.max_albums or None`.
+- `ollama_client(url)` and `ResultStore.page(result_type)` take `""`, which already meant
+  "everything" in both.
+
+**"This collection might be missing."** `list[X] | None = None` then `x or []`, everywhere, because
+ruff's B006 refuses a mutable default. B006 does *not* fire when the annotation is read-only, which
+is what these parameters always were: `Mapping[str, X] = {}` and `Sequence[X] = ()` are accepted,
+honest about not mutating, and carry no null. Applied across `selection.py`, `pitches.py`,
+`pipeline.py`, `round.py`, `prompts.py` and `generator/`.
+
+**Dead state.** `RecommendSession.taste_profile` was written on every round and never read once --
+three nullables and a branch for a field nothing consumed. `RoundInputs.profile` is now a
+`TasteProfile`, empty in library mode, which deletes the `NO_PROFILE` guard: it could only fire if
+`_load_candidates` and `is_discovery` disagreed about `request.mode`, and both read the same field.
+`_familiarity()` returns `{}` rather than None -- an unknown play count and a zero one shape the
+prompt identically.
+
+What stayed is what carries information: `Track.year`, `user_rating`, Ollama's `context_window`,
+every field of `ConfigUpdate` (None is "not supplied", which is the whole point of a patch model),
+`seed_track`, `albums.familiarity(parent_rating_keys)` (None is every album, `[]` is none), and the
+two optional callbacks.
+
+Net: 57 nullable annotations removed from `backend/`, 6 added. Pyrefly is down from 42 errors to 36
+-- the rest are SQLModel column expressions.
+
+### Still open: the stores hand out None
+
+`LLMClientStore.get()`, `PlexClientStore.get()` and `PipelineStore.get()` all return `X | None`, and
+that None is then re-checked in `guards.py`, in every `require_*`, and again in the routes. It is a
+real state -- the app boots with no Plex token -- but it should be resolved at one boundary rather
+than travelling. `LLMClientStore` already has the answer next to the problem: `require()` raises,
+`get()` returns the optional, and `guards.require_llm` calls `get()` and redoes the check by hand.
+
+`SharedHttp._client`, `DbEngine._engine` and the two module globals in `api/clients.py` are a
+different case: the value can always be produced, so the None is a cache detail that should never
+have reached a signature. `api/clients.py` still carries its own TODO about this.
+
+Both belong with the `guards.py` question rather than with this pass.
+
+### Done: `guards.py` deleted
+
+It was four jobs in one file, and only one of them needed a module: four `Annotated[..., Depends]`
+aliases, four `require_*` functions that existed only to be depended on, six one-line pass-throughs
+to a store, and `llm_is_configured`, which is not a guard at all. The stores were reached through it
+so that one patch target covered every caller -- a test convenience holding up a production module.
+
+- **Each package says how to get its own thing.** `connected_plex` / `held_plex` /
+  `plex_is_connected` in `plex/client.py`, `configured_llm` in `llm/client.py`, `built_pipeline` /
+  `available_pipeline` in `recommender/pipeline.py`, `configuration` in `config/store.py`.
+  Module-level functions rather than store methods: a bound method of an unfrozen pydantic model is
+  unhashable, and FastAPI hashes a dependency on every request.
+- **"Not configured" is an exception, not a status code.** `PlexNotConnected` and
+  `LLMNotConfigured` are raised where the state is known; `app.py` registers one handler that turns
+  either into a 503. No layer in between knows both facts.
+- **Routes spell out what they resolve.** `plex: Annotated[PlexClient, Depends(connected_plex)]`
+  rather than `plex: guards.Plex`. Longer, and there is no module in the middle to wonder about.
+- **`llm_is_configured` became `LLMSection.is_configured`**, overridden on `LocalLLMConfig`, which
+  is where "a hosted provider needs a key, a local one needs a URL" belongs.
+- **Tests override dependencies instead of patching a module.** `app.dependency_overrides` is what
+  the mechanism is for; `serve_plex` in `tests/api/conftest.py` answers all three Plex dependencies
+  from one client. `test_guards.py` is `test_unavailable.py` and now runs against the real
+  dependencies over empty stores -- the state a fresh install is in.
+
+### Done: the stores answer for themselves
+
+The dependency functions that replaced `guards.py` were indirection of their own -- `connected_plex`
+did nothing but call `plex_store.get()` and check it. They existed for one reason: a bound method of
+an unfrozen pydantic model is unhashable, and FastAPI hashes every dependency on every request.
+
+The stores were models for no benefit. `PlexClientStore`, `LLMClientStore`, `PipelineStore` and
+`ConfigStore` are plain classes now, so their methods *are* the dependencies:
+`Depends(plex_store.require)`, `Depends(config_store.get)`, `Depends(pipeline_store.require)`.
+Six module functions deleted. `validate_assignment` went with them, which is what had been forcing
+tests to patch a method rather than set a field.
+
+`PipelineStore.get(client)` is `for_client(client)`, so `require()` and `available()` can be the
+no-argument dependencies and the store reads `client_store` itself.
+
+**`init()` is gone too.** `plex_store.init(config)` was `self.client = PlexClient.of(config)` behind
+a method -- a setter that hid a constructor, on a public field the tests already assigned. The three
+callers (boot, a settings save, the wizard) now write `plex_store.client = PlexClient.of(config)`.
+That also moved the test seam onto `PlexClient.of`, which is what actually opens a connection.
+
+Still module-level singletons. That part is unchanged: `app.state` would need a `Request` parameter
+threaded into a function per dependency, which is the indirection this pass just deleted.
+
+### Done: the wrappers around one attribute access
+
+Four clusters of the same defect the stores had -- a function whose whole body is one attribute
+chain, or a class that reimplements nothing.
+
+**Eight config readers.** `library_config()`, three separate `settings()`, `configured_page_size()`,
+`live_rule()`, `question_count()` and `threshold()` -- six packages, four names, one shape:
+`return config_store.get().<section>`. Two of them wrapped a single scalar. `config_store.get()` was
+already the late read they claimed to provide, so every call site reads the chain directly now.
+
+Tests that patched a reader had nothing left to patch. The `tuned(section, **overrides)` fixture in
+`tests/conftest.py` replaces them: it reinstalls the configuration with one section changed, which
+is what those tests were always really asserting on.
+
+**`PlexClient`, 21 one-line forwards.** Every one passed `self.connection` to a module function --
+the floating functions the TODO in `plex/library.py` named. `PlexLibrary`, `PlexPlaylists` and
+`PlexPlayback` now hold the connection and own those functions as methods. `PlexClient` is the
+connection plus the three, built over it as `cached_property` so they are views of one handle rather
+than fields a caller could point at a second server. Callers say `plex.library.filtered(...)`,
+`plex.playlists.create(...)`, `plex.connection.is_connected()`.
+
+What stayed module-level is what is pure: `to_track`, `is_live`, `is_mobile`, `_decade_label`,
+`_set_description`, `_active_queue_id`. The line is whether it needs the connection, not whether it
+is short.
+
+**`RecommendationPipeline`, 9 forwards.** Each was `self._selection(session_id).x(...)` over three
+private factories. `pipeline.stages(session_id)` returns the three stages bound to one
+`MeteredClient`, so the session is named once instead of on every call. The no-argument default is
+the unattributed run filter suggestion needs, which deletes its special case too.
+
+**`api/clients.py` and `api/estimates.py`**, both carrying their own TODO. The four module globals
+and two lock idioms are `SharedClients`, one instance named `shared`; `close()` now drops each
+client after closing it rather than leaving a closed handle to be handed out. The two floating
+estimate functions became `FilterPreviewResponse.of` and `AlbumPreviewResponse.of`, and both models
+moved out of `backend/models.py` into `api/estimates.py` next to the prompt sizes they are measured
+from.
+
+**`library/sync.py`, eight more.** Missed on the first pass: the scan matched only bodies that were
+a single `return <call>`, which selects for short rather than for floating, so it caught
+`library_config()` in that file and nothing else in it.
+
+`load_state(session)` is `SyncState.load(session)` and `row_from_plex(...)` is `TrackRow.of_plex(...)`
+-- both were constructors for a model, sitting in another module. `write_batch` had one caller and is
+`LibrarySync._write_batch`.
+
+`sync_status`, `has_tracks`, `is_stale`, `server_changed` and `clear_cache` are methods on
+`LibrarySync` (`sync_status` as `status`). Every one of them reads the same `sync_state` row the sync
+writes, and `sync_status` already reached forward to `library_sync.snapshot()` -- a module function
+calling the singleton declared below it, which the class no longer has to do.
+
+Callers say `library.library_sync.has_tracks()`. Tests that patched the module function now patch
+`LibrarySync.has_tracks` on the class: pydantic refuses `setattr` for a non-field, so the singleton
+itself cannot be patched.
+
+Left alone: `json_parse.py`'s TODO. Structured responses are a real change, not indirection.
 
 ---
 

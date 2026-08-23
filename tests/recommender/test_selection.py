@@ -1,25 +1,27 @@
 """Tests for choosing albums, and for what is asked before choosing."""
 
 from backend.library import AlbumFamiliarity
-from backend.recommender import dimensions, prompts, selection
+from backend.recommender import prompts
+from backend.recommender.dimensions import catalogue
 from backend.recommender.models import AlbumRef, AnswerSet, TasteProfile
+from backend.recommender.selection import Selection
 from tests.recommender.conftest import candidate, prompts_of
 
 
 class TestGapAnalysis:
     def test_returns_the_dimensions_the_model_chose(self, metered):
         call, _ = metered(["era", "tempo"])
-        assert selection.gap_analysis(call, "something nostalgic") == ["era", "tempo"]
+        assert Selection(call=call).gap_analysis("something nostalgic") == ["era", "tempo"]
 
     def test_tops_up_an_invented_answer(self, metered, limits):
         call, _ = metered(["not_a_dimension"])
-        chosen = selection.gap_analysis(call, "test")
+        chosen = Selection(call=call).gap_analysis("test")
         assert len(chosen) == limits.question_count
-        assert all(dimensions.by_id(name) for name in chosen)
+        assert all(catalogue.by_id(name) for name in chosen)
 
     def test_offers_the_catalogue_to_the_model(self, metered):
         call, llm = metered(["era", "tempo"])
-        selection.gap_analysis(call, "something nostalgic")
+        Selection(call=call).gap_analysis("something nostalgic")
 
         _, user = prompts_of(llm.analyze)
         assert "energy: Energy Level" in user
@@ -30,7 +32,7 @@ class TestSuggestFilters:
     def test_keeps_only_what_the_library_offers(self, metered):
         call, _ = metered({"genres": ["Rock", "Polka"], "decades": ["1990s"], "reasoning": "why"})
 
-        suggestion = selection.suggest_filters(call, "test", ["Rock", "Jazz"], ["1990s", "2000s"])
+        suggestion = Selection(call=call).suggest_filters("test", ["Rock", "Jazz"], ["1990s", "2000s"])
 
         assert suggestion.genres == ["Rock"]
         assert suggestion.decades == ["1990s"]
@@ -40,14 +42,14 @@ class TestSuggestFilters:
         """Narrowing to nothing would return no albums at all."""
         call, _ = metered({"genres": ["Polka"], "decades": []})
 
-        suggestion = selection.suggest_filters(call, "test", ["Rock", "Jazz"], ["1990s"])
+        suggestion = Selection(call=call).suggest_filters("test", ["Rock", "Jazz"], ["1990s"])
 
         assert suggestion.genres == ["Rock", "Jazz"]
         assert suggestion.decades == ["1990s"]
 
     def test_a_non_object_reply_falls_back(self, metered):
         call, _ = metered(["Rock"])
-        assert selection.suggest_filters(call, "test", ["Rock"], ["1990s"]).genres == ["Rock"]
+        assert Selection(call=call).suggest_filters("test", ["Rock"], ["1990s"]).genres == ["Rock"]
 
 
 class TestGenerateQuestions:
@@ -56,23 +58,23 @@ class TestGenerateQuestions:
             {"question_text": "How loud?", "options": ["Quiet", "Loud"], "dimension": "energy"},
         ])
 
-        questions = selection.generate_questions(call, "test", ["energy"])
+        questions = Selection(call=call).generate_questions("test", ["energy"])
 
         assert questions[0].question_text == "How loud?"
         assert questions[0].options == ["Quiet", "Loud"]
 
     def test_caps_the_options_at_four(self, metered):
         call, _ = metered([{"question_text": "?", "options": list("abcdef"), "dimension": "era"}])
-        assert len(selection.generate_questions(call, "test", ["era"])[0].options) == 4
+        assert len(Selection(call=call).generate_questions("test", ["era"])[0].options) == 4
 
     def test_caps_the_questions_at_the_round_size(self, metered, limits):
         call, _ = metered([{"question_text": f"Q{i}"} for i in range(5)])
-        questions = selection.generate_questions(call, "test", ["era", "tempo"])
+        questions = Selection(call=call).generate_questions("test", ["era", "tempo"])
         assert len(questions) == limits.question_count
 
     def test_describes_each_dimension_to_the_model(self, metered):
         call, llm = metered([])
-        selection.generate_questions(call, "test", ["energy", "invented"])
+        Selection(call=call).generate_questions("test", ["energy", "invented"])
 
         _, user = prompts_of(llm.generate)
         assert "energy: Energy Level: Calm vs intense" in user
@@ -85,7 +87,7 @@ class TestSelectAlbums:
         call, llm = metered()
         pool = [candidate("A", "One"), candidate("B", "Two")]
 
-        picked = selection.select_albums(call, "test", AnswerSet(), pool)
+        picked = Selection(call=call).select_albums("test", AnswerSet(), pool)
 
         llm.generate.assert_not_called()
         assert [rec.album for rec in picked] == ["One", "Two"]
@@ -100,7 +102,7 @@ class TestSelectAlbums:
         pool = [candidate(f"Filler{i}", f"Album{i}") for i in range(5)]
         pool += [candidate("Nirvana", "Nevermind"), candidate("Pearl Jam", "Ten")]
 
-        picked = selection.select_albums(call, "test", AnswerSet(), pool)
+        picked = Selection(call=call).select_albums("test", AnswerSet(), pool)
 
         assert [rec.album for rec in picked] == ["Nevermind", "Ten"]
 
@@ -113,7 +115,7 @@ class TestSelectAlbums:
         pool = [candidate(f"Filler{i}", f"Album{i}") for i in range(5)]
         pool += [candidate("Nirvana", "Nevermind")]
 
-        picked = selection.select_albums(call, "test", AnswerSet(), pool)
+        picked = Selection(call=call).select_albums("test", AnswerSet(), pool)
 
         assert [rec.album for rec in picked] == ["Nevermind"]
 
@@ -122,14 +124,14 @@ class TestSelectAlbums:
         pool = [candidate(f"Filler{i}", f"Album{i}") for i in range(5)]
         pool += [candidate("Nirvana", "Nevermind")]
 
-        assert selection.select_albums(call, "test", AnswerSet(), pool)[0].rank == "primary"
+        assert Selection(call=call).select_albums("test", AnswerSet(), pool)[0].rank == "primary"
 
     def test_excludes_what_earlier_rounds_showed(self, metered):
         call, llm = metered([])
         pool = [candidate(f"Band{i}", f"Album{i}") for i in range(6)]
         shown = [AlbumRef(artist="Band0", album="Album0")]
 
-        selection.select_albums(call, "test", AnswerSet(), pool, already_shown=shown)
+        Selection(call=call).select_albums("test", AnswerSet(), pool, already_shown=shown)
 
         _, user = prompts_of(llm.generate)
         assert "Band0 — Album0" not in user
@@ -140,7 +142,7 @@ class TestSelectAlbums:
         pool = [candidate(f"Band{i}", f"Album{i}") for i in range(4)]
         shown = [AlbumRef(artist="Band0", album="Album0")]
 
-        picked = selection.select_albums(call, "test", AnswerSet(), pool, already_shown=shown)
+        picked = Selection(call=call).select_albums("test", AnswerSet(), pool, already_shown=shown)
 
         llm.generate.assert_not_called()
         assert len(picked) == 3
@@ -151,11 +153,11 @@ class TestSelectAlbums:
         pool.append(candidate("Nirvana", "Nevermind", parent_rating_key="key1"))
 
         call, llm = metered([])
-        selection.select_albums(call, "test", AnswerSet(), pool, "any", played)
+        Selection(call=call).select_albums("test", AnswerSet(), pool, "any", played)
         _, ignored = prompts_of(llm.generate)
 
         call, llm = metered([])
-        selection.select_albums(call, "test", AnswerSet(), pool, "comfort", played)
+        Selection(call=call).select_albums("test", AnswerSet(), pool, "comfort", played)
         _, honoured = prompts_of(llm.generate)
 
         assert "{well-loved}" not in ignored
@@ -165,7 +167,7 @@ class TestSelectAlbums:
         call, llm = metered([])
         pool = [candidate(f"Band{i}", f"Album{i}") for i in range(limits.small_pool - 1)]
 
-        selection.select_albums(call, "test", AnswerSet(), pool)
+        Selection(call=call).select_albums("test", AnswerSet(), pool)
 
         assert prompts.SMALL_POOL_NOTE in prompts_of(llm.generate)[1]
 
@@ -173,7 +175,7 @@ class TestSelectAlbums:
         call, llm = metered([])
         pool = [candidate(f"Band{i}", f"Album{i}") for i in range(limits.small_pool + 1)]
 
-        selection.select_albums(call, "test", AnswerSet(), pool)
+        Selection(call=call).select_albums("test", AnswerSet(), pool)
 
         assert prompts.SMALL_POOL_NOTE not in prompts_of(llm.generate)[1]
 
@@ -187,7 +189,7 @@ class TestSelectDiscoveryAlbums:
         ])
         profile = TasteProfile.of([candidate("Nirvana", "Nevermind")])
 
-        picked = selection.select_discovery_albums(call, "test", AnswerSet(), profile)
+        picked = Selection(call=call).select_discovery_albums("test", AnswerSet(), profile)
 
         assert [rec.album for rec in picked] == ["Spiderland"]
 
@@ -197,7 +199,7 @@ class TestSelectDiscoveryAlbums:
             for i in range(limits.discovery_request)
         ])
 
-        picked = selection.select_discovery_albums(call, "test", AnswerSet(), TasteProfile())
+        picked = Selection(call=call).select_discovery_albums("test", AnswerSet(), TasteProfile())
 
         assert len(picked) == limits.pick_count
 
@@ -207,7 +209,7 @@ class TestSelectDiscoveryAlbums:
             {"artist": "B", "album": "Two", "year": "sometime"},
         ])
 
-        picked = selection.select_discovery_albums(call, "test", AnswerSet(), TasteProfile())
+        picked = Selection(call=call).select_discovery_albums("test", AnswerSet(), TasteProfile())
 
         assert picked[0].year == 1991
         assert picked[1].year is None
@@ -215,7 +217,7 @@ class TestSelectDiscoveryAlbums:
     def test_discovery_picks_carry_no_library_keys(self, metered):
         call, _ = metered([{"artist": "A", "album": "One"}])
 
-        rec = selection.select_discovery_albums(call, "test", AnswerSet(), TasteProfile())[0]
+        rec = Selection(call=call).select_discovery_albums("test", AnswerSet(), TasteProfile())[0]
 
         assert rec.rating_key is None
         assert rec.track_rating_keys == []
@@ -224,8 +226,8 @@ class TestSelectDiscoveryAlbums:
         call, llm = metered([])
         profile = TasteProfile.of([candidate(f"Band{i}", f"Album{i}") for i in range(5)])
 
-        selection.select_discovery_albums(
-            call, "test", AnswerSet(), profile, max_exclusion_albums=2
+        Selection(call=call).select_discovery_albums(
+            "test", AnswerSet(), profile, max_exclusion_albums=2
         )
 
         _, user = prompts_of(llm.analyze)

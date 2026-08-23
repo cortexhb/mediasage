@@ -1,14 +1,18 @@
 """Pydantic models for MediaSage API contracts and internal data structures."""
 
-from typing import Literal
+import os
+from typing import Any, Final, Literal, Self
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
-from backend.config.models import DefaultsConfig
-from backend.library import DecadeCount, GenreCount, SyncProgress
+from backend.config.models import PROVIDER_LABELS, DefaultsConfig
+from backend.config.settings import MediasageConfig
+from backend.library import DecadeCount, GenreCount, SyncProgress, TrackRecord
+from backend.llm.models import TokenBudget
 from backend.recommender import (
     ClarifyingQuestion,
 )
+from backend.version import Version
 
 # =============================================================================
 # Core Entities
@@ -26,6 +30,48 @@ class Track(BaseModel):
     year: int | None = None
     genres: list[str] = []
     art_url: str | None = None
+
+    @classmethod
+    def of_cached(cls, cached: TrackRecord) -> Self:
+        """Build from a row of the local library cache.
+
+        The cache holds no art URL: art is proxied under the rating key, so it
+        is derived rather than stored.
+        """
+        return cls(
+            rating_key=cached.rating_key,
+            title=cached.title,
+            artist=cached.artist,
+            album=cached.album,
+            duration_ms=cached.duration_ms,
+            year=cached.year,
+            genres=cached.genres,
+            art_url=f"/api/art/{cached.rating_key}",
+        )
+
+    @classmethod
+    def of_plex(cls, plex_track: Any) -> Self:
+        """Build from a raw Plex track, as a listing hands one back.
+
+        Year is read off the album first: Plex stores it there, and a track
+        carries one only when it was tagged individually.
+        """
+        genres = [
+            genre.tag if hasattr(genre, "tag") else str(genre)
+            for genre in getattr(plex_track, "genres", None) or []
+        ]
+
+        return cls(
+            rating_key=str(plex_track.ratingKey),
+            title=plex_track.title,
+            artist=plex_track.grandparentTitle or "Unknown Artist",
+            album=plex_track.parentTitle or "Unknown Album",
+            duration_ms=plex_track.duration or 0,
+            year=getattr(plex_track, "parentYear", None) or getattr(plex_track, "year", None),
+            # Art is proxied so the Plex token never reaches the browser.
+            art_url=f"/api/art/{plex_track.ratingKey}" if plex_track.ratingKey else None,
+            genres=genres,
+        )
 
     @property
     def duration_formatted(self) -> str:
@@ -58,24 +104,6 @@ class FilterSet(BaseModel):
             raise ValueError("track_count must be 15, 25, 50, or 100")
         return v
 
-
-class Playlist(BaseModel):
-    """A generated playlist with tracks and metadata."""
-
-    name: str
-    tracks: list[Track]
-    source_prompt: str | None = None
-    seed_track_key: str | None = None
-    selected_dimensions: list[str] | None = None
-
-    @property
-    def duration_total(self) -> int:
-        """Total duration in milliseconds."""
-        return sum(t.duration_ms for t in self.tracks)
-
-    @property
-    def track_count(self) -> int:
-        return len(self.tracks)
 
 
 # =============================================================================
@@ -135,16 +163,6 @@ class FilterPreviewRequest(BaseModel):
     exclude_live: bool = True
 
 
-class FilterPreviewResponse(BaseModel):
-    """Response with filter preview stats."""
-
-    matching_tracks: int  # -1 if unknown
-    tracks_to_send: int  # How many will actually be sent to AI
-    estimated_input_tokens: int
-    estimated_output_tokens: int
-    estimated_cost: float
-
-
 class SeedTrackInput(BaseModel):
     """Seed track input for generation."""
 
@@ -153,18 +171,36 @@ class SeedTrackInput(BaseModel):
 
 
 class GenerateRequest(BaseModel):
-    """Request to generate a playlist."""
+    """Request to generate a playlist.
 
-    prompt: str | None = None
+    Absent text and answers are empty, never None: "" and [] already mean
+    absent, and a third state only buys every reader an `or ""`. The form
+    still sends null for a field left alone, so null is folded on the way in.
+    """
+
+    prompt: str = ""
     seed_track: SeedTrackInput | None = None
-    additional_notes: str | None = None
-    refinement_answers: list[str | None] | None = None
+    additional_notes: str = ""
+    # Inner None is a skipped question, not a blank answer.
+    refinement_answers: list[str | None] = []
     genres: list[str]
     decades: list[str]
     track_count: int = 25
     exclude_live: bool = True
     min_rating: int = 0  # 0 = any, 2/4/6/8/10 = minimum rating
     max_tracks_to_ai: int = 500  # 0 = no limit
+
+    @field_validator("prompt", "additional_notes", mode="before")
+    @classmethod
+    def blank_for_null(cls, v: Any) -> Any:
+        """The form sends null for a text field the user left alone."""
+        return "" if v is None else v
+
+    @field_validator("refinement_answers", mode="before")
+    @classmethod
+    def nothing_for_null(cls, v: Any) -> Any:
+        """The form sends null when it asked no refinement questions."""
+        return [] if v is None else v
 
     @model_validator(mode="after")
     def check_flow(self) -> GenerateRequest:
@@ -185,22 +221,43 @@ class GenerateResponse(BaseModel):
     track_reasons: dict[str, str] = {}
 
 
-def _validate_rating_keys(v: list[str]) -> list[str]:
-    """Validate a list of Plex rating keys (must be non-empty, all numeric)."""
-    if not v:
-        raise ValueError("At least one track is required")
-    for key in v:
-        if not key.isdigit():
-            raise ValueError(f"Invalid rating key: {key}")
-    return v
+# Plex stores no more of a playlist summary than this.
+DESCRIPTION_LIMIT: Final = 2000
 
 
-def _truncate_description(v: str) -> str:
-    """Truncate description to 2000 chars for Plex compatibility."""
-    return v[:2000] if v else v
+class TrackListRequest(BaseModel):
+    """A request naming tracks by Plex rating key.
+
+    A mixin rather than a base carrying the field: the requests below are
+    written in their own field order, and inheriting one would move it.
+    """
+
+    @field_validator("rating_keys", check_fields=False)
+    @classmethod
+    def validate_rating_keys(cls, v: list[str]) -> list[str]:
+        """Every key must be present and numeric; Plex 404s on anything else."""
+        if not v:
+            raise ValueError("At least one track is required")
+        for key in v:
+            if not key.isdigit():
+                raise ValueError(f"Invalid rating key: {key}")
+        return v
 
 
-class SavePlaylistRequest(BaseModel):
+class DescribedRequest(BaseModel):
+    """A request carrying a playlist description Plex will store.
+
+    A mixin for the same reason as `TrackListRequest`.
+    """
+
+    @field_validator("description", check_fields=False)
+    @classmethod
+    def truncate_description(cls, v: str) -> str:
+        """Trim rather than reject: a long narrative is still a good playlist."""
+        return v[:DESCRIPTION_LIMIT] if v else v
+
+
+class SavePlaylistRequest(TrackListRequest, DescribedRequest):
     """Request to save a playlist to Plex."""
 
     name: str
@@ -214,34 +271,19 @@ class SavePlaylistRequest(BaseModel):
             raise ValueError("Playlist name cannot be empty")
         return v.strip()
 
-    @field_validator("description")
-    @classmethod
-    def truncate_description(cls, v: str) -> str:
-        return _truncate_description(v)
-
-    @field_validator("rating_keys")
-    @classmethod
-    def validate_rating_keys(cls, v: list[str]) -> list[str]:
-        return _validate_rating_keys(v)
-
 
 # =============================================================================
 # Instant Queue Models (005)
 # =============================================================================
 
 
-class UpdatePlaylistRequest(BaseModel):
+class UpdatePlaylistRequest(TrackListRequest, DescribedRequest):
     """Request to update an existing playlist."""
 
     playlist_id: str
     rating_keys: list[str]
     mode: Literal["replace", "append"]
     description: str = ""
-
-    @field_validator("description")
-    @classmethod
-    def truncate_description(cls, v: str) -> str:
-        return _truncate_description(v)
 
     @field_validator("playlist_id")
     @classmethod
@@ -250,13 +292,8 @@ class UpdatePlaylistRequest(BaseModel):
             raise ValueError("playlist_id must be '__scratch__' or a numeric rating key")
         return v
 
-    @field_validator("rating_keys")
-    @classmethod
-    def validate_rating_keys(cls, v: list[str]) -> list[str]:
-        return _validate_rating_keys(v)
 
-
-class PlayQueueRequest(BaseModel):
+class PlayQueueRequest(TrackListRequest):
     """Request to create a play queue."""
 
     rating_keys: list[str]
@@ -270,23 +307,18 @@ class PlayQueueRequest(BaseModel):
             raise ValueError("client_id cannot be empty")
         return v
 
-    @field_validator("rating_keys")
-    @classmethod
-    def validate_rating_keys(cls, v: list[str]) -> list[str]:
-        return _validate_rating_keys(v)
-
 
 class ConfigResponse(BaseModel):
-    """Config without secrets for display."""
+    """The settings the UI shows: no credential, only whether one is set."""
 
     version: str
     plex_url: str
     plex_connected: bool
-    plex_token_set: bool  # True if token is configured (without revealing it)
-    music_library: str | None
+    plex_token_set: bool
+    music_library: str
     llm_provider: str
     llm_configured: bool
-    llm_api_key_set: bool  # True if API key is configured (without revealing it)
+    llm_api_key_set: bool
     model_analysis: str  # The analysis model being used
     model_generation: str  # The generation model being used
     max_tracks_to_ai: int  # Recommended max tracks for this model
@@ -303,6 +335,42 @@ class ConfigResponse(BaseModel):
     context_window: int
     is_local_provider: bool = False
     provider_from_env: bool = False  # True if LLM_PROVIDER env var is overriding UI
+
+    @classmethod
+    def of(cls, config: MediasageConfig, plex_connected: bool) -> Self:
+        """The settings the UI shows, with no secret in it.
+
+        Only whether a credential is set is reported. Connectedness is passed
+        in rather than read: this layer may not reach the Plex store.
+        """
+        budget = TokenBudget.of(config.llm, config.budget)
+
+        return cls(
+            version=Version.current(),
+            plex_url=config.plex.url,
+            plex_connected=plex_connected,
+            plex_token_set=bool(config.plex.token),
+            music_library=config.plex.music_library,
+            llm_provider=config.llm.provider,
+            llm_configured=config.llm.is_configured,
+            llm_api_key_set=bool(config.llm.api_key),
+            model_analysis=config.llm.model_analysis,
+            model_generation=config.llm.model_generation,
+            max_tracks_to_ai=budget.max_tracks,
+            max_albums_to_ai=budget.max_albums,
+            cost_generation_input=config.llm.cost_generation_input,
+            cost_generation_output=config.llm.cost_generation_output,
+            cost_analysis_input=config.llm.cost_analysis_input,
+            cost_analysis_output=config.llm.cost_analysis_output,
+            is_priced=config.llm.is_priced,
+            defaults=config.defaults,
+            endpoint_url=config.llm.local_endpoint,
+            context_window=config.llm.context_window,
+            is_local_provider=config.llm.is_local,
+            # The form disables the provider field when the environment sets it:
+            # a saved value would be overridden on the next boot.
+            provider_from_env=os.environ.get("MEDIASAGE_LLM__PROVIDER") is not None,
+        )
 
 
 class HealthResponse(BaseModel):
@@ -412,15 +480,6 @@ class RecommendGenerateRequest(BaseModel):
         return min(v, 50000)
 
 
-class AlbumPreviewResponse(BaseModel):
-    """Response from album preview endpoint."""
-
-    matching_albums: int
-    albums_to_send: int
-    estimated_input_tokens: int = 0
-    estimated_cost: float = 0.0
-
-
 # =============================================================================
 # Results Persistence Models
 # =============================================================================
@@ -449,14 +508,13 @@ class SetupStatusResponse(BaseModel):
     track_count: int = 0
     is_syncing: bool = False
     sync_progress: SyncProgress | None = None
-    setup_complete: bool
 
 
 class ValidatePlexRequest(BaseModel):
     """Request to validate Plex credentials during setup."""
 
     plex_url: str
-    plex_token: str
+    plex_token: SecretStr
     music_library: str = "Music"
 
 
@@ -473,11 +531,20 @@ class ValidateAIRequest(BaseModel):
     """Request to validate AI provider credentials during setup."""
 
     provider: str
-    api_key: str = ""
+    api_key: SecretStr = SecretStr("")
     endpoint_url: str = ""
-    # Needed to build a client at all: the probe is a real one-token completion.
+    # The probe is a real completion, so a client must be buildable.
     model: str = ""
     context_window: int = 0
+
+    @property
+    def provider_name(self) -> str:
+        """The provider as the wizard shows it, named before it is validated.
+
+        An unknown provider is echoed back rather than mapped: it is what the
+        error message has to quote.
+        """
+        return PROVIDER_LABELS.get(self.provider, self.provider)
 
 
 class ValidateAIResponse(BaseModel):
@@ -487,8 +554,3 @@ class ValidateAIResponse(BaseModel):
     error: str | None = None
     provider_name: str = ""
 
-
-class SetupCompleteResponse(BaseModel):
-    """Response from marking setup as complete."""
-
-    success: bool

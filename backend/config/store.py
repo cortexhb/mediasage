@@ -3,10 +3,15 @@
 `ConfigStore` holds the single loaded `MediasageConfig` and writes changes made
 through the UI to `config.user.yaml` so they survive a restart. Environment
 variables still win on the next load — saving never overrides them.
+
+A change is computed, written, and only then published: `candidate` builds what
+an update would produce so a caller can prove it works first, and `commit`
+keeps it. Nothing reaches memory that did not reach disk, and nothing skips
+the gap between them where the caller probes.
 """
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import yaml
 from pydantic import BaseModel, ConfigDict
@@ -20,13 +25,71 @@ class ConfigSaveError(Exception):
     """Raised when configuration cannot be saved."""
 
 
-class ConfigStore(BaseModel):
-    """Owns the loaded configuration and the file UI edits are written to."""
+class ConfigChange(BaseModel):
+    """What an update would produce, computed but not yet kept.
 
-    model_config = ConfigDict(validate_assignment=True)
+    Handed out so a caller can connect to the server or spend a completion
+    against the settings that are about to be written, rather than after.
+    """
 
-    user_config_path: Path | None = None
-    config: MediasageConfig | None = None
+    model_config = ConfigDict(frozen=True)
+
+    config: MediasageConfig
+    # The sections to merge into `config.user.yaml`; empty writes nothing.
+    sections: dict[str, Any] = {}
+
+    @classmethod
+    def of(cls, current: MediasageConfig, update: ConfigUpdate) -> Self:
+        """What `update` would turn `current` into, without keeping it.
+
+        Pure: nothing is written and nothing is published, so a caller may
+        probe the result and walk away from it.
+
+        Args:
+            current: The configuration in force now
+            update: The fields the caller wants changed
+
+        Returns:
+            The would-be configuration and the sections it writes
+        """
+        plex_changes = update.changes("plex")
+        llm_changes: dict[str, Any] = {}
+        if update.llm_provider:
+            llm_changes.update(update.provider_changes)
+        llm_changes.update(update.changes("llm"))
+
+        return cls(
+            config=current.model_copy(
+                update={
+                    "plex": PlexConfig(**(current.plex.model_dump() | plex_changes)),
+                    "llm": LLM_SECTION_ADAPTER.validate_python(
+                        current.llm.model_dump() | llm_changes
+                    ),
+                }
+            ),
+            sections={
+                section: changes
+                for section, changes in (("plex", plex_changes), ("llm", llm_changes))
+                if changes
+            },
+        )
+
+
+class ConfigStore:
+    """Owns the loaded configuration and the file UI edits are written to.
+
+    A plain class, not a model: `get` is depended on directly by the routes,
+    and a bound method of an unfrozen pydantic model is unhashable.
+    """
+
+    def __init__(self, user_config_path: Path | None = None) -> None:
+        """
+        Args:
+            user_config_path: Where UI edits are written; the default location
+                is resolved late, so a test may redirect it instead
+        """
+        self.user_config_path = user_config_path
+        self.config: MediasageConfig | None = None
 
     @property
     def path(self) -> Path:
@@ -44,68 +107,24 @@ class ConfigStore(BaseModel):
         self.config = MediasageConfig.load(config_path)
         return self.config
 
-    def apply(self, update: ConfigUpdate) -> MediasageConfig:
-        """Apply a change from the UI and persist it.
+    def candidate(self, update: ConfigUpdate) -> ConfigChange:
+        """What `update` would produce against what is loaded now."""
+        return ConfigChange.of(self.get(), update)
 
-        Args:
-            update: The fields the caller wants changed
+    def commit(self, change: ConfigChange) -> MediasageConfig:
+        """Write a change, then publish it in memory.
 
-        Returns:
-            The updated configuration
+        In that order: a failed write must not leave the process running on
+        settings that are not on disk and will not survive a restart.
+
+        Raises:
+            ConfigSaveError: If the file cannot be written; nothing is published
         """
-        current = self.get()
+        if change.sections:
+            self.save(change.sections)
 
-        plex_changes = update.changes("plex")
-        llm_changes: dict[str, Any] = {}
-        if update.llm_provider:
-            llm_changes.update(self.provider_changes(update))
-        llm_changes.update(update.changes("llm"))
-
-        self.config = current.model_copy(
-            update={
-                "plex": PlexConfig(**(current.plex.model_dump() | plex_changes)),
-                "llm": LLM_SECTION_ADAPTER.validate_python(
-                    current.llm.model_dump() | llm_changes
-                ),
-            }
-        )
-
-        sections = {
-            section: changes
-            for section, changes in (("plex", plex_changes), ("llm", llm_changes))
-            if changes
-        }
-        if sections:
-            self.save(sections)
-
+        self.config = change.config
         return self.config
-
-    @staticmethod
-    def provider_changes(update: ConfigUpdate) -> dict[str, Any]:
-        """Clear what belonged to the previous provider.
-
-        Model names, endpoints and prices do not survive a provider switch: they
-        name things the new provider does not serve. Anything the caller supplied
-        explicitly is left for `changes` to apply over the top.
-
-        `context_window` is deliberately kept: it is required, so blanking it
-        would leave the section unvalidatable until the user supplies a new one.
-        """
-        derived: dict[str, Any] = {"provider": update.llm_provider}
-
-        for field, supplied, blank in (
-            ("model_analysis", update.model_analysis, ""),
-            ("model_generation", update.model_generation, ""),
-            ("endpoint_url", update.endpoint_url, ""),
-            ("cost_analysis_input", update.cost_analysis_input, 0.0),
-            ("cost_analysis_output", update.cost_analysis_output, 0.0),
-            ("cost_generation_input", update.cost_generation_input, 0.0),
-            ("cost_generation_output", update.cost_generation_output, 0.0),
-        ):
-            if not supplied:
-                derived[field] = blank
-
-        return derived
 
     def read_user_yaml(self) -> dict[str, Any]:
         """Read the UI-saved settings file, empty when it does not exist."""

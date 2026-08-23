@@ -1,11 +1,11 @@
-"""Tests for the pipeline facade and the store that rebuilds it."""
+"""Tests for the pipeline, its stages, and the store that rebuilds it."""
 
 from unittest.mock import MagicMock
 
 from backend.config import MediasageConfig
 from backend.config.store import config_store
 from backend.llm import LLMClient
-from backend.recommender.calls import NO_SESSION, MeteredClient, as_dict, as_list
+from backend.recommender.calls import NO_SESSION, MeteredClient, Stage
 from backend.recommender.models import AnswerSet, RecommendSession
 from backend.recommender.pipeline import PipelineStore, RecommendationPipeline
 from tests.recommender.conftest import scripted_llm
@@ -54,22 +54,22 @@ class TestMeteredClient:
 
 class TestReplyGuards:
     def test_a_list_passes_through(self):
-        assert as_list([1, 2]) == [1, 2]
+        assert Stage.as_list([1, 2]) == [1, 2]
 
     def test_a_wrapped_array_is_unwrapped(self):
         """Models asked for a JSON array sometimes wrap it in an object."""
-        assert as_list({"albums": [1, 2]}) == [1, 2]
+        assert Stage.as_list({"albums": [1, 2]}) == [1, 2]
 
     def test_a_lone_object_becomes_one_item(self):
-        assert as_list({"artist": "A"}) == [{"artist": "A"}]
+        assert Stage.as_list({"artist": "A"}) == [{"artist": "A"}]
 
     def test_anything_else_is_empty(self):
-        assert as_list("prose") == []
-        assert as_list(None) == []
+        assert Stage.as_list("prose") == []
+        assert Stage.as_list(None) == []
 
     def test_as_dict_rejects_a_non_object(self):
-        assert as_dict(["a"]) == {}
-        assert as_dict({"a": 1}) == {"a": 1}
+        assert Stage.as_dict(["a"]) == {}
+        assert Stage.as_dict({"a": 1}) == {"a": 1}
 
 
 class TestPipeline:
@@ -84,60 +84,73 @@ class TestPipeline:
         pipeline = RecommendationPipeline(client=scripted_llm(["era", "tempo"]))
         session_id = pipeline.sessions.create(RecommendSession())
 
-        pipeline.gap_analysis(session_id, "something nostalgic")
+        pipeline.stages(session_id).selection.gap_analysis("something nostalgic")
 
         assert pipeline.sessions.spend(session_id)[0] == 150
 
-    def test_filter_suggestion_is_not_attributed(self, sessions):
-        """It runs ahead of the session, so its cost is logged but not charged."""
+    def test_a_stage_without_a_session_is_not_attributed(self, sessions):
+        """Filter suggestion runs ahead of the session it would be charged to."""
         pipeline = RecommendationPipeline(client=scripted_llm({"genres": ["Rock"]}))
         session_id = pipeline.sessions.create(RecommendSession())
 
-        pipeline.suggest_filters("test", ["Rock"], ["1990s"])
+        pipeline.stages().selection.suggest_filters("test", ["Rock"], ["1990s"])
 
         assert pipeline.sessions.spend(session_id) == (0, 0.0)
 
-    def test_write_pitches_reaches_the_stage(self):
+    def test_all_three_stages_spend_through_the_one_client(self):
+        """Two clients would charge the same session twice over."""
+        pipeline = RecommendationPipeline(client=scripted_llm([]))
+        stages = pipeline.stages("session-1")
+
+        assert stages.selection.call is stages.facts.call is stages.pitches.call
+
+    def test_the_pitch_stage_reaches_the_client(self):
         pipeline = RecommendationPipeline(client=scripted_llm([]))
         session_id = pipeline.sessions.create(RecommendSession())
 
-        recs = pipeline.write_pitches(session_id, [], "test", AnswerSet())
+        recs = pipeline.stages(session_id).pitches.write([], "test", AnswerSet())
 
         assert recs == []
 
 
 class TestPipelineStore:
     def test_no_client_means_no_pipeline(self):
-        assert PipelineStore().get(None) is None
+        assert PipelineStore().for_client(None) is None
 
     def test_builds_once_and_reuses(self):
         store = PipelineStore()
         client = MagicMock(spec=LLMClient)
 
-        assert store.get(client) is store.get(client)
+        assert store.for_client(client) is store.for_client(client)
 
     def test_a_new_client_rebuilds(self):
         """A settings change replaces the client; the old one must stop being spent."""
         store = PipelineStore()
-        first = store.get(MagicMock(spec=LLMClient))
+        first = store.for_client(MagicMock(spec=LLMClient))
 
-        second = store.get(MagicMock(spec=LLMClient))
+        second = store.for_client(MagicMock(spec=LLMClient))
 
+        assert first is not None
+        assert second is not None
         assert second is not first
         assert second.client is not first.client
 
     def test_a_rebuild_carries_live_sessions_over(self):
         """A user mid-flow must not lose their questions to a settings save."""
         store = PipelineStore()
-        first = store.get(MagicMock(spec=LLMClient))
+        first = store.for_client(MagicMock(spec=LLMClient))
+        assert first is not None
         session_id = first.sessions.create(RecommendSession(prompt="mid-flow"))
 
-        second = store.get(MagicMock(spec=LLMClient))
+        second = store.for_client(MagicMock(spec=LLMClient))
 
-        assert second.sessions.get(session_id).prompt == "mid-flow"
+        assert second is not None
+        carried = second.sessions.get(session_id)
+        assert carried is not None
+        assert carried.prompt == "mid-flow"
 
     def test_dropping_the_client_reports_unavailable(self):
         store = PipelineStore()
-        store.get(MagicMock(spec=LLMClient))
+        store.for_client(MagicMock(spec=LLMClient))
 
-        assert store.get(None) is None
+        assert store.for_client(None) is None

@@ -5,7 +5,7 @@ Owns the single SQLAlchemy engine and hands out sessions. Entry points are
 
 The URL decides the backend. SQLite is the default and the only one shipped, but
 nothing above this module names a dialect: pragmas are applied on connect only
-for SQLite, and `upsert` in `backend.db.statements` dispatches on the dialect.
+for SQLite, and `Upsert` in `backend.db.statements` dispatches on the dialect.
 Moving to Postgres is a URL change plus an Alembic run.
 """
 
@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import Engine, event
+from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.engine import Connection
-from sqlmodel import Session, create_engine
+from sqlalchemy.orm import Session
 
 # Where a file-backed SQLite database lives when no URL is configured.
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
@@ -28,17 +28,14 @@ SQLITE_BUSY_TIMEOUT_MS = 5000
 SQLITE_CONNECT_TIMEOUT = 30.0
 
 
-def sqlite_url(path: Path) -> str:
-    """The SQLAlchemy URL for a file-backed SQLite database."""
-    return f"sqlite:///{path}"
-
-
 @event.listens_for(Engine, "connect")
 def _apply_sqlite_pragmas(dbapi_connection: Any, record: Any) -> None:
     """Apply the pragmas SQLite needs, and only when the backend is SQLite.
 
     WAL lets reads proceed during a sync write. Postgres needs none of this, so
     the listener checks the driver rather than assuming a dialect.
+
+    Module-level because SQLAlchemy registers listeners on a plain function.
     """
     if type(dbapi_connection).__module__.split(".")[0] != "sqlite3":
         return
@@ -64,6 +61,31 @@ class Database(BaseModel):
     url: str | None = None
     _engine: Engine | None = None
 
+    @staticmethod
+    def sqlite_url(path: Path) -> str:
+        """The SQLAlchemy URL for a file-backed SQLite database."""
+        return f"sqlite:///{path}"
+
+    @property
+    def data_dir(self) -> Path:
+        """Where a file-backed database and the saved settings live."""
+        return DATA_DIR
+
+    def data_dir_writable(self) -> bool:
+        """Whether the data directory can actually be written to.
+
+        Written to rather than checked with `os.access`: a Docker bind mount
+        can report permission the kernel then refuses.
+        """
+        try:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            probe = self.data_dir / ".write_test"
+            probe.write_text("test")
+            probe.unlink()
+        except OSError:
+            return False
+        return True
+
     def configure(self, url: str) -> None:
         """Point at a different database, disposing of the current engine.
 
@@ -77,7 +99,7 @@ class Database(BaseModel):
         if self.url:
             return self.url
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        return sqlite_url(DB_PATH)
+        return self.sqlite_url(DB_PATH)
 
     def engine(self) -> Engine:
         """The engine, created on first use."""

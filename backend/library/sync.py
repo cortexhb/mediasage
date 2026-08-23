@@ -15,21 +15,19 @@ Entry point: `library_sync.run`. Blocking; call it through `asyncio.to_thread`.
 from __future__ import annotations
 
 import logging
-import secrets
 import threading
 import time
+import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
-from sqlalchemy import delete, func, insert
-from sqlmodel import Session, select
+from sqlalchemy import delete, func, insert, select
 
-from backend.config import LibraryConfig
 from backend.config.store import config_store
-from backend.db import db, upsert
+from backend.db import Upsert, db
 from backend.library.live import LiveVersionRule
 from backend.library.models import (
     AlbumMetadata,
@@ -40,167 +38,20 @@ from backend.library.models import (
     SyncStatus,
     TrackRow,
 )
-from backend.library.tables import SYNC_STATE_ID, SyncState, Track, TrackGenre, genre_rows
+from backend.library.tables import SyncState, Track, TrackGenre
 
 logger = logging.getLogger(__name__)
 
-# Bytes of randomness in a sync token; a collision would spare stale rows.
-TOKEN_BYTES = 8
-
-
-def library_config() -> LibraryConfig:
-    """The tunables this package reads, loaded once by the config store."""
-    return config_store.get().library
-
-
-def load_state(session: Session) -> SyncState:
-    """The single `sync_state` row, created on first use."""
-    state = session.get(SyncState, SYNC_STATE_ID)
-    if state is None:
-        state = SyncState(id=SYNC_STATE_ID)
-        session.add(state)
-        session.flush()
-    return state
-
-
-def sync_status() -> SyncStatus:
-    """What the cache knows about the last sync, plus any running one."""
-    with db.session() as session:
-        state = load_state(session)
-        stored = SyncStatus(
-            track_count=state.track_count,
-            synced_at=state.last_sync_at,
-            plex_server_id=state.plex_server_id,
-            sync_duration_ms=state.sync_duration_ms,
-        )
-
-    run = library_sync.snapshot()
-    stored.is_syncing = run.is_syncing
-    stored.error = run.error
-    stored.sync_progress = run.progress if run.is_syncing else None
-    return stored
-
-
-def has_tracks() -> bool:
-    """Whether a completed sync left tracks behind.
-
-    Reads the recorded count rather than the table, so a half-finished first
-    sync does not make callers treat the cache as usable.
-    """
-    with db.session() as session:
-        return load_state(session).track_count > 0
-
-
-def is_stale(max_age_hours: int | None = None) -> bool:
-    """Whether the cache is older than `max_age_hours`, or was never synced.
-
-    Args:
-        max_age_hours: Age limit; the configured `stale_after_hours` by default
-    """
-    limit = library_config().stale_after_hours if max_age_hours is None else max_age_hours
-    synced_at = sync_status().synced_at
-    if not synced_at:
-        return True
-
-    try:
-        stamp = datetime.fromisoformat(synced_at.replace("Z", "+00:00"))
-    except (ValueError, TypeError):
-        return True
-    return (datetime.now(UTC) - stamp).total_seconds() / 3600 > limit
-
-
-def server_changed(current_server_id: str) -> bool:
-    """Whether the cache was built against a different Plex server."""
-    cached = sync_status().plex_server_id
-    if not cached:
-        return False
-    return cached != current_server_id
-
-
-def clear_cache() -> None:
-    """Drop every cached track and forget the last sync.
-
-    Genre rows go with their tracks by cascade, so only `tracks` is deleted.
-    """
-    with db.session() as session:
-        session.execute(delete(Track))
-        state = load_state(session)
-        state.last_sync_at = None
-        state.track_count = 0
-        state.sync_duration_ms = None
-        state.sync_token = None
-        state.sync_cursor = 0
-        session.add(state)
-
-    logger.info("Cache cleared")
-
-
-def row_from_plex(
-    track: Any,
-    album_metadata: dict[str, AlbumMetadata],
-    token: str,
-    live_rule: LiveVersionRule,
-) -> TrackRow:
-    """Read one plexapi track object into a row ready for writing.
-
-    Genre and year come from the album, not the track: Plex stores them there
-    and a per-track lookup would be a request each.
-    """
-    title = track.title
-    album = getattr(track, "parentTitle", "") or ""
-    parent_key = str(getattr(track, "parentRatingKey", "") or "")
-    album_data = album_metadata.get(parent_key) or AlbumMetadata()
-    last_viewed = getattr(track, "lastViewedAt", None)
-
-    return TrackRow(
-        rating_key=str(track.ratingKey),
-        title=title,
-        artist=getattr(track, "grandparentTitle", "") or "Unknown Artist",
-        album=album,
-        duration_ms=track.duration or 0,
-        year=album_data.year,
-        genres=album_data.genres,
-        user_rating=getattr(track, "userRating", None),
-        is_live=live_rule.matches(title, album),
-        parent_rating_key=parent_key,
-        view_count=getattr(track, "viewCount", 0) or 0,
-        last_viewed_at=last_viewed.isoformat() if last_viewed else None,
-        sync_token=token,
-    )
-
-
-def write_batch(rows: list[TrackRow], token: str, cursor: int) -> None:
-    """Write one batch of tracks, their genres, and the resume checkpoint.
-
-    All three land in a single transaction, so a checkpoint can never claim
-    progress the rows did not make.
-    """
-    if not rows:
-        return
-
-    keys = [row.rating_key for row in rows]
-    values = [row.columns() for row in rows]
-    genres = [entry for row in rows for entry in genre_rows(row.rating_key, row.genres)]
-
-    with db.session() as session:
-        dialect = session.get_bind().dialect
-        session.execute(delete(TrackGenre).where(TrackGenre.rating_key.in_(keys)))
-        session.execute(upsert(dialect, Track.__table__, values, ["rating_key"]))
-        if genres:
-            session.execute(insert(TrackGenre), genres)
-
-        state = load_state(session)
-        state.sync_token = token
-        state.sync_cursor = cursor
-        session.add(state)
-
-
 class LibrarySync(BaseModel):
-    """The sync running in this process, and the progress it reports.
+    """The cache, the sync that fills it, and the progress that sync reports.
 
     One sync at a time: `run` refuses to start a second. The lock guards the
     in-memory state, which the event loop polls while the sync blocks a worker
     thread.
+
+    The questions about the cache -- how old it is, whether it holds anything,
+    which server it was built against -- are answered here rather than beside
+    it, because each of them is read off the same `sync_state` row this writes.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -212,6 +63,73 @@ class LibrarySync(BaseModel):
         """A consistent copy of the running sync's state."""
         with self._lock:
             return self._run.model_copy(deep=True)
+
+    # -- what the cache knows about itself -------------------------------
+
+    def status(self) -> SyncStatus:
+        """What the cache knows about the last sync, plus any running one."""
+        with db.session() as session:
+            state = SyncState.load(session)
+            stored = SyncStatus(
+                track_count=state.track_count,
+                synced_at=state.last_sync_at,
+                plex_server_id=state.plex_server_id,
+                sync_duration_ms=state.sync_duration_ms,
+            )
+
+        run = self.snapshot()
+        stored.is_syncing = run.is_syncing
+        stored.error = run.error
+        stored.sync_progress = run.progress if run.is_syncing else None
+        return stored
+
+    def has_tracks(self) -> bool:
+        """Whether a completed sync left tracks behind.
+
+        Reads the recorded count rather than the table, so a half-finished
+        first sync does not make callers treat the cache as usable.
+        """
+        with db.session() as session:
+            return SyncState.load(session).track_count > 0
+
+    def is_stale(self) -> bool:
+        """Whether the cache is older than the configured age, or never synced."""
+        limit = config_store.get().library.stale_after_hours
+        synced_at = self.status().synced_at
+        if not synced_at:
+            return True
+
+        try:
+            stamp = datetime.fromisoformat(synced_at.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return True
+        return (datetime.now(UTC) - stamp).total_seconds() / 3600 > limit
+
+    def server_changed(self, current_server_id: str) -> bool:
+        """Whether the cache was built against a different Plex server."""
+        cached = self.status().plex_server_id
+        if not cached:
+            return False
+        return cached != current_server_id
+
+    def clear_cache(self) -> None:
+        """Drop every cached track and forget the last sync.
+
+        Genre rows go with their tracks by cascade, so only `tracks` is deleted.
+        """
+        with db.session() as session:
+            session.execute(delete(Track))
+            state = SyncState.load(session)
+            state.last_sync_at = None
+            state.track_count = 0
+            state.sync_duration_ms = None
+            state.sync_token = None
+            state.sync_cursor = 0
+            session.add(state)
+
+        logger.info("Cache cleared")
+
+    # -- running one -----------------------------------------------------
 
     def _claim(self) -> bool:
         """Mark a sync as started, unless one already is."""
@@ -280,20 +198,20 @@ class LibrarySync(BaseModel):
         started: float,
     ) -> SyncResult:
         """The sync itself, with failures left to `run` to classify."""
-        server_id = plex_client.machine_identifier()
+        server_id = plex_client.connection.machine_identifier()
         if not server_id:
             raise ValueError("Could not get Plex server identifier")
 
-        if server_changed(server_id):
+        if self.server_changed(server_id):
             logger.info("Plex server changed, clearing cache")
-            clear_cache()
+            self.clear_cache()
 
         token, cursor = self._checkpoint()
-        total = plex_client.total_tracks()
+        total = plex_client.library.total_tracks()
         self._advance(total=total)
 
         logger.info("Fetching album metadata from Plex...")
-        album_metadata = plex_client.album_metadata()
+        album_metadata = plex_client.library.album_metadata()
         logger.info("Got metadata for %d albums", len(album_metadata))
         self._advance(phase="processing")
 
@@ -303,12 +221,12 @@ class LibrarySync(BaseModel):
     def _checkpoint(self) -> tuple[str, int]:
         """Resume an interrupted sync, or start a new one."""
         with db.session() as session:
-            state = load_state(session)
+            state = SyncState.load(session)
             if state.sync_token and state.sync_cursor:
                 logger.info("Resuming interrupted sync at offset %d", state.sync_cursor)
                 return state.sync_token, state.sync_cursor
 
-            token = secrets.token_hex(TOKEN_BYTES)
+            token = str(uuid.uuid4())
             state.sync_token = token
             state.sync_cursor = 0
             session.add(state)
@@ -324,19 +242,19 @@ class LibrarySync(BaseModel):
         on_progress: Callable[[int, int], None] | None,
     ) -> int:
         """Upsert every remaining track, batch by batch."""
-        config = library_config()
+        config = config_store.get().library
         live_rule = LiveVersionRule.of(config)
         synced = cursor
         batch: list[TrackRow] = []
 
-        for page in plex_client.iter_raw_tracks(start=cursor):
+        for page in plex_client.library.iter_raw_tracks(start=cursor):
             for track in page:
-                batch.append(row_from_plex(track, album_metadata, token, live_rule))
+                batch.append(TrackRow.of_plex(track, album_metadata, token, live_rule))
                 if len(batch) < config.sync_batch_size:
                     continue
 
                 synced += len(batch)
-                write_batch(batch, token, synced)
+                self._write_batch(batch, token, synced)
                 batch = []
 
                 self._advance(current=synced)
@@ -346,24 +264,53 @@ class LibrarySync(BaseModel):
 
         if batch:
             synced += len(batch)
-            write_batch(batch, token, synced)
+            self._write_batch(batch, token, synced)
             self._advance(current=synced)
 
         return synced
+
+    def _write_batch(self, rows: list[TrackRow], token: str, cursor: int) -> None:
+        """Write one batch of tracks, their genres, and the resume checkpoint.
+
+        All three land in a single transaction, so a checkpoint can never claim
+        progress the rows did not make.
+        """
+        if not rows:
+            return
+
+        keys = [row.rating_key for row in rows]
+        values = [row.columns() for row in rows]
+        genres = [
+            entry for row in rows for entry in TrackGenre.rows_for(row.rating_key, row.genres)
+        ]
+
+        with db.session() as session:
+            dialect = session.get_bind().dialect
+            session.execute(delete(TrackGenre).where(TrackGenre.rating_key.in_(keys)))
+            write = Upsert(table=Track.__table__, rows=values, keys=["rating_key"])
+            session.execute(write.statement(dialect))
+            if genres:
+                session.execute(insert(TrackGenre), genres)
+
+            state = SyncState.load(session)
+            state.sync_token = token
+            state.sync_cursor = cursor
+            session.add(state)
 
     def _finish(self, server_id: str, token: str, synced: int, started: float) -> SyncResult:
         """Sweep rows this sync did not write, then record it as complete."""
         duration_ms = int((time.time() - started) * 1000)
 
         with db.session() as session:
-            removed = session.execute(
+            # Through the connection: only a cursor result is typed to count rows.
+            removed = session.connection().execute(
                 delete(Track).where(Track.sync_token.is_distinct_from(token))
             ).rowcount
             if removed:
                 logger.info("Removed %d tracks no longer in the Plex library", removed)
 
-            final_count = session.exec(select(func.count()).select_from(Track)).one()
-            state = load_state(session)
+            final_count = session.execute(select(func.count()).select_from(Track)).scalar_one()
+            state = SyncState.load(session)
             state.plex_server_id = server_id
             state.last_sync_at = datetime.now(UTC).isoformat()
             state.track_count = final_count

@@ -3,7 +3,7 @@
 import pytest
 from sqlalchemy.dialects import postgresql, sqlite
 
-from backend.library.filters import DecadeRange, TrackFilter, has_album_key
+from backend.library.filters import DecadeRange, TrackFilter
 
 
 class TestDecadeRange:
@@ -11,7 +11,9 @@ class TestDecadeRange:
 
     @pytest.mark.parametrize("label", ["1990s", "1990", " 1990s ", "1990S"])
     def test_a_decade_label_parses(self, label):
-        assert DecadeRange.parse(label).start_year == 1990
+        parsed = DecadeRange.parse(label)
+        assert parsed is not None
+        assert parsed.start_year == 1990
 
     @pytest.mark.parametrize("label", ["nineties", "", "199Xs"])
     def test_an_unparseable_label_is_ignored_not_fatal(self, label):
@@ -35,6 +37,28 @@ class TestValidation:
 
     def test_genres_are_matched_lowercased(self):
         assert TrackFilter(genres=["ROCK"]).genre_keys == ["rock"]
+
+
+class TestOfQuery:
+    """Genres and decades reach the API as one comma-separated string."""
+
+    def test_a_comma_separated_string_becomes_values(self):
+        assert TrackFilter.of_query("Rock,Jazz", "1990s,2000s").genres == ["Rock", "Jazz"]
+
+    def test_the_decades_half_is_read_too(self):
+        assert TrackFilter.of_query(None, "1990s").decades == ["1990s"]
+
+    @pytest.mark.parametrize("value", [None, "", " ", ",", ", ,"])
+    def test_nothing_selected_selects_nothing(self, value):
+        parsed = TrackFilter.of_query(value, value)
+        assert (parsed.genres, parsed.decades) == ([], [])
+
+    def test_surrounding_whitespace_is_trimmed(self):
+        assert TrackFilter.of_query(" Rock , Jazz ", None).genres == ["Rock", "Jazz"]
+
+    def test_the_other_fields_keep_their_defaults(self):
+        parsed = TrackFilter.of_query("Rock", None)
+        assert (parsed.min_rating, parsed.exclude_live) == (0, True)
 
 
 class TestClauses:
@@ -88,9 +112,7 @@ class TestAlbumKeys:
         assert TrackFilter(decades=["1990s"]).album_key_clause() is None
 
     def test_the_clause_selects_qualifying_album_keys(self):
-        rendered = str(TrackFilter(genres=["Rock"]).album_key_clause().compile(dialect=sqlite.dialect()))
+        clause = TrackFilter(genres=["Rock"]).album_key_clause()
+        assert clause is not None
+        rendered = str(clause.compile(dialect=sqlite.dialect()))
         assert "tracks.parent_rating_key IN" in rendered
-
-    def test_tracks_without_an_album_are_excluded(self):
-        rendered = str(has_album_key().compile(dialect=sqlite.dialect()))
-        assert "IS NOT NULL" in rendered

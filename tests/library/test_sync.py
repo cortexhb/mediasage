@@ -3,33 +3,25 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlmodel import select
+from sqlalchemy import select
 
 from backend.db import db
-from backend.library import (
-    clear_cache,
-    has_tracks,
-    is_stale,
-    library_sync,
-    server_changed,
-    sync_status,
-)
+from backend.library import library_sync
 from backend.library.models import AlbumMetadata
-from backend.library.sync import load_state
-from backend.library.tables import Track, TrackGenre
+from backend.library.tables import SyncState, Track, TrackGenre
 
 from .conftest import FakePlexClient, plex_track
 
 
 def cached_tracks() -> dict[str, Track]:
     with db.session() as session:
-        return {track.rating_key: track for track in session.exec(select(Track)).all()}
+        return {track.rating_key: track for track in session.scalars(select(Track)).all()}
 
 
 def cached_genres() -> list[tuple[str, str]]:
     with db.session() as session:
         return sorted(
-            (row.rating_key, row.genre_lower) for row in session.exec(select(TrackGenre)).all()
+            (row.rating_key, row.genre_lower) for row in session.scalars(select(TrackGenre)).all()
         )
 
 
@@ -74,14 +66,14 @@ class TestSuccessfulSync:
 
     def test_sync_state_records_the_run(self, temp_db, plex):
         library_sync.run(plex)
-        state = sync_status()
+        state = library_sync.status()
         assert (state.track_count, state.plex_server_id) == (3, "test-server")
         assert state.synced_at is not None
 
     def test_the_checkpoint_is_cleared_on_success(self, temp_db, plex):
         library_sync.run(plex)
         with db.session() as session:
-            state = load_state(session)
+            state = SyncState.load(session)
             assert (state.sync_token, state.sync_cursor) == (None, 0)
 
 
@@ -153,6 +145,7 @@ class TestFailure:
         client.server_id = None
         result = library_sync.run(client)
         assert result.success is False
+        assert result.error is not None
         assert "server identifier" in result.error.lower()
 
     def test_a_failure_is_marked_resumable(self, temp_db, library_settings):
@@ -171,8 +164,8 @@ class TestFailure:
                 raise ConnectionError("Plex unreachable")
 
         library_sync.run(Failing())
-        assert has_tracks() is True
-        assert sync_status().track_count == 3
+        assert library_sync.has_tracks() is True
+        assert library_sync.status().track_count == 3
 
     def test_the_error_is_visible_then_cleared_by_a_good_run(self, temp_db, plex):
         class Failing(FakePlexClient):
@@ -180,10 +173,10 @@ class TestFailure:
                 raise ConnectionError("Plex unreachable")
 
         library_sync.run(Failing())
-        assert sync_status().error == "Plex unreachable"
+        assert library_sync.status().error == "Plex unreachable"
 
         library_sync.run(plex)
-        assert sync_status().error is None
+        assert library_sync.status().error is None
 
 
 class TestResume:
@@ -204,14 +197,14 @@ class TestResume:
     def test_the_checkpoint_records_what_was_written(self, temp_db, dying_client):
         library_sync.run(dying_client)
         with db.session() as session:
-            state = load_state(session)
+            state = SyncState.load(session)
         assert state.sync_token is not None
         assert state.sync_cursor == 2
 
     def test_the_checkpoint_never_claims_unwritten_rows(self, temp_db, dying_client):
         library_sync.run(dying_client)
         with db.session() as session:
-            cursor = load_state(session).sync_cursor
+            cursor = SyncState.load(session).sync_cursor
         assert len(cached_tracks()) == cursor
 
     def test_the_next_run_starts_from_the_checkpoint(self, temp_db, dying_client):
@@ -237,6 +230,7 @@ class TestConcurrency:
         library_sync._run.is_syncing = True
         result = library_sync.run(plex)
         assert result.success is False
+        assert result.error is not None
         assert "already in progress" in result.error
 
     def test_the_claim_is_released_after_a_failure(self, temp_db, library_settings):
@@ -272,15 +266,15 @@ class TestServerChange:
     """A different Plex server means the cache describes the wrong library."""
 
     def test_no_change_before_the_first_sync(self, temp_db):
-        assert server_changed("anything") is False
+        assert library_sync.server_changed("anything") is False
 
     def test_the_same_server_is_not_a_change(self, temp_db, plex):
         library_sync.run(plex)
-        assert server_changed("test-server") is False
+        assert library_sync.server_changed("test-server") is False
 
     def test_a_different_server_is(self, temp_db, plex):
         library_sync.run(plex)
-        assert server_changed("other") is True
+        assert library_sync.server_changed("other") is True
 
     def test_syncing_a_new_server_clears_the_old_cache(self, temp_db, plex):
         library_sync.run(plex)
@@ -296,21 +290,21 @@ class TestCacheState:
     """What the rest of the app asks about the cache."""
 
     def test_an_empty_cache_has_no_tracks(self, temp_db):
-        assert has_tracks() is False
+        assert library_sync.has_tracks() is False
 
     def test_a_synced_cache_has_tracks(self, temp_db, plex):
         library_sync.run(plex)
-        assert has_tracks() is True
+        assert library_sync.has_tracks() is True
 
     def test_clearing_removes_tracks_and_their_genres(self, temp_db, plex):
         library_sync.run(plex)
-        clear_cache()
+        library_sync.clear_cache()
         assert (cached_tracks(), cached_genres()) == ({}, [])
 
     def test_clearing_forgets_the_last_sync(self, temp_db, plex):
         library_sync.run(plex)
-        clear_cache()
-        state = sync_status()
+        library_sync.clear_cache()
+        state = library_sync.status()
         assert (state.track_count, state.synced_at) == (0, None)
 
 
@@ -318,35 +312,35 @@ class TestStaleness:
     """Age is measured against the recorded sync time."""
 
     def test_a_cache_that_never_synced_is_stale(self, temp_db, library_settings):
-        assert is_stale() is True
+        assert library_sync.is_stale() is True
 
     def test_a_fresh_cache_is_not(self, temp_db, plex):
         library_sync.run(plex)
-        assert is_stale() is False
+        assert library_sync.is_stale() is False
 
     def test_an_old_cache_is(self, temp_db, plex):
         library_sync.run(plex)
         with db.session() as session:
-            state = load_state(session)
+            state = SyncState.load(session)
             state.last_sync_at = (datetime.now(UTC) - timedelta(hours=48)).isoformat()
             session.add(state)
-        assert is_stale() is True
+        assert library_sync.is_stale() is True
 
     def test_the_age_limit_is_configurable(self, temp_db, plex, library_settings):
         library_sync.run(plex)
         with db.session() as session:
-            state = load_state(session)
+            state = SyncState.load(session)
             state.last_sync_at = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
             session.add(state)
 
-        assert is_stale() is False
+        assert library_sync.is_stale() is False
         library_settings(stale_after_hours=1)
-        assert is_stale() is True
+        assert library_sync.is_stale() is True
 
     def test_an_unparseable_timestamp_reads_as_stale(self, temp_db, library_settings, plex):
         library_sync.run(plex)
         with db.session() as session:
-            state = load_state(session)
+            state = SyncState.load(session)
             state.last_sync_at = "not a date"
             session.add(state)
-        assert is_stale() is True
+        assert library_sync.is_stale() is True

@@ -8,7 +8,8 @@ models that validate HTTP traffic.
 
 from __future__ import annotations
 
-from typing import Any, Literal, Self
+import re
+from typing import Any, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -17,6 +18,17 @@ from backend.library import AlbumCandidate
 # Joins artist and album into one lookup key. Chosen because no title contains
 # it; a single separator would collide with names like "Earth, Wind & Fire".
 KEY_SEPARATOR = "|||"
+
+# Edition markers a library carries in a title and MusicBrainz does not.
+# End only: "Deluxe" inside a real title is part of the title.
+EDITION_SUFFIX: Final = re.compile(
+    r"\s*\("
+    r"(?:Explicit|Clean|Deluxe|Special|Expanded|Anniversary|Limited|"
+    r"Bonus Track|Collector(?:'s)?|International|Standard|Super Deluxe|"
+    r"Premium|Platinum|Ultimate|Complete|Original|Extended)"
+    r"[^)]*\)\s*$",
+    re.IGNORECASE,
+)
 
 # Which pick a recommendation is: one primary, the rest secondary.
 Rank = Literal["primary", "secondary"]
@@ -47,6 +59,18 @@ class AlbumRef(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.artist} — {self.album}"
+
+    def without_edition(self) -> Self | None:
+        """The same album with its edition suffix dropped, or None if it had none.
+
+        A library files "Nevermind (Deluxe Edition)"; MusicBrainz files
+        "Nevermind". Only the end is stripped, so a title that really is called
+        "Deluxe Trouble" keeps its name.
+        """
+        stripped = EDITION_SUFFIX.sub("", self.album).strip()
+        if not stripped or stripped == self.album:
+            return None
+        return self.model_copy(update={"album": stripped})
 
     @classmethod
     def parse(cls, key: str) -> Self | None:
@@ -307,13 +331,18 @@ class TasteProfile(BaseModel):
         return cls(
             genre_distribution=genres,
             decade_distribution=decades,
-            top_artists=_ranked(artists)[:top_artists],
+            top_artists=cls._ranked(artists)[:top_artists],
             total_albums=len(candidates),
             owned=[
                 AlbumRef(artist=candidate.album_artist, album=candidate.album)
                 for candidate in candidates
             ],
         )
+
+    @staticmethod
+    def _ranked(counts: dict[str, int]) -> list[str]:
+        """Keys ordered by count, highest first."""
+        return sorted(counts, key=lambda name: counts[name], reverse=True)
 
     def owned_keys(self) -> set[str]:
         """Every owned album's key, for filtering what the model returns."""
@@ -322,16 +351,11 @@ class TasteProfile(BaseModel):
     def summary(self, genres: int = 10, decades: int = 5, artists: int = 10) -> str:
         """The profile as the model reads it."""
         return (
-            f"Top genres: {', '.join(_ranked(self.genre_distribution)[:genres])}\n"
-            f"Top decades: {', '.join(_ranked(self.decade_distribution)[:decades])}\n"
+            f"Top genres: {', '.join(self._ranked(self.genre_distribution)[:genres])}\n"
+            f"Top decades: {', '.join(self._ranked(self.decade_distribution)[:decades])}\n"
             f"Top artists: {', '.join(self.top_artists[:artists])}\n"
             f"Library size: {self.total_albums} albums"
         )
-
-
-def _ranked(counts: dict[str, int]) -> list[str]:
-    """Keys ordered by count, highest first."""
-    return sorted(counts, key=lambda name: counts[name], reverse=True)
 
 
 class RecommendSession(BaseModel):
@@ -348,7 +372,6 @@ class RecommendSession(BaseModel):
     questions: list[ClarifyingQuestion] = []
     answers: AnswerSet = AnswerSet()
     album_candidates: list[AlbumCandidate] = []
-    taste_profile: TasteProfile | None = None
     familiarity_pref: FamiliarityPreference = "any"
     previously_recommended: list[AlbumRef] = Field(default_factory=list)
     total_tokens: int = 0

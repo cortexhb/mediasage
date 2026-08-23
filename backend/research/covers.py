@@ -28,25 +28,27 @@ class CoverArt:
         self.config = config
 
     async def front(self, release_mbid: str, release_group_mbid: str = "") -> str | None:
-        """The cover art URL for an album, or None when there is none."""
-        found = await self._front_of("release", release_mbid)
-        if found:
-            return found
-        return await self._front_of("release-group", release_group_mbid)
+        """The cover art URL for an album, or None when neither endpoint has one.
 
-    async def _front_of(self, kind: str, mbid: str) -> str | None:
-        """One archive endpoint, followed to the image it redirects to."""
-        if not mbid:
-            return None
+        Each endpoint is followed to the image it redirects to. An mbid we do
+        not have is skipped rather than requested.
+        """
+        endpoints = (("release", release_mbid), ("release-group", release_group_mbid))
+        for kind, mbid in endpoints:
+            if not mbid:
+                continue
 
-        client = await self.http.client()
-        try:
-            response = await client.get(
-                f"{self.config.cover_art_url}/{kind}/{mbid}/front", follow_redirects=True
-            )
-        except httpx.HTTPError as err:
-            logger.warning("Cover Art Archive %s %s failed: %s", kind, mbid, err)
-            return None
+            client = await self.http.client()
+            try:
+                response = await client.get(
+                    f"{self.config.cover_art_url}/{kind}/{mbid}/front", follow_redirects=True
+                )
+            except httpx.HTTPError as err:
+                logger.warning("Cover Art Archive %s %s failed: %s", kind, mbid, err)
+                continue
 
-        # 404 is the ordinary answer for an album nobody has uploaded art for.
-        return str(response.url) if response.status_code == 200 else None
+            # 404 is the ordinary answer for an album nobody uploaded art for.
+            if response.status_code == 200:
+                return str(response.url)
+
+        return None

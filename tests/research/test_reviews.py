@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, patch
 import httpx
 
 from backend.config import ResearchConfig
-from backend.research import reviews as reviews_module
-from backend.research.reviews import Reviews, plain_text, trimmed
+from backend.research.reviews import Reviews
+from backend.research.safety import SafeFetcher
 from tests.research.conftest import FakeHttp, response
 
 ARTICLE = (
@@ -17,29 +17,43 @@ ARTICLE = (
 )
 
 
-def build(*answers: object, config: ResearchConfig | None = None) -> tuple[Reviews, FakeHttp]:
+def build(
+    *answers: httpx.Response | Exception, config: ResearchConfig | None = None
+) -> tuple[Reviews, FakeHttp]:
     http = FakeHttp(*answers)
     return Reviews(http, config or ResearchConfig()), http
 
 
+def trimmed(text: str, max_chars: int, min_chars: int) -> str:
+    """`Reviews.trimmed` over a client carrying those caps."""
+    client, _ = build(
+        config=ResearchConfig(review_max_chars=max_chars, review_min_chars=min_chars)
+    )
+    return client.trimmed(text)
+
+
 def fetches(answer: object) -> AbstractContextManager[AsyncMock]:
-    """Patch the safe fetch, so a test does not depend on DNS."""
+    """Patch the safe fetch, so a test does not depend on DNS.
+
+    `autospec` so the fetcher arrives as the first argument: it carries the
+    hop limit, which one test below asserts on.
+    """
     return patch.object(
-        reviews_module, "fetch_safely",
-        AsyncMock(side_effect=answer) if isinstance(answer, Exception)
-        else AsyncMock(return_value=answer),
+        SafeFetcher, "get", autospec=True,
+        side_effect=answer if isinstance(answer, Exception) else None,
+        return_value=None if isinstance(answer, Exception) else answer,
     )
 
 
 class TestPlainText:
     def test_it_recovers_the_article_prose(self):
-        assert "rearranged the decade" in plain_text(ARTICLE)
+        assert "rearranged the decade" in Reviews.plain_text(ARTICLE)
 
     def test_it_strips_the_markup(self):
-        assert "<p>" not in plain_text(ARTICLE)
+        assert "<p>" not in Reviews.plain_text(ARTICLE)
 
     def test_it_collapses_whitespace(self):
-        assert "  " not in plain_text("<html><body><p>a\n\n\tb</p></body></html>")
+        assert "  " not in Reviews.plain_text("<html><body><p>a\n\n\tb</p></body></html>")
 
 
 class TestTrimmed:
@@ -71,6 +85,7 @@ class TestText:
         with fetches(response(text=ARTICLE)):
             found = await client.text("https://pitchfork.com/reviews/albums/1")
 
+        assert found is not None
         assert "rearranged the decade" in found
         assert len(found) <= ResearchConfig().review_max_chars
 
@@ -121,6 +136,7 @@ class TestText:
         with fetches(response(text=ARTICLE)):
             found = await client.text("https://pitchfork.com/reviews/albums/1")
 
+        assert found is not None
         assert len(found) <= 200
 
     async def test_the_hop_limit_is_passed_through(self):
@@ -129,4 +145,4 @@ class TestText:
         with fetches(response(text=ARTICLE)) as fetch:
             await client.text("https://pitchfork.com/reviews/albums/1")
 
-        assert fetch.call_args[0][2] == 2
+        assert fetch.call_args[0][0].max_redirects == 2

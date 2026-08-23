@@ -2,21 +2,20 @@
 
 The URL comes from `backend.db.db`, so migrations and the app can never
 disagree about which database they mean. Importing a table from each package
-registers that module on `SQLModel.metadata`, which is what autogenerate
+registers that module on `Base.metadata`, which is what autogenerate
 compares against.
 """
 
 from alembic import context
-from sqlmodel import SQLModel
 
-from backend.db import db
+from backend.db import Base, db
 from backend.library.tables import Track
 from backend.results.tables import Result
 
 # Naming a table from each package registers that module on the metadata below.
 REGISTERED = (Track, Result)
 
-target_metadata = SQLModel.metadata
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:

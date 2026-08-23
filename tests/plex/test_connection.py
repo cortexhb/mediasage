@@ -9,12 +9,7 @@ from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import Timeout
 
 from backend.plex import connection as connection_module
-from backend.plex.connection import (
-    PlexConnection,
-    PlexFetchError,
-    is_transient,
-    with_retries,
-)
+from backend.plex.connection import PlexConnection, PlexFetchError
 from tests.plex.conftest import make_connection
 
 
@@ -46,6 +41,7 @@ class TestConnect:
     def test_blank_credentials_are_refused_without_dialling(self):
         conn = PlexConnection(url="", token="")
         assert conn.is_connected() is False
+        assert conn.error is not None
         assert "required" in conn.error
 
     @pytest.mark.parametrize(
@@ -60,6 +56,7 @@ class TestConnect:
     def test_a_failure_is_reported_and_drops_both_handles(self, error, expected):
         conn = build(side_effect=error)
         assert conn.is_connected() is False
+        assert conn.error is not None
         assert expected in conn.error.lower()
         assert conn.server is None
 
@@ -70,6 +67,7 @@ class TestConnect:
         conn = build(return_value=server)
 
         assert conn.is_connected() is False
+        assert conn.error is not None
         assert "not found" in conn.error
         assert conn.server is server
         assert conn.library is None
@@ -114,21 +112,21 @@ class TestTransientClassification:
         ],
     )
     def test_a_transient_failure_is_retried(self, error):
-        assert is_transient(error) is True
+        assert PlexConnection.is_transient(error) is True
 
     @pytest.mark.parametrize(
         "error",
         [Unauthorized("bad token"), NotFound("gone"), ValueError("bad argument")],
     )
     def test_a_permanent_failure_is_not(self, error):
-        assert is_transient(error) is False
+        assert PlexConnection.is_transient(error) is False
 
 
 class TestWithRetries:
     """The retry loop every bulk fetch runs through."""
 
     def test_a_first_success_is_returned_untouched(self):
-        assert with_retries("label", lambda: "value") == "value"
+        assert make_connection().with_retries("label", lambda: "value") == "value"
 
     def test_it_retries_until_it_succeeds(self, no_sleep):
         attempts = []
@@ -139,7 +137,7 @@ class TestWithRetries:
                 raise RequestsConnectionError("refused")
             return "value"
 
-        assert with_retries("label", flaky) == "value"
+        assert make_connection().with_retries("label", flaky) == "value"
         assert len(attempts) == 3
 
     def test_the_backoff_grows(self, no_sleep, installed_config):
@@ -147,7 +145,7 @@ class TestWithRetries:
             raise RequestsConnectionError("refused")
 
         with pytest.raises(PlexFetchError):
-            with_retries("label", always_fails)
+            make_connection().with_retries("label", always_fails)
 
         assert no_sleep == installed_config.plex.retry_backoff
 
@@ -156,7 +154,7 @@ class TestWithRetries:
             raise Unauthorized("bad token")
 
         with pytest.raises(PlexFetchError):
-            with_retries("label", unauthorized)
+            make_connection().with_retries("label", unauthorized)
 
         assert no_sleep == []
 
@@ -165,7 +163,7 @@ class TestWithRetries:
             raise RequestsConnectionError("refused")
 
         with pytest.raises(PlexFetchError, match="refused"):
-            with_retries("label", always_fails)
+            make_connection().with_retries("label", always_fails)
 
 
 class TestServerFacts:

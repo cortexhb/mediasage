@@ -2,8 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from backend.plex import playlists
-from backend.plex.playlists import SCRATCH_SENTINEL, SCRATCH_TITLE
+from backend.plex.playlists import SCRATCH_SENTINEL, SCRATCH_TITLE, PlexPlaylists
 from tests.plex.conftest import make_connection
 
 
@@ -33,23 +32,24 @@ class TestCreate:
         server.fetchItem.side_effect = ["a", "b"]
         server.createPlaylist.return_value = playlist_double(10)
 
-        result = playlists.create(connection, "Mix", ["1", "2"])
+        result = PlexPlaylists(connection=connection).create("Mix", ["1", "2"])
 
         assert (result.success, result.playlist_id, result.tracks_added) == (True, "10", 2)
+        assert result.playlist_url is not None
         assert "machine-1" in result.playlist_url
 
     def test_a_description_is_set_on_the_playlist(self, connection, server):
         playlist = playlist_double()
         server.createPlaylist.return_value = playlist
 
-        playlists.create(connection, "Mix", ["1"], "A summary")
+        PlexPlaylists(connection=connection).create("Mix", ["1"], "A summary")
         playlist.edit.assert_called_once_with(summary="A summary")
 
     def test_an_empty_description_is_not_written(self, connection, server):
         playlist = playlist_double()
         server.createPlaylist.return_value = playlist
 
-        playlists.create(connection, "Mix", ["1"], "")
+        PlexPlaylists(connection=connection).create("Mix", ["1"], "")
         playlist.edit.assert_not_called()
 
     def test_a_failing_description_does_not_fail_the_playlist(self, connection, server):
@@ -57,29 +57,29 @@ class TestCreate:
         playlist.edit.side_effect = RuntimeError("rejected")
         server.createPlaylist.return_value = playlist
 
-        assert playlists.create(connection, "Mix", ["1"], "summary").success is True
+        assert PlexPlaylists(connection=connection).create("Mix", ["1"], "summary").success is True
 
     def test_unresolvable_keys_are_skipped_not_fatal(self, connection, server):
         server.fetchItem.side_effect = [RuntimeError("gone"), "b"]
         server.createPlaylist.return_value = playlist_double()
 
-        result = playlists.create(connection, "Mix", ["1", "2"])
+        result = PlexPlaylists(connection=connection).create("Mix", ["1", "2"])
         assert (result.tracks_added, result.tracks_skipped) == (1, 1)
 
     def test_nothing_resolving_is_an_error(self, connection, server):
         server.fetchItem.side_effect = RuntimeError("gone")
-        result = playlists.create(connection, "Mix", ["1"])
+        result = PlexPlaylists(connection=connection).create("Mix", ["1"])
 
         assert (result.success, result.error) == (False, "No valid tracks found")
         server.createPlaylist.assert_not_called()
 
     def test_a_failing_creation_is_reported(self, connection, server):
         server.createPlaylist.side_effect = RuntimeError("refused")
-        result = playlists.create(connection, "Mix", ["1"])
+        result = PlexPlaylists(connection=connection).create("Mix", ["1"])
         assert (result.success, result.error) == (False, "refused")
 
     def test_a_disconnected_server_is_reported(self):
-        result = playlists.create(make_connection(), "Mix", ["1"])
+        result = PlexPlaylists(connection=make_connection()).create("Mix", ["1"])
         assert (result.success, result.error) == (False, "Not connected to Plex")
 
 
@@ -88,7 +88,7 @@ class TestListing:
 
     def test_audio_playlists_are_listed_alphabetically(self, connection, server):
         server.playlists.return_value = [listed(2, "Zebra"), listed(1, "apple")]
-        assert [p.title for p in playlists.listing(connection)] == ["apple", "Zebra"]
+        assert [p.title for p in PlexPlaylists(connection=connection).listing()] == ["apple", "Zebra"]
 
     def test_smart_and_radio_playlists_are_excluded(self, connection, server):
         """Their contents are a query, so added tracks would not stick."""
@@ -97,18 +97,18 @@ class TestListing:
             listed(2, "Smart", smart=True),
             listed(3, "Radio", radio=True),
         ]
-        assert [p.title for p in playlists.listing(connection)] == ["Plain"]
+        assert [p.title for p in PlexPlaylists(connection=connection).listing()] == ["Plain"]
 
     def test_the_track_count_is_carried(self, connection, server):
         server.playlists.return_value = [listed(1, "Plain")]
-        assert playlists.listing(connection)[0].track_count == 3
+        assert PlexPlaylists(connection=connection).listing()[0].track_count == 3
 
     def test_a_failing_call_is_empty_not_fatal(self, connection, server):
         server.playlists.side_effect = RuntimeError("boom")
-        assert playlists.listing(connection) == []
+        assert PlexPlaylists(connection=connection).listing() == []
 
     def test_a_disconnected_server_lists_nothing(self):
-        assert playlists.listing(make_connection()) == []
+        assert PlexPlaylists(connection=make_connection()).listing() == []
 
 
 class TestUpdateReplace:
@@ -123,7 +123,7 @@ class TestUpdateReplace:
         playlist.removeItems.side_effect = lambda items: order.append("remove")
         server.fetchItem.side_effect = [playlist, "new-1"]
 
-        result = playlists.update(connection, "10", ["1"], mode="replace")
+        result = PlexPlaylists(connection=connection).update("10", ["1"], mode="replace")
 
         assert order == ["add", "remove"]
         assert (result.success, result.tracks_added) == (True, 1)
@@ -133,16 +133,17 @@ class TestUpdateReplace:
         playlist.removeItems.side_effect = RuntimeError("refused")
         server.fetchItem.side_effect = [playlist, "new-1"]
 
-        result = playlists.update(connection, "10", ["1"], mode="replace")
+        result = PlexPlaylists(connection=connection).update("10", ["1"], mode="replace")
 
         assert result.success is True
+        assert result.warning is not None
         assert "duplicates" in result.warning
 
     def test_nothing_resolving_leaves_the_playlist_alone(self, connection, server):
         playlist = playlist_double(10, [MagicMock()])
         server.fetchItem.side_effect = [playlist, RuntimeError("gone")]
 
-        result = playlists.update(connection, "10", ["1"], mode="replace")
+        result = PlexPlaylists(connection=connection).update("10", ["1"], mode="replace")
 
         assert (result.success, result.tracks_skipped) == (False, 1)
         playlist.addItems.assert_not_called()
@@ -152,7 +153,7 @@ class TestUpdateReplace:
         playlist = playlist_double(10, [])
         server.fetchItem.side_effect = [playlist, "new-1"]
 
-        playlists.update(connection, "10", ["1"], mode="replace")
+        PlexPlaylists(connection=connection).update("10", ["1"], mode="replace")
         playlist.removeItems.assert_not_called()
 
 
@@ -165,7 +166,7 @@ class TestUpdateAppend:
         playlist = playlist_double(10, [existing])
         server.fetchItem.side_effect = [playlist, "new-2"]
 
-        result = playlists.update(connection, "10", ["1", "2"], mode="append")
+        result = PlexPlaylists(connection=connection).update("10", ["1", "2"], mode="append")
 
         assert (result.tracks_added, result.duplicates_skipped) == (1, 1)
 
@@ -175,7 +176,7 @@ class TestUpdateAppend:
         playlist = playlist_double(10, [existing])
         server.fetchItem.side_effect = [playlist]
 
-        result = playlists.update(connection, "10", ["1"], mode="append")
+        result = PlexPlaylists(connection=connection).update("10", ["1"], mode="append")
 
         assert (result.success, result.duplicates_skipped) == (True, 1)
         playlist.addItems.assert_not_called()
@@ -184,7 +185,7 @@ class TestUpdateAppend:
         playlist = playlist_double(10, [])
         server.fetchItem.side_effect = [playlist, RuntimeError("gone"), "new-2"]
 
-        result = playlists.update(connection, "10", ["1", "2"], mode="append")
+        result = PlexPlaylists(connection=connection).update("10", ["1", "2"], mode="append")
         assert (result.tracks_added, result.tracks_skipped) == (1, 1)
 
 
@@ -196,7 +197,7 @@ class TestUpdateScratch:
         server.fetchItem.side_effect = ["a"]
         server.createPlaylist.return_value = playlist_double(20)
 
-        result = playlists.update(connection, SCRATCH_SENTINEL, ["1"])
+        result = PlexPlaylists(connection=connection).update(SCRATCH_SENTINEL, ["1"])
 
         assert result.success is True
         assert server.createPlaylist.call_args.args[0] == SCRATCH_TITLE
@@ -207,7 +208,7 @@ class TestUpdateScratch:
         playlist = playlist_double(20, [])
         server.fetchItem.side_effect = [playlist, "new-1"]
 
-        result = playlists.update(connection, SCRATCH_SENTINEL, ["1"])
+        result = PlexPlaylists(connection=connection).update(SCRATCH_SENTINEL, ["1"])
 
         assert result.success is True
         server.createPlaylist.assert_not_called()
@@ -217,27 +218,27 @@ class TestUpdateScratch:
         server.fetchItem.side_effect = ["a"]
         server.createPlaylist.return_value = playlist_double(20)
 
-        assert playlists.update(connection, SCRATCH_SENTINEL, ["1"]).success is True
+        assert PlexPlaylists(connection=connection).update(SCRATCH_SENTINEL, ["1"]).success is True
 
 
 class TestUpdateGuards:
     """What is refused before anything is touched."""
 
     def test_an_unknown_mode_is_refused(self, connection, server):
-        result = playlists.update(connection, "10", ["1"], mode="sideways")
+        result = PlexPlaylists(connection=connection).update("10", ["1"], mode="sideways")
 
         assert (result.success, result.error) == (False, "Unknown update mode: sideways")
         server.fetchItem.assert_not_called()
 
     def test_an_unknown_mode_does_not_create_the_scratch_playlist(self, connection, server):
-        playlists.update(connection, SCRATCH_SENTINEL, ["1"], mode="sideways")
+        PlexPlaylists(connection=connection).update(SCRATCH_SENTINEL, ["1"], mode="sideways")
         server.createPlaylist.assert_not_called()
 
     def test_a_disconnected_server_is_reported(self):
-        result = playlists.update(make_connection(), "10", ["1"])
+        result = PlexPlaylists(connection=make_connection()).update("10", ["1"])
         assert (result.success, result.error) == (False, "Not connected to Plex")
 
     def test_a_failure_mid_update_is_reported(self, connection, server):
         server.fetchItem.side_effect = RuntimeError("gone")
-        result = playlists.update(connection, "10", ["1"])
+        result = PlexPlaylists(connection=connection).update("10", ["1"])
         assert (result.success, result.error) == (False, "gone")

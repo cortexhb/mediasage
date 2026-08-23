@@ -1,4 +1,4 @@
-"""Tests for refusing unsafe URLs and re-checking every redirect hop."""
+"""Tests for the fetch that refuses anything resolving inside the network."""
 
 import socket
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.research import safety
+from backend.research.safety import SafeFetcher
 
 
 def resolves_to(address: str):
@@ -15,6 +16,16 @@ def resolves_to(address: str):
         safety.socket, "getaddrinfo",
         return_value=[(family, socket.SOCK_STREAM, 6, "", (address, 0))],
     )
+
+
+def always_safe():
+    """Patch the address check on the class; pydantic blocks instance patching."""
+    return patch.object(SafeFetcher, "is_safe", return_value=True)
+
+
+def safe_then_not():
+    """A safe start whose redirect target is not."""
+    return patch.object(SafeFetcher, "is_safe", side_effect=[True, False])
 
 
 def redirect(location: str) -> MagicMock:
@@ -40,13 +51,13 @@ class TestIsSafe:
         "gopher://example.com",
     ))
     def test_rejects_a_non_http_scheme(self, url):
-        assert safety.is_safe(url) is False
+        assert SafeFetcher.is_safe(url) is False
 
     def test_rejects_a_url_with_no_host(self):
-        assert safety.is_safe("http://") is False
+        assert SafeFetcher.is_safe("http://") is False
 
     def test_rejects_a_malformed_url(self):
-        assert safety.is_safe("http://[") is False
+        assert SafeFetcher.is_safe("http://[") is False
 
     @pytest.mark.parametrize("address", (
         "127.0.0.1",      # loopback
@@ -58,24 +69,24 @@ class TestIsSafe:
     def test_rejects_a_host_resolving_to_a_reserved_address(self, address):
         """An open redirect on a public host would otherwise reach the LAN."""
         with resolves_to(address):
-            assert safety.is_safe("https://internal.example.com/x") is False
+            assert SafeFetcher.is_safe("https://internal.example.com/x") is False
 
     def test_accepts_a_public_address(self):
         with resolves_to("93.184.216.34"):
-            assert safety.is_safe("https://example.com/article") is True
+            assert SafeFetcher.is_safe("https://example.com/article") is True
 
     def test_rejects_a_name_that_does_not_resolve(self):
         with patch.object(safety.socket, "getaddrinfo", side_effect=socket.gaierror("nope")):
-            assert safety.is_safe("https://nowhere.invalid/x") is False
+            assert SafeFetcher.is_safe("https://nowhere.invalid/x") is False
 
 
-class TestFetchSafely:
+class TestGet:
     async def test_refuses_an_unsafe_start(self):
         client = MagicMock()
         client.get = AsyncMock()
 
         with resolves_to("127.0.0.1"):
-            assert await safety.fetch_safely(client, "https://internal/x", 5) is None
+            assert await SafeFetcher(max_redirects=5).get(client, "https://internal/x") is None
 
         client.get.assert_not_called()
 
@@ -84,7 +95,9 @@ class TestFetchSafely:
         client.get = AsyncMock(return_value=final())
 
         with resolves_to("93.184.216.34"):
-            assert await safety.fetch_safely(client, "https://example.com/x", 5) is not None
+            fetched = await SafeFetcher(max_redirects=5).get(client, "https://example.com/x")
+
+        assert fetched is not None
 
     async def test_follows_a_safe_redirect(self):
         answer = final()
@@ -92,30 +105,32 @@ class TestFetchSafely:
         client.get = AsyncMock(side_effect=[redirect("https://example.com/moved"), answer])
 
         with resolves_to("93.184.216.34"):
-            assert await safety.fetch_safely(client, "https://example.com/x", 5) is answer
+            fetched = await SafeFetcher(max_redirects=5).get(client, "https://example.com/x")
+
+        assert fetched is answer
 
     async def test_refuses_a_redirect_into_private_space(self):
         client = MagicMock()
         client.get = AsyncMock(return_value=redirect("https://internal/x"))
 
-        with patch.object(safety, "is_safe", side_effect=[True, False]):
-            assert await safety.fetch_safely(client, "https://example.com/x", 5) is None
+        with safe_then_not():
+            assert await SafeFetcher(max_redirects=5).get(client, "https://example.com/x") is None
 
     async def test_gives_up_past_the_hop_limit(self):
         client = MagicMock()
         client.get = AsyncMock(return_value=redirect("https://example.com/again"))
 
-        with patch.object(safety, "is_safe", return_value=True):
-            assert await safety.fetch_safely(client, "https://example.com/x", 2) is None
+        with always_safe():
+            assert await SafeFetcher(max_redirects=2).get(client, "https://example.com/x") is None
 
         assert client.get.await_count == 3
 
-    async def test_the_hop_limit_is_the_caller_s(self):
+    async def test_the_hop_limit_is_the_fetcher_s(self):
         """The limit is configured, so a deployment can tighten or loosen it."""
         client = MagicMock()
         client.get = AsyncMock(return_value=redirect("https://example.com/again"))
 
-        with patch.object(safety, "is_safe", return_value=True):
-            await safety.fetch_safely(client, "https://example.com/x", 1)
+        with always_safe():
+            await SafeFetcher(max_redirects=1).get(client, "https://example.com/x")
 
         assert client.get.await_count == 2

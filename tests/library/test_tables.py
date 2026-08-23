@@ -1,36 +1,36 @@
 """Tests for the table definitions and the genre normalization helper."""
 
 import pytest
-from sqlalchemy import delete
-from sqlmodel import select
+from sqlalchemy import delete, select
+from sqlalchemy.dialects import sqlite
 
 from backend.db import db
-from backend.library.tables import SYNC_STATE_ID, SyncState, Track, TrackGenre, genre_rows, utc_now
+from backend.library.tables import SYNC_STATE_ID, UTC_NOW, SyncState, Track, TrackGenre
 
 
 class TestGenreRows:
-    """`genre_rows` replaced the trigger's `json_each` and its type filter."""
+    """`rows_for` replaced the trigger's `json_each` and its type filter."""
 
     def test_one_row_per_genre(self):
-        rows = genre_rows("1", ["Rock", "Jazz"])
+        rows = TrackGenre.rows_for("1", ["Rock", "Jazz"])
         assert [row["genre"] for row in rows] == ["Rock", "Jazz"]
 
     def test_case_variants_collapse_to_one_row(self):
-        rows = genre_rows("1", ["Rock", "rock", "ROCK"])
+        rows = TrackGenre.rows_for("1", ["Rock", "rock", "ROCK"])
         assert len(rows) == 1
 
     def test_the_first_spelling_is_kept_for_display(self):
-        assert genre_rows("1", ["rock", "Rock"])[0]["genre"] == "rock"
+        assert TrackGenre.rows_for("1", ["rock", "Rock"])[0]["genre"] == "rock"
 
     def test_the_lowercase_key_is_what_filters_match(self):
-        assert genre_rows("1", ["Rock"])[0]["genre_lower"] == "rock"
+        assert TrackGenre.rows_for("1", ["Rock"])[0]["genre_lower"] == "rock"
 
     @pytest.mark.parametrize("genres", [[], [""], ["   "], [None], [42], [{"a": 1}]])
     def test_unusable_values_are_dropped(self, genres):
-        assert genre_rows("1", genres) == []
+        assert TrackGenre.rows_for("1", genres) == []
 
     def test_the_rating_key_is_carried_onto_every_row(self):
-        assert {row["rating_key"] for row in genre_rows("7", ["A", "B"])} == {"7"}
+        assert {row["rating_key"] for row in TrackGenre.rows_for("7", ["A", "B"])} == {"7"}
 
 
 class TestCascade:
@@ -44,7 +44,7 @@ class TestCascade:
             session.execute(delete(Track).where(Track.rating_key == "1"))
 
         with db.session() as session:
-            assert session.exec(select(TrackGenre)).all() == []
+            assert session.scalars(select(TrackGenre)).all() == []
 
     def test_other_tracks_keep_theirs(self, seed_tracks):
         seed_tracks(
@@ -56,8 +56,16 @@ class TestCascade:
             session.execute(delete(Track).where(Track.rating_key == "1"))
 
         with db.session() as session:
-            remaining = session.exec(select(TrackGenre)).all()
+            remaining = session.scalars(select(TrackGenre)).all()
             assert [row.rating_key for row in remaining] == ["2"]
+
+
+class TestHasAlbumKey:
+    """The predicate every album-level query starts from."""
+
+    def test_tracks_without_an_album_are_excluded(self):
+        rendered = str(Track.has_album_key().compile(dialect=sqlite.dialect()))
+        assert "IS NOT NULL" in rendered
 
 
 class TestSyncState:
@@ -70,4 +78,4 @@ class TestSyncState:
 
 def test_utc_now_is_timezone_aware():
     """A naive timestamp would compare wrongly against synced_at."""
-    assert utc_now().tzinfo is not None
+    assert UTC_NOW().tzinfo is not None

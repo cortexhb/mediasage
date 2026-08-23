@@ -8,17 +8,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.api.routes import art as art_module
+from backend.api.routes.art import CachePolicy, ExternalArt
+from backend.config.models import ArtConfig
 from backend.config.store import config_store
-from tests.api.conftest import mediasage_config
+from tests.api.conftest import mediasage_config, serve_plex
 
 
 @pytest.fixture
-def plex_art():
+def plex_art(client, monkeypatch):
     """Wire a connected Plex client serving one track thumb."""
     plex = MagicMock()
-    plex.is_connected.return_value = True
-    plex.thumb_path.return_value = "/library/metadata/1/thumb/1699999999"
+    plex.connection.is_connected.return_value = True
+    plex.library.thumb_path.return_value = "/library/metadata/1/thumb/1699999999"
 
     config = mediasage_config(plex_url="http://plex:32400", plex_token="token")
 
@@ -27,18 +28,16 @@ def plex_art():
     upstream.content = b"JPEGBYTES"
     upstream.headers = {"content-type": "image/jpeg"}
 
-    store = MagicMock()
-    store.get.return_value = plex
-
     http = MagicMock()
     http.get = AsyncMock(return_value=upstream)
 
+    serve_plex(client.app, monkeypatch, plex)
     with (
-        patch("backend.api.guards.plex_store", store),
         patch("backend.config.store.ConfigStore.get", return_value=config),
-        patch("backend.api.clients.art", AsyncMock(return_value=http)),
+        patch("backend.api.clients.shared.art", AsyncMock(return_value=http)),
     ):
         yield plex, http
+    client.app.dependency_overrides.clear()
 
 
 class TestArtCacheHeaders:
@@ -51,16 +50,14 @@ class TestArtCacheHeaders:
 
     def test_sets_cache_control(self, client, plex_art):
         response = client.get("/api/art/1")
-        expected = art_module.cache_control(
-            art_module.settings().cache_max_age, immutable=True
-        )
-        assert response.headers["cache-control"] == expected
+        expected = CachePolicy(max_age=config_store.get().art.cache_max_age, immutable=True)
+        assert response.headers["cache-control"] == expected.header
 
     def test_cache_control_is_long_lived(self, client, plex_art):
         response = client.get("/api/art/1")
         cache_control = response.headers["cache-control"]
         assert "public" in cache_control
-        assert f"max-age={art_module.settings().cache_max_age}" in cache_control
+        assert f"max-age={config_store.get().art.cache_max_age}" in cache_control
 
     def test_the_cache_age_follows_the_configuration(self, client, plex_art, monkeypatch):
         installed = config_store.get()
@@ -84,7 +81,7 @@ class TestArtCacheHeaders:
         plex, _ = plex_art
         first = client.get("/api/art/1").headers["etag"]
 
-        plex.thumb_path.return_value = "/library/metadata/1/thumb/1800000000"
+        plex.library.thumb_path.return_value = "/library/metadata/1/thumb/1800000000"
         second = client.get("/api/art/1").headers["etag"]
 
         assert first != second
@@ -115,7 +112,7 @@ class TestArtCacheHeaders:
 
     def test_missing_art_is_404(self, client, plex_art):
         plex, _ = plex_art
-        plex.thumb_path.return_value = None
+        plex.library.thumb_path.return_value = None
 
         assert client.get("/api/art/1").status_code == 404
 
@@ -137,7 +134,7 @@ def external_art():
     http = MagicMock()
     http.get = AsyncMock(return_value=upstream)
 
-    with patch("backend.api.clients.art", AsyncMock(return_value=http)):
+    with patch("backend.api.clients.shared.art", AsyncMock(return_value=http)):
         yield http, upstream
 
 
@@ -162,7 +159,7 @@ class TestExternalArt:
         """External art is not content-addressed, so it gets a day, not a week."""
         response = client.get("/api/external-art", params={"url": CDN})
 
-        expected = art_module.settings().external_cache_max_age
+        expected = config_store.get().art.external_cache_max_age
         assert response.headers["cache-control"] == f"public, max-age={expected}"
 
     def test_refuses_http(self, client, external_art):
@@ -212,3 +209,106 @@ class TestExternalArt:
 
         assert client.get("/api/external-art", params={"url": CDN}).status_code == 404
         assert http.get.await_count == 2
+
+
+class TestCachePolicy:
+    @pytest.mark.parametrize(
+        ("policy", "expected"),
+        [
+            (CachePolicy(max_age=60), "public, max-age=60"),
+            (CachePolicy(max_age=0), "public, max-age=0"),
+            (CachePolicy(max_age=60, immutable=True), "public, max-age=60, immutable"),
+        ],
+    )
+    def test_header(self, policy, expected):
+        assert policy.header == expected
+
+    def test_it_is_frozen(self):
+        """A policy is shared across responses; a mutation would leak between them."""
+        assert CachePolicy.model_config["frozen"] is True
+
+
+class TestExternalArtAllowlist:
+    """The allowlist is the containment: nothing off it is fetched, ever."""
+
+    source = ExternalArt(domains=["coverartarchive.org", "archive.org"], max_redirects=5)
+
+    @pytest.mark.parametrize("url", [
+        "https://archive.org/x.jpg",
+        "https://coverartarchive.org/release/1/front",
+        "https://ia800123.us.archive.org/x.jpg",
+    ])
+    def test_it_allows_the_listed_hosts_and_their_subdomains(self, url):
+        assert self.source.allows(url)
+
+    @pytest.mark.parametrize("url", [
+        "http://archive.org/x.jpg",
+        "https://evil.test/x.jpg",
+        "https://notarchive.org/x.jpg",
+        "https://evilarchive.org/x.jpg",
+        "https://archive.org.evil.test/x.jpg",
+        "https://127.0.0.1/x.jpg",
+        "",
+    ])
+    def test_it_refuses_everything_else(self, url):
+        assert not self.source.allows(url)
+
+    def test_a_lan_mirror_may_be_allowlisted(self):
+        """Why this is not SafeFetcher: a private mirror is a valid source."""
+        assert ExternalArt(domains=["art.lan"], max_redirects=5).allows("https://art.lan/x.jpg")
+
+    def test_of_reads_the_configuration(self):
+        art = ArtConfig(external_domains=["art.lan"], max_redirects=2)
+        source = ExternalArt.of(art)
+
+        assert source.domains == ["art.lan"]
+        assert source.max_redirects == 2
+
+    def test_it_is_frozen(self):
+        """The allowlist is containment; a mutation would widen what may be fetched."""
+        assert ExternalArt.model_config["frozen"] is True
+
+
+class TestExternalArtGet:
+    source = ExternalArt(domains=["archive.org"], max_redirects=3)
+
+    async def test_it_returns_the_image(self):
+        image = MagicMock(status_code=200)
+        client = MagicMock(get=AsyncMock(return_value=image))
+
+        assert await self.source.get(client, CDN) is image
+
+    async def test_it_follows_an_allowed_redirect(self):
+        image = MagicMock(status_code=200)
+        client = MagicMock(get=AsyncMock(side_effect=[moved(CDN), image]))
+
+        assert await self.source.get(client, "https://archive.org/release/1/front") is image
+
+    async def test_it_stops_at_a_redirect_off_the_allowlist(self):
+        client = MagicMock(get=AsyncMock(return_value=moved("https://evil.test/x.jpg")))
+
+        assert await self.source.get(client, CDN) is None
+        assert client.get.await_count == 1
+
+    async def test_it_stops_at_a_redirect_with_no_location(self):
+        client = MagicMock(get=AsyncMock(return_value=moved("")))
+
+        assert await self.source.get(client, CDN) is None
+
+    async def test_it_gives_up_on_an_upstream_error(self):
+        client = MagicMock(get=AsyncMock(return_value=MagicMock(status_code=500)))
+
+        assert await self.source.get(client, CDN) is None
+        assert client.get.await_count == 1
+
+    async def test_it_gives_up_past_the_hop_budget(self):
+        client = MagicMock(get=AsyncMock(return_value=moved(CDN)))
+
+        assert await self.source.get(client, CDN) is None
+        assert client.get.await_count == 3
+
+    async def test_a_zero_hop_budget_fetches_nothing(self):
+        client = MagicMock(get=AsyncMock())
+
+        assert await ExternalArt(domains=[], max_redirects=0).get(client, CDN) is None
+        client.get.assert_not_awaited()

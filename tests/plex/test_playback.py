@@ -6,6 +6,8 @@ import pytest
 from requests.exceptions import ConnectionError as RequestsConnectionError
 
 from backend.plex import playback
+from backend.plex.models import PlexClientInfo
+from backend.plex.playback import PlexPlayback
 from tests.plex.conftest import make_connection
 
 
@@ -59,18 +61,24 @@ def only_local(server: MagicMock, clients: list[MagicMock]) -> None:
 class TestIsMobile:
     """Which players need an active session before accepting a queue."""
 
+    @staticmethod
+    def player(product: str, platform: str) -> PlexClientInfo:
+        return PlexClientInfo(
+            client_id="c", name="Player", product=product, platform=platform
+        )
+
     @pytest.mark.parametrize(
         ("product", "platform"),
         [("Plexamp", "iOS"), ("Plex", "Android"), ("Plex", "tvOS"), ("Plex for iPad", "unknown")],
     )
     def test_a_mobile_or_tv_player_is_marked(self, product, platform):
-        assert playback.is_mobile(product, platform) is True
+        assert self.player(product, platform).is_mobile is True
 
     @pytest.mark.parametrize(
         ("product", "platform"), [("Plex for Mac", "macOS"), ("Plex Web", "Chrome")]
     )
     def test_a_desktop_player_is_not(self, product, platform):
-        assert playback.is_mobile(product, platform) is False
+        assert self.player(product, platform).is_mobile is False
 
 
 class TestClients:
@@ -78,43 +86,43 @@ class TestClients:
 
     def test_a_playback_capable_local_client_is_listed(self, connection, server):
         only_local(server, [local_client()])
-        found = playback.clients(connection)
+        found = PlexPlayback(connection=connection).clients()
 
         assert [client.client_id for client in found] == ["client-1"]
         assert found[0].name == "Living Room"
 
     def test_a_client_without_playback_is_excluded(self, connection, server):
         only_local(server, [local_client(capabilities="navigation")])
-        assert playback.clients(connection) == []
+        assert PlexPlayback(connection=connection).clients() == []
 
     def test_capabilities_may_arrive_as_a_list(self, connection, server):
         only_local(server, [local_client(capabilities=["playback"])])
-        assert len(playback.clients(connection)) == 1
+        assert len(PlexPlayback(connection=connection).clients()) == 1
 
     def test_an_unresponsive_client_is_dropped(self, connection, server):
         """Offering it in the picker would only fail later."""
         broken = local_client()
         broken.isPlayingMedia.side_effect = RuntimeError("no answer")
         only_local(server, [broken])
-        assert playback.clients(connection) == []
+        assert PlexPlayback(connection=connection).clients() == []
 
     def test_the_playing_state_is_carried(self, connection, server):
         only_local(server, [local_client(playing=True)])
-        assert playback.clients(connection)[0].is_playing is True
+        assert PlexPlayback(connection=connection).clients()[0].is_playing is True
 
     def test_a_failing_local_discovery_still_returns_cloud_players(self, connection, server):
         server.clients.side_effect = RuntimeError("gdm down")
         server.myPlexAccount.return_value.resources.return_value = [resource()]
         server.sessions.return_value = []
 
-        assert [client.client_id for client in playback.clients(connection)] == ["cloud-1"]
+        assert [client.client_id for client in PlexPlayback(connection=connection).clients()] == ["cloud-1"]
 
     def test_a_cloud_player_is_listed(self, connection, server):
         server.clients.return_value = []
         server.myPlexAccount.return_value.resources.return_value = [resource()]
         server.sessions.return_value = []
 
-        found = playback.clients(connection)
+        found = PlexPlayback(connection=connection).clients()
         assert (found[0].name, found[0].is_mobile) == ("Phone", True)
 
     def test_a_non_player_resource_is_excluded(self, connection, server):
@@ -122,21 +130,21 @@ class TestClients:
         server.myPlexAccount.return_value.resources.return_value = [resource(provides="server")]
         server.sessions.return_value = []
 
-        assert playback.clients(connection) == []
+        assert PlexPlayback(connection=connection).clients() == []
 
     def test_an_offline_resource_is_excluded(self, connection, server):
         server.clients.return_value = []
         server.myPlexAccount.return_value.resources.return_value = [resource(presence=False)]
         server.sessions.return_value = []
 
-        assert playback.clients(connection) == []
+        assert PlexPlayback(connection=connection).clients() == []
 
     def test_a_locally_discovered_player_is_not_listed_twice(self, connection, server):
         server.clients.return_value = [local_client("shared")]
         server.myPlexAccount.return_value.resources.return_value = [resource("shared")]
         server.sessions.return_value = []
 
-        assert len(playback.clients(connection)) == 1
+        assert len(PlexPlayback(connection=connection).clients()) == 1
 
     def test_a_cloud_player_playing_is_read_from_the_sessions(self, connection, server):
         server.clients.return_value = []
@@ -145,16 +153,16 @@ class TestClients:
         session.player.machineIdentifier = "cloud-1"
         server.sessions.return_value = [session]
 
-        assert playback.clients(connection)[0].is_playing is True
+        assert PlexPlayback(connection=connection).clients()[0].is_playing is True
 
     def test_a_failing_account_query_still_returns_local_players(self, connection, server):
         server.clients.return_value = [local_client()]
         server.myPlexAccount.side_effect = RuntimeError("offline")
 
-        assert len(playback.clients(connection)) == 1
+        assert len(PlexPlayback(connection=connection).clients()) == 1
 
     def test_a_disconnected_server_finds_nothing(self):
-        assert playback.clients(make_connection()) == []
+        assert PlexPlayback(connection=make_connection()).clients() == []
 
 
 class TestPlayQueueReplace:
@@ -166,7 +174,7 @@ class TestPlayQueueReplace:
         server.fetchItem.side_effect = ["a", "b"]
 
         with patch.object(playback, "PlayQueue") as queue:
-            result = playback.play_queue(connection, ["1", "2"], "client-1")
+            result = PlexPlayback(connection=connection).play_queue(["1", "2"], "client-1")
 
         assert (result.success, result.tracks_queued) == (True, 2)
         assert result.client_name == "Living Room"
@@ -177,7 +185,7 @@ class TestPlayQueueReplace:
         server.fetchItem.side_effect = ["a", "b"]
 
         with patch.object(playback, "PlayQueue") as queue:
-            playback.play_queue(connection, ["1", "2"], "client-1")
+            PlexPlayback(connection=connection).play_queue(["1", "2"], "client-1")
 
         assert queue.create.call_args.kwargs["startItem"] == "a"
 
@@ -186,7 +194,7 @@ class TestPlayQueueReplace:
         server.fetchItem.side_effect = [RuntimeError("gone"), "b"]
 
         with patch.object(playback, "PlayQueue"):
-            result = playback.play_queue(connection, ["1", "2"], "client-1")
+            result = PlexPlayback(connection=connection).play_queue(["1", "2"], "client-1")
 
         assert (result.tracks_queued, result.tracks_skipped) == (1, 1)
 
@@ -197,9 +205,10 @@ class TestPlayQueueReplace:
         server.fetchItem.side_effect = ["a"]
 
         with patch.object(playback, "PlayQueue"):
-            result = playback.play_queue(connection, ["1"], "client-1")
+            result = PlexPlayback(connection=connection).play_queue(["1"], "client-1")
 
         assert result.success is False
+        assert result.error is not None
         assert "went offline" in result.error
 
 
@@ -220,7 +229,7 @@ class TestPlayQueueNext:
 
         with patch.object(playback, "PlayQueue") as queue:
             existing = queue.get.return_value
-            result = playback.play_queue(connection, ["1", "2"], "client-1", mode="play_next")
+            result = PlexPlayback(connection=connection).play_queue(["1", "2"], "client-1", mode="play_next")
 
         added = [call.args[0] for call in existing.addItem.call_args_list]
         assert added == ["b", "a"]
@@ -234,7 +243,7 @@ class TestPlayQueueNext:
 
         with patch.object(playback, "PlayQueue") as queue:
             existing = queue.get.return_value
-            playback.play_queue(connection, ["1", "2"], "client-1", mode="play_next")
+            PlexPlayback(connection=connection).play_queue(["1", "2"], "client-1", mode="play_next")
 
         refreshes = [call.kwargs["refresh"] for call in existing.addItem.call_args_list]
         assert refreshes == [False, True]
@@ -246,7 +255,7 @@ class TestPlayQueueNext:
         server.fetchItem.side_effect = ["a"]
 
         with patch.object(playback, "PlayQueue"):
-            result = playback.play_queue(connection, ["1"], "client-1", mode="play_next")
+            result = PlexPlayback(connection=connection).play_queue(["1"], "client-1", mode="play_next")
 
         assert (result.success, result.error) == (False, "No active play queue on this client")
 
@@ -257,7 +266,7 @@ class TestPlayQueueNext:
         server.fetchItem.side_effect = ["a"]
 
         with patch.object(playback, "PlayQueue"):
-            result = playback.play_queue(connection, ["1"], "client-1", mode="play_next")
+            result = PlexPlayback(connection=connection).play_queue(["1"], "client-1", mode="play_next")
 
         assert result.error == "Could not read active queue from client"
 
@@ -269,7 +278,7 @@ class TestPlayQueueNext:
 
         with patch.object(playback, "PlayQueue") as queue:
             queue.get.return_value.addItem.side_effect = RuntimeError("refused")
-            result = playback.play_queue(connection, ["1"], "client-1", mode="play_next")
+            result = PlexPlayback(connection=connection).play_queue(["1"], "client-1", mode="play_next")
 
         assert (result.success, result.tracks_queued) == (False, 0)
 
@@ -281,7 +290,7 @@ class TestPlayQueueNext:
 
         with patch.object(playback, "PlayQueue") as queue:
             queue.get.return_value.addItem.side_effect = [RuntimeError("refused"), None]
-            result = playback.play_queue(connection, ["1", "2"], "client-1", mode="play_next")
+            result = PlexPlayback(connection=connection).play_queue(["1", "2"], "client-1", mode="play_next")
 
         assert (result.success, result.tracks_queued) == (True, 1)
 
@@ -293,7 +302,7 @@ class TestPlayQueueGuards:
         server.clients.return_value = []
         server.myPlexAccount.return_value.resources.return_value = []
 
-        result = playback.play_queue(connection, ["1"], "missing")
+        result = PlexPlayback(connection=connection).play_queue(["1"], "missing")
 
         assert (result.success, result.error_code) == (False, "not_found")
 
@@ -305,7 +314,7 @@ class TestPlayQueueGuards:
         server.fetchItem.side_effect = ["a"]
 
         with patch.object(playback, "PlayQueue"):
-            result = playback.play_queue(connection, ["1"], "cloud-1")
+            result = PlexPlayback(connection=connection).play_queue(["1"], "cloud-1")
 
         assert (result.success, result.client_name) == (True, "Phone")
 
@@ -313,17 +322,17 @@ class TestPlayQueueGuards:
         server.clients.return_value = [local_client()]
         server.fetchItem.side_effect = RuntimeError("gone")
 
-        result = playback.play_queue(connection, ["1"], "client-1")
+        result = PlexPlayback(connection=connection).play_queue(["1"], "client-1")
         assert (result.success, result.error) == (False, "No valid tracks found")
 
     def test_an_unknown_mode_is_refused(self, connection, server):
-        result = playback.play_queue(connection, ["1"], "client-1", mode="sideways")
+        result = PlexPlayback(connection=connection).play_queue(["1"], "client-1", mode="sideways")
 
         assert (result.success, result.error) == (False, "Unknown play queue mode: sideways")
         server.clients.assert_not_called()
 
     def test_a_disconnected_server_is_reported(self):
-        result = playback.play_queue(make_connection(), ["1"], "client-1")
+        result = PlexPlayback(connection=make_connection()).play_queue(["1"], "client-1")
         assert (result.success, result.error) == (False, "Not connected to Plex")
 
     def test_commands_are_proxied_through_the_server(self, connection, server):
@@ -332,7 +341,7 @@ class TestPlayQueueGuards:
         server.fetchItem.side_effect = ["a"]
 
         with patch.object(playback, "PlayQueue"):
-            playback.play_queue(connection, ["1"], "client-1")
+            PlexPlayback(connection=connection).play_queue(["1"], "client-1")
 
         client.proxyThroughServer.assert_called_once_with(value=True)
 
@@ -343,4 +352,4 @@ class TestPlayQueueGuards:
         server.fetchItem.side_effect = ["a"]
 
         with patch.object(playback, "PlayQueue"):
-            assert playback.play_queue(connection, ["1"], "client-1").success is True
+            assert PlexPlayback(connection=connection).play_queue(["1"], "client-1").success is True

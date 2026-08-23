@@ -1,7 +1,9 @@
 """The research pipeline for one album, over all four sources.
 
 `AlbumResearch.of_album` is the whole entry point: find the album in
-MusicBrainz, read what it links to, and hand back whatever was found. Nothing
+MusicBrainz, read what it links to, and hand back whatever was found. Cover art
+is asked of `.covers` directly -- it is keyed on the mbids `of_album` returned,
+not on the album, so routing it through here would compose nothing. Nothing
 here raises. Research grounds a pitch, it does not gate one, so every source
 that fails simply contributes nothing and the pitch says less.
 
@@ -10,10 +12,11 @@ as one line, so an article and two reviews would be spent on nothing.
 """
 
 import logging
+from typing import Self
 
 from backend.config import ResearchConfig
 from backend.config.store import config_store
-from backend.recommender import ResearchData
+from backend.recommender import AlbumRef, ResearchData
 from backend.research.covers import CoverArt
 from backend.research.http import SharedHttp, Throttle
 from backend.research.musicbrainz import MusicBrainz
@@ -30,33 +33,37 @@ class AlbumResearch:
     rate limit has to be counted across every caller rather than per request.
     """
 
-    def __init__(self, http: SharedHttp | None = None, config: ResearchConfig | None = None) -> None:
+    def __init__(self, http: SharedHttp, config: ResearchConfig) -> None:
         """Build every source over one client.
 
         Args:
-            http: A shared client to reuse; one is opened lazily otherwise
-            config: The research settings; read from the store when absent
+            http: The client every source shares
+            config: The research settings, read once and held
+        """
+        self.config = config
+        self.http = http
+        self.musicbrainz = MusicBrainz(http, Throttle(config.musicbrainz_interval), config)
+        self.wikipedia = Wikipedia(http, config)
+        self.covers = CoverArt(http, config)
+        self.reviews = Reviews(http, config)
+
+    @classmethod
+    def configured(cls) -> Self:
+        """Every source over a client of its own, on the saved settings.
 
         The settings are read once, here: this client is held for the process,
         and a mid-flight change to a rate limit would not be honoured anyway.
         """
-        self.config = config or config_store.get().research
-        self.http = http or SharedHttp(timeout=self.config.request_timeout)
-        self.musicbrainz = MusicBrainz(
-            self.http, Throttle(self.config.musicbrainz_interval), self.config
-        )
-        self.wikipedia = Wikipedia(self.http, self.config)
-        self.covers = CoverArt(self.http, self.config)
-        self.reviews = Reviews(self.http, self.config)
+        config = config_store.get().research
+        return cls(SharedHttp(timeout=config.request_timeout), config)
 
     async def of_album(
-        self, artist: str, album: str, full: bool = True, year: int | None = None
+        self, ref: AlbumRef, full: bool = True, year: int | None = None
     ) -> ResearchData:
         """Everything that could be found about one album.
 
         Args:
-            artist: The artist, as the library names them
-            album: The album title, as the library names it
+            ref: The album as the library or a model names it
             full: Read the article and the reviews too, not just the metadata
             year: The library's year, which disambiguates a common title
 
@@ -65,7 +72,7 @@ class AlbumResearch:
         """
         found = ResearchData()
 
-        mbid = await self.musicbrainz.search(artist, album, year=year)
+        mbid = await self.musicbrainz.search(ref, year=year)
         if not mbid:
             return found
         found.musicbrainz_id = mbid
@@ -90,12 +97,6 @@ class AlbumResearch:
             found.review_texts = await self._reviews(group.review_urls)
 
         return found
-
-    async def cover_art(
-        self, release_mbid: str, release_group_mbid: str | None = None
-    ) -> str | None:
-        """Front cover art for an album Plex has none for."""
-        return await self.covers.front(release_mbid, release_group_mbid or "")
 
     async def close(self) -> None:
         """Release the shared connection pool."""

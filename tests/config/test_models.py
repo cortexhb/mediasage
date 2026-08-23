@@ -30,24 +30,24 @@ class TestPlexConfig:
 
     def test_is_frozen(self):
         """Sections are replaced wholesale, never mutated."""
-        config = PlexConfig(url="http://plex:32400")
-
-        with pytest.raises(ValidationError):
-            config.url = "http://other:32400"
+        assert PlexConfig.model_config["frozen"] is True
 
 
 class TestLLMConfig:
     """Tests for LLM section validation."""
 
-    def _config(self, **overrides):
-        values = {
-            "provider": "custom",
-            "model_analysis": "m",
-            "model_generation": "m",
-            "endpoint_url": "http://localhost:5000/v1",
-            "context_window": 32768,
-        }
-        return LocalLLMConfig(**(values | overrides))
+    def _config(
+        self,
+        context_window: int = 32768,
+        endpoint_url: str = "http://localhost:5000/v1",
+    ) -> LocalLLMConfig:
+        return LocalLLMConfig(
+            provider="custom",
+            model_analysis="m",
+            model_generation="m",
+            endpoint_url=endpoint_url,
+            context_window=context_window,
+        )
 
     def test_rejects_context_window_below_minimum(self):
         """Should reject a context window too small for a trimmed prompt."""
@@ -82,12 +82,12 @@ class TestLLMConfig:
     def test_local_requires_an_endpoint(self):
         """A local provider is unreachable without one, so it has no default."""
         with pytest.raises(ValidationError):
-            LocalLLMConfig(provider="custom", context_window=32768)
+            LocalLLMConfig.model_validate({"provider": "custom", "context_window": 32768})
 
     def test_context_window_is_required_of_every_provider(self):
         """No table to fall back on, so an unset window fails rather than guesses."""
         with pytest.raises(ValidationError):
-            CloudLLMConfig(provider="openai")
+            CloudLLMConfig.model_validate({"provider": "openai"})
 
     def test_cloud_carries_no_endpoint(self):
         """An endpoint lives only on the local section."""
@@ -132,22 +132,29 @@ class TestConfigUpdate:
     def test_rejects_unknown_provider(self):
         """Should reject a provider outside the supported set."""
         with pytest.raises(ValidationError):
-            ConfigUpdate(llm_provider="notaprovider")
+            ConfigUpdate.model_validate({"llm_provider": "notaprovider"})
 
 
 class TestPricing:
     """Tests for the per-role token prices."""
 
-    def _cloud(self, **overrides) -> CloudLLMConfig:
-        values = {
-            "provider": "anthropic",
-            "context_window": 200_000,
-            "cost_analysis_input": 3.00,
-            "cost_analysis_output": 15.00,
-            "cost_generation_input": 1.00,
-            "cost_generation_output": 5.00,
-        }
-        return CloudLLMConfig(**(values | overrides))
+    def _cloud(
+        self,
+        smart_generation: bool = False,
+        model_analysis: str = "",
+        model_generation: str = "",
+    ) -> CloudLLMConfig:
+        return CloudLLMConfig(
+            provider="anthropic",
+            context_window=200_000,
+            cost_analysis_input=3.00,
+            cost_analysis_output=15.00,
+            cost_generation_input=1.00,
+            cost_generation_output=5.00,
+            smart_generation=smart_generation,
+            model_analysis=model_analysis,
+            model_generation=model_generation,
+        )
 
     def test_prices_each_role_separately(self):
         """The analysis and generation models rarely cost the same."""
@@ -208,7 +215,7 @@ class TestBudgetConfig:
     def test_rejects_zero_tokens_per_track(self):
         """Zero would divide by zero when budgeting."""
         with pytest.raises(ValidationError):
-            BudgetConfig(tokens_per_track=0)
+            BudgetConfig.model_validate({"tokens_per_track": 0})
 
 
 class TestResearchConfig:
@@ -224,7 +231,7 @@ class TestResearchConfig:
 
     def test_rejects_a_non_positive_timeout(self):
         with pytest.raises(ValidationError):
-            ResearchConfig(request_timeout=0)
+            ResearchConfig.model_validate({"request_timeout": 0})
 
     def test_endpoints_are_overridable_for_a_mirror(self):
         mirror = ResearchConfig(musicbrainz_url="http://mb.lan/ws/2")
@@ -244,9 +251,9 @@ class TestMatchingConfig:
     def test_scores_are_bounded_to_a_ratio(self, field):
         """Every floor is a rapidfuzz ratio, so nothing outside 0-100 is valid."""
         with pytest.raises(ValidationError):
-            MatchingConfig(**{field: 101})
+            MatchingConfig.model_validate({field: 101})
         with pytest.raises(ValidationError):
-            MatchingConfig(**{field: -1})
+            MatchingConfig.model_validate({field: -1})
 
 
 class TestRecommendConfig:
@@ -254,11 +261,11 @@ class TestRecommendConfig:
 
     def test_rejects_a_zero_pick_count(self):
         with pytest.raises(ValidationError):
-            RecommendConfig(pick_count=0)
+            RecommendConfig.model_validate({"pick_count": 0})
 
     def test_rejects_a_zero_expiry(self):
         with pytest.raises(ValidationError):
-            RecommendConfig(session_expiry=0)
+            RecommendConfig.model_validate({"session_expiry": 0})
 
     def test_history_can_be_switched_off(self):
         assert RecommendConfig(recent_limit=0).recent_limit == 0
@@ -269,8 +276,84 @@ class TestArtConfig:
 
     def test_rejects_a_negative_cache_age(self):
         with pytest.raises(ValidationError):
-            ArtConfig(cache_max_age=-1)
+            ArtConfig.model_validate({"cache_max_age": -1})
 
     def test_the_allowlist_is_replaceable(self):
         """A deployment mirroring cover art needs its own host allowed."""
         assert ArtConfig(external_domains=["art.lan"]).external_domains == ["art.lan"]
+
+
+class TestProviderPresentation:
+    """What the settings form reads off a configured provider."""
+
+    def cloud(self) -> CloudLLMConfig:
+        return CloudLLMConfig(provider="anthropic", api_key="k", context_window=200000)
+
+    def local(self) -> LocalLLMConfig:
+        return LocalLLMConfig(
+            provider="ollama", endpoint_url="http://nas:11434", context_window=32768
+        )
+
+    def test_a_provider_is_labelled_for_the_form(self):
+        assert self.cloud().label == "Anthropic (Claude)"
+        assert self.local().label == "Ollama (Local)"
+
+    def test_a_local_provider_reports_its_endpoint(self):
+        assert self.local().local_endpoint == "http://nas:11434"
+
+    def test_a_hosted_provider_reports_none(self):
+        """The form hides the URL field rather than showing a stale one."""
+        assert self.cloud().local_endpoint == ""
+
+
+class TestCredentialsAreSecret:
+    """Every credential is a `SecretStr`, so nothing incidental prints it."""
+
+    TOKEN = "plex-tok-do-not-print"
+    KEY = "sk-do-not-print"
+
+    def plex(self) -> PlexConfig:
+        return PlexConfig(url="http://plex:32400", token=self.TOKEN)
+
+    def llm(self) -> CloudLLMConfig:
+        return CloudLLMConfig(provider="anthropic", api_key=self.KEY, context_window=200000)
+
+    def test_a_repr_masks_the_plex_token(self):
+        """A traceback frame renders the model, so the repr must not carry it."""
+        assert self.TOKEN not in repr(self.plex())
+
+    def test_a_repr_masks_the_api_key(self):
+        assert self.KEY not in repr(self.llm())
+
+    def test_a_json_dump_masks_both(self):
+        """Anything serialising a section for a log or a response is safe."""
+        assert self.TOKEN not in str(self.plex().model_dump(mode="json"))
+        assert self.KEY not in str(self.llm().model_dump(mode="json"))
+
+    def test_the_value_is_still_reachable_where_it_is_spent(self):
+        assert self.plex().token.get_secret_value() == self.TOKEN
+        assert self.llm().api_key.get_secret_value() == self.KEY
+
+    def test_an_unset_credential_is_falsy(self):
+        """`is_configured` and the lifespan both test the credential directly."""
+        assert not PlexConfig().token
+        assert not CloudLLMConfig(provider="anthropic", context_window=200000).is_configured
+
+
+class TestSecretsReachTheConfigFile:
+    """What `ConfigStore.save` writes must be the credential, not the mask."""
+
+    def test_a_plex_token_is_unwrapped_for_persistence(self):
+        """Left wrapped, the deployment would restart unconfigured."""
+        update = ConfigUpdate(plex_url="http://plex:32400", plex_token="tok")
+
+        assert update.changes("plex")["token"] == "tok"
+
+    def test_an_api_key_is_unwrapped_for_persistence(self):
+        update = ConfigUpdate(llm_provider="anthropic", llm_api_key="sk-real")
+
+        assert update.changes("llm")["api_key"] == "sk-real"
+
+    def test_a_blank_credential_is_not_written(self):
+        """An empty secret is falsy, so it never reaches the file."""
+        assert "token" not in ConfigUpdate(plex_url="http://plex:32400").changes("plex")

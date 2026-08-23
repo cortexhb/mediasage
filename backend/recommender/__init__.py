@@ -6,13 +6,13 @@ Split by responsibility:
   models      the shapes every stage passes: albums, answers, pitches, facts
   dimensions  the taste axes a clarifying question can be asked along
   prompts     every word sent to a model, and nothing else
-  calls       MeteredClient, one call charged to one session
+  calls       MeteredClient, one call charged to one session; Stage over it
   sessions    SessionStore, the flow held between requests
   matching    an album a model named, matched back to one we have
   selection   what to ask, what to filter, and which albums to pick
   facts       raw research read into facts a pitch can be held to
   pitches     writing the pitch, fact-checking it, rewriting what it got wrong
-  pipeline    RecommendationPipeline, the facade the application talks through
+  pipeline    RecommendationPipeline, and the three stages of one round
 
 `pipeline_store` is the entry point: it hands out the pipeline for the
 configured LLM and rebuilds it when that client changes.
@@ -22,7 +22,8 @@ stage covers every caller of it.
 """
 
 from backend.recommender import dimensions, facts, matching, pitches, prompts, selection
-from backend.recommender.calls import MeteredClient
+from backend.recommender.calls import MeteredClient, Stage
+from backend.recommender.facts import Facts
 from backend.recommender.matching import AlbumMatcher
 from backend.recommender.models import (
     AlbumRecommendation,
@@ -43,8 +44,14 @@ from backend.recommender.models import (
     TasteDimension,
     TasteProfile,
 )
-from backend.recommender.pipeline import PipelineStore, RecommendationPipeline, pipeline_store
+from backend.recommender.pipeline import (
+    PipelineStore,
+    RecommendationPipeline,
+    pipeline_store,
+)
+from backend.recommender.pitches import Pitches
 from backend.recommender.round import RecommendationRound, RoundInputs, Step
+from backend.recommender.selection import Selection
 from backend.recommender.sessions import SessionStore
 
 __all__ = [
@@ -54,6 +61,7 @@ __all__ = [
     "AnswerSet",
     "ClarifyingQuestion",
     "ExtractedFacts",
+    "Facts",
     "FamiliarityPreference",
     "FilterSuggestion",
     "MeteredClient",
@@ -61,6 +69,7 @@ __all__ = [
     "PipelineStore",
     "PitchIssue",
     "PitchValidation",
+    "Pitches",
     "Rank",
     "RecommendGenerateResponse",
     "RecommendSession",
@@ -68,8 +77,10 @@ __all__ = [
     "RecommendationRound",
     "ResearchData",
     "RoundInputs",
+    "Selection",
     "SessionStore",
     "SommelierPitch",
+    "Stage",
     "Step",
     "TasteDimension",
     "TasteProfile",

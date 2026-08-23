@@ -6,8 +6,12 @@ parses exactly that shape -- changing one means changing the other.
 
 Kept together so the sommelier's voice stays consistent across the four calls
 a single recommendation makes.
+
+Module-level functions on purpose: prompt text stays in one file rather than
+following the stages that send it.
 """
 
+from collections.abc import Sequence
 from typing import Final
 
 from backend.recommender.models import (
@@ -178,8 +182,8 @@ def discovery(
     prompt: str,
     answers: AnswerSet,
     profile: TasteProfile,
-    owned: list[AlbumRef],
-    already_shown: list[AlbumRef],
+    owned: Sequence[AlbumRef],
+    already_shown: Sequence[AlbumRef],
     picks: int,
 ) -> str:
     shown = ""

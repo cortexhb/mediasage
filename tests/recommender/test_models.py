@@ -1,7 +1,6 @@
 """Tests for the models the pipeline passes between its stages."""
 
 import pytest
-from pydantic import ValidationError
 
 from backend.recommender.models import (
     AlbumRecommendation,
@@ -36,12 +35,48 @@ class TestAlbumRef:
 
     def test_is_frozen(self):
         """Refs are dict keys and exclusion entries; a mutated one goes missing."""
-        with pytest.raises(ValidationError):
-            AlbumRef(artist="a", album="b").artist = "c"
+        assert AlbumRef.model_config["frozen"] is True
 
     def test_separator_survives_a_comma_in_the_name(self):
         ref = AlbumRef(artist="Earth, Wind & Fire", album="I Am")
-        assert AlbumRef.parse(ref.key).artist == "earth, wind & fire"
+        parsed = AlbumRef.parse(ref.key)
+        assert parsed is not None
+        assert parsed.artist == "earth, wind & fire"
+
+
+class TestWithoutEdition:
+    """A library files "Nevermind (Deluxe Edition)"; MusicBrainz files "Nevermind"."""
+
+    @pytest.mark.parametrize("album,stripped", (
+        ("Nevermind (Deluxe Edition)", "Nevermind"),
+        ("Ten (Super Deluxe)", "Ten"),
+        ("Ágætis byrjun (Anniversary Edition)", "Ágætis byrjun"),
+    ))
+    def test_strips_an_edition_suffix(self, album, stripped):
+        bare = AlbumRef(artist="A", album=album).without_edition()
+        assert bare is not None
+        assert bare.album == stripped
+
+    def test_the_artist_is_carried_over(self):
+        bare = AlbumRef(artist="Nirvana", album="Nevermind (Deluxe Edition)").without_edition()
+        assert bare is not None
+        assert bare.artist == "Nirvana"
+
+    def test_a_title_with_no_suffix_yields_nothing(self):
+        assert AlbumRef(artist="A", album="Nevermind").without_edition() is None
+
+    def test_an_unlisted_marker_is_left_alone(self):
+        """The alternation is a fixed list; a leading "Remastered" is not on it."""
+        assert AlbumRef(artist="A", album="Nevermind (Remastered 2011)").without_edition() is None
+
+    def test_a_marker_inside_the_title_is_part_of_it(self):
+        """Only the end is stripped, so a real name survives."""
+        assert AlbumRef(artist="A", album="Deluxe Trouble").without_edition() is None
+
+    def test_the_original_is_not_mutated(self):
+        ref = AlbumRef(artist="A", album="Ten (Super Deluxe)")
+        ref.without_edition()
+        assert ref.album == "Ten (Super Deluxe)"
 
 
 class TestAnswerSet:

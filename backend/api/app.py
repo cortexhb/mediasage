@@ -7,15 +7,20 @@ application without the one the process already holds.
 
 Startup and shutdown live in `lifespan`: both clients are built from whatever
 is configured, and the schema is brought to head before anything reads it.
+
+A route that needs a dependency depends on it and does not check for it: the
+handler registered here turns "there is no Plex" and "there is no provider"
+into a 503, wherever they are raised.
 """
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
-from backend.api import clients, guards
+from backend.api.clients import shared
 from backend.api.routes.analyze import register_analyze_routes
 from backend.api.routes.art import register_art_routes
 from backend.api.routes.config import register_config_routes
@@ -27,30 +32,40 @@ from backend.api.routes.results import register_results_routes
 from backend.api.routes.setup import register_setup_routes
 from backend.api.routes.static import register_static_routes
 from backend.config import config_store
-from backend.db import upgrade_to_head
-from backend.version import get_version
+from backend.db import migrations
+from backend.llm import LLMClient, LLMNotConfigured, client_store
+from backend.plex import PlexClient, PlexNotConnected, plex_store
+from backend.version import Version
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Build what is configured, then release it on the way out."""
     config = config_store.get()
 
     if config.plex.url and config.plex.token:
-        guards.init_plex(config.plex)
+        plex_store.client = PlexClient.of(config.plex)
 
-    # A local provider is reached by URL and needs no key.
-    if config.llm.api_key or config.llm.is_local:
-        guards.init_llm(config.llm)
+    if config.llm.is_configured:
+        client_store.client = LLMClient.of(config.llm)
 
     # Before anything reads or writes a row.
-    upgrade_to_head()
+    migrations.upgrade_to_head()
 
     yield
 
-    await clients.close()
+    await shared.close()
+
+
+async def _unavailable(request: Request, exc: Exception) -> JSONResponse:
+    """A dependency that was never configured, as a status code.
+
+    503 rather than 500: nothing is broken, something has not been set up, and
+    the UI sends the user to Settings on this.
+    """
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 def create_app() -> FastAPI:
@@ -58,9 +73,12 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="MediaSage",
         description="Plex playlist generator powered by LLMs",
-        version=get_version(),
+        version=Version.current(),
         lifespan=lifespan,
     )
+
+    app.add_exception_handler(PlexNotConnected, _unavailable)
+    app.add_exception_handler(LLMNotConfigured, _unavailable)
 
     register_health_routes(app)
     register_setup_routes(app)

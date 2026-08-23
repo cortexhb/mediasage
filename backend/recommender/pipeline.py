@@ -1,39 +1,37 @@
 """The recommendation pipeline the application talks through.
 
-`RecommendationPipeline` is a facade: it owns the session store and binds each
-stage to the session paying for it, so a caller passes a session id rather than
-threading a metered client through every call. Entry points: `pipeline_store`.
+`RecommendationPipeline` owns the session store and hands out the three stages
+of a round bound to the session paying for them, so a caller names a session
+once rather than threading a metered client through every call. Entry points:
+`pipeline_store`.
 
-Every method here is synchronous and spends real tokens. Call them from an
-endpoint through `asyncio.to_thread`.
+Every call reached from here is synchronous and spends real tokens. Call them
+from an endpoint through `asyncio.to_thread`.
 """
 
 import logging
 import threading
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field
 
-from backend.library import AlbumCandidate, AlbumFamiliarity
-from backend.llm import LLMClient
-from backend.recommender import facts as facts_module
-from backend.recommender import pitches, selection
-from backend.recommender.calls import MeteredClient
-from backend.recommender.models import (
-    AlbumRecommendation,
-    AlbumRef,
-    AnswerSet,
-    ClarifyingQuestion,
-    ExtractedFacts,
-    FamiliarityPreference,
-    FilterSuggestion,
-    PitchValidation,
-    ResearchData,
-    SommelierPitch,
-    TasteProfile,
-)
+from backend.llm import LLMClient, LLMNotConfigured, client_store
+from backend.recommender.calls import NO_SESSION, MeteredClient
+from backend.recommender.facts import Facts
+from backend.recommender.pitches import Pitches
+from backend.recommender.selection import Selection
 from backend.recommender.sessions import SessionStore
 
 logger = logging.getLogger(__name__)
+
+
+class RoundStages(BaseModel):
+    """The three stages of one round, every call charged to the same session."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    selection: Selection
+    facts: Facts
+    pitches: Pitches
 
 
 class RecommendationPipeline(BaseModel):
@@ -46,133 +44,54 @@ class RecommendationPipeline(BaseModel):
     # SessionStore holds a threading.Lock, which cannot be copied.
     sessions: SessionStore = Field(default_factory=SessionStore)
 
-    def _for(self, session_id: str) -> MeteredClient:
-        """A client whose spend lands on `session_id`."""
-        return MeteredClient(client=self.client, sessions=self.sessions, session_id=session_id)
+    def stages(self, session_id: str = NO_SESSION) -> RoundStages:
+        """The stages of a round, spending against `session_id`.
 
-    # -- before a session exists -----------------------------------------
-
-    def suggest_filters(
-        self, prompt: str, genres: list[str], decades: list[str]
-    ) -> FilterSuggestion:
-        """Narrow the library before the user is asked anything.
-
-        Runs ahead of the session, so its cost is logged but not attributed.
+        The default runs ahead of any session -- what it costs is logged but
+        attributed to nobody, which is what filter suggestion needs.
         """
-        return selection.suggest_filters(
-            MeteredClient(client=self.client, sessions=self.sessions), prompt, genres, decades
+        call = MeteredClient(
+            client=self.client, sessions=self.sessions, session_id=session_id
+        )
+        return RoundStages(
+            selection=Selection(call=call), facts=Facts(call=call), pitches=Pitches(call=call)
         )
 
-    # -- questions -------------------------------------------------------
 
-    def gap_analysis(self, session_id: str, prompt: str) -> list[str]:
-        """The dimensions worth asking about."""
-        return selection.gap_analysis(self._for(session_id), prompt)
-
-    def generate_questions(
-        self, session_id: str, prompt: str, dimension_ids: list[str]
-    ) -> list[ClarifyingQuestion]:
-        """The questions to put to the user."""
-        return selection.generate_questions(self._for(session_id), prompt, dimension_ids)
-
-    # -- selection -------------------------------------------------------
-
-    def select_albums(
-        self,
-        session_id: str,
-        prompt: str,
-        answers: AnswerSet,
-        candidates: list[AlbumCandidate],
-        familiarity_pref: FamiliarityPreference = "any",
-        familiarity: dict[str, AlbumFamiliarity] | None = None,
-        already_shown: list[AlbumRef] | None = None,
-    ) -> list[AlbumRecommendation]:
-        """Pick albums out of the user's own library."""
-        return selection.select_albums(
-            self._for(session_id), prompt, answers, candidates,
-            familiarity_pref, familiarity, already_shown,
-        )
-
-    def select_discovery_albums(
-        self,
-        session_id: str,
-        prompt: str,
-        answers: AnswerSet,
-        profile: TasteProfile,
-        already_shown: list[AlbumRef] | None = None,
-        max_exclusion_albums: int | None = None,
-    ) -> list[AlbumRecommendation]:
-        """Pick albums the user does not own."""
-        return selection.select_discovery_albums(
-            self._for(session_id), prompt, answers, profile,
-            already_shown, max_exclusion_albums,
-        )
-
-    # -- grounding and pitches -------------------------------------------
-
-    def extract_facts(
-        self, session_id: str, ref: AlbumRef, research: ResearchData
-    ) -> ExtractedFacts:
-        """Read one album's research into labelled facts."""
-        return facts_module.extract(self._for(session_id), ref, research)
-
-    def validate_discovery_album(
-        self, session_id: str, rec: AlbumRecommendation, research: ResearchData, prompt: str
-    ) -> bool:
-        """Whether a discovery pick fits what was asked for."""
-        return facts_module.matches_request(self._for(session_id), rec, research, prompt)
-
-    def write_pitches(
-        self,
-        session_id: str,
-        recommendations: list[AlbumRecommendation],
-        prompt: str,
-        answers: AnswerSet,
-        research: dict[str, ResearchData] | None = None,
-        facts: dict[str, ExtractedFacts] | None = None,
-        familiarity_pref: FamiliarityPreference = "any",
-        familiarity: dict[str, AlbumFamiliarity] | None = None,
-    ) -> list[AlbumRecommendation]:
-        """Write a pitch for every recommendation."""
-        return pitches.write(
-            self._for(session_id), recommendations, prompt, answers,
-            research, facts, familiarity_pref, familiarity,
-        )
-
-    def validate_pitch(
-        self, session_id: str, pitch: SommelierPitch, facts: ExtractedFacts
-    ) -> PitchValidation:
-        """Fact-check a pitch against what the sources said."""
-        return pitches.validate(self._for(session_id), pitch, facts)
-
-    def rewrite_pitch(
-        self,
-        session_id: str,
-        rec: AlbumRecommendation,
-        facts: ExtractedFacts,
-        issues: PitchValidation,
-        prompt: str,
-        answers: AnswerSet,
-    ) -> None:
-        """Rewrite a primary pitch around its corrections, in place."""
-        pitches.rewrite(self._for(session_id), rec, facts, issues, prompt, answers)
-
-
-class PipelineStore(BaseModel):
+class PipelineStore:
     """Holds the pipeline, rebuilding it when the LLM client changes.
 
     A settings change replaces the LLM client, and a pipeline built on the old
     one would keep spending against it. The rebuild carries the sessions over,
     so a user mid-flow does not lose their questions.
+
+    A plain class, not a model: its methods are depended on directly by the
+    routes, and a bound method of an unfrozen pydantic model is unhashable.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    def __init__(self) -> None:
+        self.pipeline: RecommendationPipeline | None = None
+        self._lock = threading.Lock()
 
-    pipeline: RecommendationPipeline | None = None
+    def available(self) -> RecommendationPipeline | None:
+        """The pipeline for the configured provider, or None when there is none.
 
-    _lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
+        For a caller that degrades rather than failing.
+        """
+        return self.for_client(client_store.get())
 
-    def get(self, client: LLMClient | None) -> RecommendationPipeline | None:
+    def require(self) -> RecommendationPipeline:
+        """The pipeline for the configured provider.
+
+        Raises:
+            LLMNotConfigured: If no provider has been configured yet
+        """
+        built = self.available()
+        if built is None:
+            raise LLMNotConfigured("LLM client not configured. Set a provider in Settings.")
+        return built
+
+    def for_client(self, client: LLMClient | None) -> RecommendationPipeline | None:
         """The pipeline for `client`, built or rebuilt as needed.
 
         Returns None when no LLM provider is configured, which is what the

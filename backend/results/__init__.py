@@ -1,8 +1,7 @@
 """Persisted playlists and album recommendations.
 
 Results are what a generation run produced, kept so the history feed can render
-them without running a model again. Entry points live in
-`backend.results.store`.
+them without running a model again. `results_store` is the entry point.
 """
 
 from backend.results.models import (
@@ -11,7 +10,7 @@ from backend.results.models import (
     ResultListResponse,
     ResultType,
 )
-from backend.results.store import get, page, remove, save
+from backend.results.store import ResultStore, results_store
 from backend.results.tables import Result
 
 __all__ = [
@@ -19,9 +18,7 @@ __all__ = [
     "ResultDetail",
     "ResultListItem",
     "ResultListResponse",
+    "ResultStore",
     "ResultType",
-    "get",
-    "page",
-    "remove",
-    "save",
+    "results_store",
 ]

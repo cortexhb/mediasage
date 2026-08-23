@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"grep -n \\\"MEDIASAGE_\\\" README.md | head -30; echo \\\"--count--\\\"; grep -c \\\"MEDIASAGE_\\\" README.md; echo \\\"--config.yaml--\\\"; ls config.yaml 2>/dev/null && cat config.yaml\",\"description\":\"C...",
-  "error": "Exit code 1\n182:MEDIASAGE_PLEX__URL=http://your-plex-server:32400\n183:MEDIASAGE_PLEX__TOKEN=your-plex-token\n186:MEDIASAGE_LLM__PROVIDER=gemini\n187:MEDIASAGE_LLM__API_KEY=your-gemini-key\n188:MEDIASAGE_LLM__MODEL_ANALYSIS=gemini-2.5-flash\n189:MEDIASAGE_LLM__MODEL_GENERATION=gemini-2.5-flash\n209:5. Add environment variables: `MEDIASAGE_PLEX__URL`, `MEDIASAGE_PLEX__TOKEN`, `MEDIASAGE_LLM__API_KEY`\n233:4. Add variables: `MEDIASAGE_PLEX__URL`, `MEDIASAGE_PLEX__TOKEN`, `MEDIASAGE_LLM__API_KEY`\n259:    ...",
-  "timestamp": "2026-08-22T13:32:50.382Z",
-  "retry_count": 1
-}

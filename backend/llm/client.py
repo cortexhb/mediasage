@@ -1,87 +1,51 @@
-"""Provider-neutral chat completions, on top of LangChain.
+"""One conversation with a provider, addressed by role.
 
-`LLMClient` is the only thing in the codebase that talks to a model. It builds
-one LangChain chat model per configuration and exposes `analyze` and `generate`,
-which differ only in which configured model — and so which price — they spend.
+`LLMClient` is the only thing in the codebase that sends a prompt. It spends
+either the analysis model or the generation model -- which differ only in which
+configured name, and so which price, they carry -- and returns the completion
+with the token counts the provider reported.
 
-LangChain's `init_chat_model` handles every provider we support behind one
-signature, so there is no per-provider branch here beyond the name mapping in
-`PROVIDER_IDS`. `custom` is OpenAI-compatible and is reached by pointing the
-OpenAI integration at the configured `base_url`.
-
-Retries and timeouts are the integration's own, configured from `LLMConfig`;
-nothing here hand-rolls a retry loop.
+Which model each role resolves to, and how it is built, is `chat.ChatModels`.
+Reading JSON back out of a completion is `LLMResponse.parsed`. Retries and
+timeouts are the integration's own, configured from `LLMConfig`; nothing here
+hand-rolls a retry loop.
 """
 
 import logging
-from typing import Any
+from typing import Self
 
-from langchain.chat_models import init_chat_model
-from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict
 
-from backend.config import LLMSection, LocalLLMConfig, Provider, Role
-from backend.llm.constants import PLACEHOLDER_API_KEY, PROVIDER_IDS
-from backend.llm.json_parse import parse_json
+from backend.config import LLMSection, Provider, Role
+from backend.llm.chat import ChatModels
+from backend.llm.errors import LLMError, LLMNotConfigured
 from backend.llm.models import LLMResponse
 
 logger = logging.getLogger(__name__)
 
 
-class LLMError(RuntimeError):
-    """Raised when a provider returns nothing usable."""
-
-# TODO half of this is model, half is business logic
-class LLMClient:
+class LLMClient(BaseModel):
     """One configured provider, addressed by role rather than by model name."""
 
-    def __init__(self, config: LLMSection) -> None:
-        self.config = config
-        self.provider: Provider = config.provider
-        self._models: dict[Role, BaseChatModel] = {}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def model_name(self, role: Role) -> str:
-        """The configured model for `role`, honouring `smart_generation`."""
-        if role == "analysis":
-            return self.config.model_analysis
-        return self.config.model_for_generation
+    models: ChatModels
 
-    def build_kwargs(self) -> dict[str, Any]:
-        """Arguments shared by every provider integration.
+    @classmethod
+    def of(cls, config: LLMSection) -> Self:
+        """The client for one configuration."""
+        return cls(models=ChatModels(config=config))
 
-        Every supported integration accepts this set; a local endpoint adds
-        `base_url` and needs no real key.
-        """
-        kwargs: dict[str, Any] = {
-            "timeout": self.config.request_timeout,
-            "max_tokens": self.config.max_output_tokens,
-            "max_retries": self.config.max_retries,
-        }
+    @property
+    def config(self) -> LLMSection:
+        """The configuration this client was built from."""
+        return self.models.config
 
-        if isinstance(self.config, LocalLLMConfig):
-            kwargs["base_url"] = self.config.endpoint_url
-            kwargs["api_key"] = self.config.api_key or PLACEHOLDER_API_KEY
-        else:
-            kwargs["api_key"] = self.config.api_key
-
-        return kwargs
-
-    def model_for(self, role: Role) -> BaseChatModel:
-        """The chat model for `role`, built once and reused."""
-        if role not in self._models:
-            name = self.model_name(role)
-            if not name:
-                raise LLMError(
-                    f"No {role} model configured. Set MEDIASAGE_LLM__MODEL_"
-                    f"{role.upper()} or choose one in Settings."
-                )
-            self._models[role] = init_chat_model(
-                model=name,
-                model_provider=PROVIDER_IDS[self.provider],
-                **self.build_kwargs(),
-            )
-        return self._models[role]
+    @property
+    def provider(self) -> Provider:
+        """Which provider is being spent, for logs and error messages."""
+        return self.models.config.provider
 
     def complete(self, prompt: str, system: str, role: Role) -> LLMResponse:
         """Run one completion and return it with the provider's token counts.
@@ -89,13 +53,13 @@ class LLMClient:
         Raises:
             LLMError: If the provider returns no usable content
         """
-        name = self.model_name(role)
+        name = self.models.name_for(role)
         logger.info(
             "Calling %s (%s) for %s with %d char prompt",
             self.provider, name, role, len(prompt),
         )
 
-        message = self.model_for(role).invoke(
+        message = self.models.for_role(role).invoke(
             [SystemMessage(content=system), HumanMessage(content=prompt)]
         )
         response = LLMResponse.from_message(message, model=name, role=role)
@@ -122,22 +86,19 @@ class LLMClient:
         """Spend the generation model, for track and album selection."""
         return self.complete(prompt, system, "generation")
 
-    @staticmethod
-    def parse_json_response(response: LLMResponse) -> Any:
-        """Decode a response's content as JSON, repairing what models get wrong."""
-        return parse_json(response.content)
 
-
-class LLMClientStore(BaseModel):
+class LLMClientStore:
     """Holds the client the application talks through.
 
     Built from configuration at startup and rebuilt whenever settings change,
     so a stale client can never outlive the config that produced it.
+
+    A plain class, not a model: its methods are depended on directly by the
+    routes, and a bound method of an unfrozen pydantic model is unhashable.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True, validate_assignment=True)
-
-    client: LLMClient | None = None
+    def __init__(self) -> None:
+        self.client: LLMClient | None = None
 
     def get(self) -> LLMClient | None:
         """The current client, or None before one is configured."""
@@ -147,17 +108,13 @@ class LLMClientStore(BaseModel):
         """The current client, failing loudly rather than returning None.
 
         Raises:
-            LLMError: If no provider has been configured yet
+            LLMNotConfigured: If no provider has been configured yet
         """
         if self.client is None:
-            raise LLMError("LLM client not configured. Set a provider in Settings.")
-        return self.client
-
-    def init(self, config: LLMSection) -> LLMClient:
-        """Replace the client with one built from `config`."""
-        self.client = LLMClient(config)
+            raise LLMNotConfigured("LLM client not configured. Set a provider in Settings.")
         return self.client
 
 
-# The single instance the application talks through.
+# The single instance the application talks through. `client` is assigned
+# wherever the LLM settings change: at boot, and after a save.
 client_store = LLMClientStore()

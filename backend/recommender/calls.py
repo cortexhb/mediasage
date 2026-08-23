@@ -4,7 +4,7 @@ Every pipeline stage spends tokens on someone's behalf. Wrapping the client
 means a stage asks for a completion and gets parsed JSON back, while the cost
 line and the session total are recorded without the stage doing either.
 
-Entry point: `MeteredClient`.
+Entry points: `MeteredClient`, and `Stage` for anything that spends through one.
 """
 
 import logging
@@ -50,25 +50,35 @@ class MeteredClient(BaseModel):
         self.sessions.add_spend(
             self.session_id, response.input_tokens + response.output_tokens, cost
         )
-        return self.client.parse_json_response(response)
+        return response.parsed()
 
 
-def as_list(raw: Any) -> list[Any]:
-    """Whatever the model returned, as a list.
+class Stage(BaseModel):
+    """A pipeline stage, bound to the client its calls are charged to.
 
-    Models asked for a JSON array sometimes wrap it in an object or answer with
-    a single object. Neither is worth failing a round over.
+    Every stage is one or more LLM calls over the same session, so the client
+    is held once here rather than passed to each call.
     """
-    if isinstance(raw, list):
-        return raw
-    if isinstance(raw, dict):
-        for value in raw.values():
-            if isinstance(value, list):
-                return value
-        return [raw]
-    return []
 
+    call: MeteredClient
 
-def as_dict(raw: Any) -> dict[str, Any]:
-    """Whatever the model returned, as an object; empty when it is not one."""
-    return raw if isinstance(raw, dict) else {}
+    @staticmethod
+    def as_list(raw: Any) -> list[Any]:
+        """Whatever the model returned, as a list.
+
+        Models asked for a JSON array sometimes wrap it in an object or answer
+        with a single object. Neither is worth failing a round over.
+        """
+        if isinstance(raw, list):
+            return raw
+        if isinstance(raw, dict):
+            for value in raw.values():
+                if isinstance(value, list):
+                    return value
+            return [raw]
+        return []
+
+    @staticmethod
+    def as_dict(raw: Any) -> dict[str, Any]:
+        """Whatever the model returned, as an object; empty when it is not one."""
+        return raw if isinstance(raw, dict) else {}

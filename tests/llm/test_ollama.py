@@ -5,6 +5,7 @@ import ollama
 import pytest
 from ollama._types import ModelDetails
 
+from backend.config import LocalLLMConfig, config_store
 from backend.llm import OllamaClient
 
 
@@ -141,3 +142,31 @@ class TestStatus:
         )
 
         assert client.status().connected is False
+
+
+class TestConfigured:
+    """The factory the settings routes build a client with."""
+
+    @staticmethod
+    def endpointed(monkeypatch, url: str) -> None:
+        """Install a configuration naming `url` as the local Ollama server."""
+        current = config_store.get()
+        llm = LocalLLMConfig(
+            provider="ollama", endpoint_url=url, context_window=current.llm.context_window
+        )
+        monkeypatch.setattr(config_store, "config", current.model_copy(update={"llm": llm}))
+
+    def test_it_falls_back_to_the_configured_endpoint(self, monkeypatch, installed_config):
+        self.endpointed(monkeypatch, "http://nas:11434")
+
+        assert OllamaClient.configured().base_url == "http://nas:11434"
+
+    def test_a_typed_url_wins_over_the_saved_one(self, monkeypatch, installed_config):
+        """The wizard probes an endpoint before it has been saved."""
+        self.endpointed(monkeypatch, "http://nas:11434")
+
+        assert OllamaClient.configured("http://typed:11434").base_url == "http://typed:11434"
+
+    def test_a_hosted_provider_offers_no_endpoint(self, installed_config):
+        """There is nothing to probe until the form supplies a URL."""
+        assert OllamaClient.configured().base_url == ""

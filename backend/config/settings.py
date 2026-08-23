@@ -109,15 +109,3 @@ class MediasageConfig(BaseSettings):
         if config_path is None:
             return cls()
         return cls(_base_config_file=config_path)
-
-
-def load_config(config_path: Path | None = None) -> MediasageConfig:
-    """Load a configuration from YAML and the environment.
-
-    Args:
-        config_path: Base YAML file; defaults to `config.yaml`
-
-    Returns:
-        A fully resolved, validated configuration
-    """
-    return MediasageConfig.load(config_path)

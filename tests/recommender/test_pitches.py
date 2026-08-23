@@ -1,7 +1,6 @@
 """Tests for writing the sommelier pitch, checking it, and fixing it."""
 
 from backend.library import AlbumFamiliarity
-from backend.recommender import pitches
 from backend.recommender.models import (
     AlbumRecommendation,
     AnswerSet,
@@ -11,6 +10,7 @@ from backend.recommender.models import (
     ResearchData,
     SommelierPitch,
 )
+from backend.recommender.pitches import Pitches
 from tests.recommender.conftest import prompts_of
 
 KEY = "sigur rós|||ágætis byrjun"
@@ -39,7 +39,7 @@ class TestWrite:
         call, _ = metered([written()])
         recs = [primary()]
 
-        pitches.write(call, recs, "atmospheric", AnswerSet())
+        Pitches(call=call).write(recs, "atmospheric", AnswerSet())
 
         assert recs[0].pitch.hook == "A hook"
         assert recs[0].pitch.full_text.startswith("A hook\n\nA context")
@@ -48,7 +48,7 @@ class TestWrite:
         call, _ = metered([written(rank="secondary", short_pitch="One line")])
         recs = [AlbumRecommendation(rank="secondary", album="Ágætis byrjun", artist="Sigur Rós")]
 
-        pitches.write(call, recs, "test", AnswerSet())
+        Pitches(call=call).write(recs, "test", AnswerSet())
 
         assert recs[0].pitch.short_pitch == "One line"
         assert recs[0].pitch.hook == ""
@@ -56,7 +56,7 @@ class TestWrite:
     def test_the_grounding_rules_are_in_the_system_prompt(self, metered):
         call, llm = metered([written()])
 
-        pitches.write(call, [primary()], "test", AnswerSet(), facts={KEY: ExtractedFacts()})
+        Pitches(call=call).write([primary()], "test", AnswerSet(), facts={KEY: ExtractedFacts()})
 
         system, _ = prompts_of(llm.analyze)
         assert "GROUNDING RULES" in system
@@ -71,7 +71,7 @@ class TestWrite:
         )}
         research = {KEY: ResearchData(track_listing=["Intro", "Svefn-g-englar"], label="Smekkleysa")}
 
-        pitches.write(call, [primary()], "test", AnswerSet(), research, facts)
+        Pitches(call=call).write([primary()], "test", AnswerSet(), research, facts)
 
         _, user = prompts_of(llm.analyze)
         assert "Vonlenska on 2 tracks only" in user
@@ -84,7 +84,7 @@ class TestWrite:
         call, _ = metered([written()])
         recs = [primary()]
 
-        pitches.write(call, recs, "test", AnswerSet())
+        Pitches(call=call).write(recs, "test", AnswerSet())
 
         assert recs[0].pitch.hook == "A hook"
         assert recs[0].research_available is False
@@ -93,7 +93,7 @@ class TestWrite:
         call, _ = metered([written()])
         recs = [primary()]
 
-        pitches.write(call, recs, "test", AnswerSet(), research={KEY: ResearchData()})
+        Pitches(call=call).write(recs, "test", AnswerSet(), research={KEY: ResearchData()})
 
         assert recs[0].research_available is True
 
@@ -101,7 +101,7 @@ class TestWrite:
         call, _ = metered([written(album="Ágætis")])
         recs = [primary()]
 
-        pitches.write(call, recs, "test", AnswerSet())
+        Pitches(call=call).write(recs, "test", AnswerSet())
 
         assert recs[0].pitch.hook == "A hook"
 
@@ -109,7 +109,7 @@ class TestWrite:
         call, _ = metered([written(artist="Somebody Else", album="Another Record")])
         recs = [primary()]
 
-        pitches.write(call, recs, "test", AnswerSet())
+        Pitches(call=call).write(recs, "test", AnswerSet())
 
         assert recs[0].pitch.hook == ""
 
@@ -117,7 +117,7 @@ class TestWrite:
         call, llm = metered([written()])
         played = {"123": AlbumFamiliarity(level="well-loved")}
 
-        pitches.write(call, [primary()], "test", AnswerSet(), familiarity=played)
+        Pitches(call=call).write([primary()], "test", AnswerSet(), familiarity=played)
 
         assert "Familiarity: well-loved" in prompts_of(llm.analyze)[1]
 
@@ -126,7 +126,7 @@ class TestValidate:
     def test_a_clean_pitch_passes(self, metered):
         call, _ = metered({"valid": True, "issues": []})
 
-        result = pitches.validate(call, SommelierPitch(full_text="A pitch"), ExtractedFacts())
+        result = Pitches(call=call).fact_check(SommelierPitch(full_text="A pitch"), ExtractedFacts())
 
         assert result.valid is True
         assert result.issues == []
@@ -138,8 +138,7 @@ class TestValidate:
             "correction": "Jenkins rehearsed with Purple Mountains; Berman died first",
         }]})
 
-        result = pitches.validate(
-            call,
+        result = Pitches(call=call).fact_check(
             SommelierPitch(full_text="Born from her touring stint with David Berman"),
             ExtractedFacts(origin_story="Jenkins rehearsed for four days before Berman died"),
         )
@@ -147,16 +146,16 @@ class TestValidate:
         assert not result.valid
         assert "rehearsed" in result.issues[0].correction
 
-    def test_an_unreadable_answer_defaults_to_valid(self, metered):
+    def test_an_answer_that_is_not_an_object_defaults_to_valid(self, metered):
         """An unread answer is not evidence the pitch is wrong."""
-        call, _ = metered("not json")
-        assert pitches.validate(call, SommelierPitch(), ExtractedFacts()).valid is True
+        call, _ = metered("a sentence, not an object")
+        assert Pitches(call=call).fact_check(SommelierPitch(), ExtractedFacts()).valid is True
 
     def test_the_track_listing_is_marked_authoritative(self, metered):
         call, llm = metered({"valid": True})
         facts = ExtractedFacts(origin_story="x", track_listing=["Intro", "Svefn-g-englar"])
 
-        pitches.validate(call, SommelierPitch(full_text="A pitch"), facts)
+        Pitches(call=call).fact_check(SommelierPitch(full_text="A pitch"), facts)
 
         _, user = prompts_of(llm.analyze)
         assert "AUTHORITATIVE TRACK LISTING" in user
@@ -173,7 +172,7 @@ class TestRewrite:
             correction="Rehearsed for four days, never toured",
         )])
 
-        pitches.rewrite(call, rec, ExtractedFacts(), issues, "contemplative", AnswerSet())
+        Pitches(call=call).rewrite(rec, ExtractedFacts(), issues, "contemplative", AnswerSet())
 
         _, user = prompts_of(llm.analyze)
         assert "touring stint with David Berman" in user
@@ -184,7 +183,7 @@ class TestRewrite:
         rec = primary()
         rec.pitch = SommelierPitch(hook="The wrong hook")
 
-        pitches.rewrite(call, rec, ExtractedFacts(), PitchValidation(valid=False), "x", AnswerSet())
+        Pitches(call=call).rewrite(rec, ExtractedFacts(), PitchValidation(valid=False), "x", AnswerSet())
 
         assert rec.pitch.hook == "Corrected hook"
         assert rec.pitch.full_text == "Corrected hook\n\nWhat really happened"

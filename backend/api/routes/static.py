@@ -7,62 +7,80 @@ asset URLs: without it a browser holds a cached stylesheet across an upgrade.
 
 import logging
 from pathlib import Path
-from typing import Final
+from typing import Final, Self
 
 from fastapi import FastAPI, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, ConfigDict
 
-from backend.version import get_version
+from backend.version import Version
 
 logger = logging.getLogger(__name__)
 
-# Where the frontend lives in a checkout, and where the image puts it.
+# A checkout keeps it here; the image puts it there.
 REPO_FRONTEND: Final = Path(__file__).resolve().parents[3] / "frontend"
 IMAGE_FRONTEND: Final = Path("/app/frontend")
 
-# Assets whose URL carries the version, so an upgrade busts the browser cache.
+# Versioned URLs, so an upgrade busts the browser cache.
 VERSIONED_ASSETS: Final = ("/static/style.css", "/static/app.js")
 
 
-def frontend_dir() -> Path | None:
-    """Where the frontend is, or None when only the API was deployed."""
-    for path in (REPO_FRONTEND, IMAGE_FRONTEND):
-        if path.exists():
-            return path
-    return None
+class Frontend(BaseModel):
+    """The frontend directory this process serves, and the page inside it.
 
+    Deploying the API alone is supported, so `locate` answers None rather than
+    raising and the root route says so instead of 500ing.
+    """
 
-def _cache_busted(html: str) -> str:
-    """Stamp the running version onto every asset URL."""
-    version = get_version()
-    for asset in VERSIONED_ASSETS:
-        html = html.replace(asset, f"{asset}?v={version}")
-    return html
+    model_config = ConfigDict(frozen=True)
+
+    directory: Path
+
+    @classmethod
+    def locate(cls) -> Self | None:
+        """The deployed frontend, checkout before image, or None if absent."""
+        for path in (REPO_FRONTEND, IMAGE_FRONTEND):
+            if path.exists():
+                return cls(directory=path)
+        return None
+
+    def index_html(self) -> str | None:
+        """The index page with its assets stamped, or None if it is missing."""
+        index = self.directory / "index.html"
+        if not index.exists():
+            return None
+        return self.cache_busted(index.read_text())
+
+    @staticmethod
+    def cache_busted(html: str) -> str:
+        """Stamp the running version onto every versioned asset URL."""
+        version = Version.current()
+        for asset in VERSIONED_ASSETS:
+            html = html.replace(asset, f"{asset}?v={version}")
+        return html
 
 
 def register_static_routes(app: FastAPI) -> None:
     """Mount the frontend, and serve its index at the root.
 
-    Both are skipped when there is no frontend directory: the API still runs,
-    and the root says so rather than 500ing.
+    The mount is skipped when there is no frontend directory: the API still
+    runs, and the root reports it rather than failing.
     """
-    directory = frontend_dir()
+    frontend = Frontend.locate()
 
-    if directory is not None:
-        app.mount("/static", StaticFiles(directory=directory), name="static")
+    if frontend is not None:
+        app.mount("/static", StaticFiles(directory=frontend.directory), name="static")
 
     async def _index() -> Response:
         """``GET /`` -- the single page, with cache-busted assets."""
-        index = directory / "index.html" if directory else None
-        if index is None or not index.exists():
+        html = frontend.index_html() if frontend else None
+        if html is None:
             return JSONResponse(
                 {"message": "MediaSage API is running. Frontend not found."}
             )
         # `no-cache` on the index alone: it is what carries the versioned asset
         # URLs, so a cached copy would keep pointing at the old ones.
-        return HTMLResponse(
-            _cache_busted(index.read_text()), headers={"Cache-Control": "no-cache"}
-        )
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
     app.add_api_route("/", _index, methods=["GET"], response_model=None)

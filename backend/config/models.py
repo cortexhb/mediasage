@@ -10,13 +10,34 @@ table that goes stale; README.md documents what to set.
 
 Sections are frozen: config is replaced wholesale via `model_copy(update=...)`
 rather than mutated, so a stale reference can never observe a half-applied edit.
+
+Every credential is a `SecretStr`, so a log line, a traceback or a stray
+`model_dump` shows `**********` rather than the key. Reach the real value only
+where it is spent, with `.get_secret_value()`.
 """
 
-from typing import Annotated, Any, ClassVar, Literal, Self
+from typing import Annotated, Any, ClassVar, Final, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 Provider = Literal["anthropic", "openai", "gemini", "ollama", "custom"]
+
+# Shown in the settings form and the wizard; keys are provider names.
+PROVIDER_LABELS: Final[dict[str, str]] = {
+    "anthropic": "Anthropic (Claude)",
+    "openai": "OpenAI (GPT)",
+    "gemini": "Google (Gemini)",
+    "ollama": "Ollama (Local)",
+    "custom": "Custom (OpenAI-compatible)",
+}
 
 # Which configured model a call spends, and so which price applies.
 Role = Literal["analysis", "generation"]
@@ -40,7 +61,7 @@ class PlexConfig(ConfigSection):
     """
 
     url: str = ""
-    token: str = ""
+    token: SecretStr = SecretStr("")
     music_library: str = "Music"
 
     # Rows per bulk request; PLEXAPI_PLEXAPI_CONTAINER_SIZE is set to match.
@@ -72,7 +93,10 @@ class PlexConfig(ConfigSection):
 class LLMConfig(ConfigSection):
     """What every provider needs, whoever serves the model."""
 
-    api_key: str = ""
+    # Declared here because `label` reads it; subclasses narrow the literal.
+    provider: Provider
+
+    api_key: SecretStr = SecretStr("")
     model_analysis: str = ""
     model_generation: str = ""
     smart_generation: bool = False
@@ -128,6 +152,25 @@ class LLMConfig(ConfigSection):
         return (input_tokens * per_input + output_tokens * per_output) / 1_000_000
 
     @property
+    def is_configured(self) -> bool:
+        """Whether the provider can be reached: a hosted one needs a key."""
+        return bool(self.api_key.get_secret_value())
+
+    @property
+    def label(self) -> str:
+        """The provider's name as a form should show it."""
+        return PROVIDER_LABELS.get(self.provider, self.provider)
+
+    @property
+    def local_endpoint(self) -> str:
+        """The URL a local server is reached at; empty for a hosted provider.
+
+        The settings form and the Ollama probes need one answer whichever
+        provider is configured, and a hosted one carries no URL to give.
+        """
+        return ""
+
+    @property
     def is_priced(self) -> bool:
         """Whether any price was declared, so the UI can show cost or omit it."""
         if self.is_local:
@@ -156,6 +199,15 @@ class LocalLLMConfig(LLMConfig):
     is_local: ClassVar[bool] = True
 
     endpoint_url: str
+
+    @property
+    def is_configured(self) -> bool:
+        """A server on the user's own hardware is reached by URL, key or not."""
+        return bool(self.endpoint_url)
+
+    @property
+    def local_endpoint(self) -> str:
+        return self.endpoint_url
 
     @field_validator("endpoint_url")
     @classmethod
@@ -346,6 +398,21 @@ class DefaultsConfig(ConfigSection):
     track_count: int = Field(default=25, ge=1, le=1000)
 
 
+# Fields whose value decides whether a dependency answers at all. Everything
+# else in an update -- prices, and the music library name Plex resolves later --
+# is saved on its own word.
+CONNECTING: Final[frozenset[str]] = frozenset({
+    "plex_url",
+    "plex_token",
+    "llm_provider",
+    "llm_api_key",
+    "endpoint_url",
+    "model_analysis",
+    "model_generation",
+    "context_window",
+})
+
+
 class ConfigUpdate(ConfigSection):
     """A partial configuration change submitted from the UI.
 
@@ -354,10 +421,10 @@ class ConfigUpdate(ConfigSection):
     """
 
     plex_url: str | None = None
-    plex_token: str | None = None
+    plex_token: SecretStr | None = None
     music_library: str | None = None
     llm_provider: Provider | None = None
-    llm_api_key: str | None = None
+    llm_api_key: SecretStr | None = None
     model_analysis: str | None = None
     model_generation: str | None = None
 
@@ -385,6 +452,42 @@ class ConfigUpdate(ConfigSection):
         "cost_generation_output": ("llm", "cost_generation_output"),
     }
 
+    @property
+    def provider_changes(self) -> dict[str, Any]:
+        """Clear what belonged to the previous provider.
+
+        Model names, endpoints and prices do not survive a provider switch: they
+        name things the new provider does not serve. Anything the caller supplied
+        explicitly is left for `changes` to apply over the top.
+
+        `context_window` is deliberately kept: it is required, so blanking it
+        would leave the section unvalidatable until the user supplies a new one.
+        """
+        derived: dict[str, Any] = {"provider": self.llm_provider}
+
+        for field, supplied, blank in (
+            ("model_analysis", self.model_analysis, ""),
+            ("model_generation", self.model_generation, ""),
+            ("endpoint_url", self.endpoint_url, ""),
+            ("cost_analysis_input", self.cost_analysis_input, 0.0),
+            ("cost_analysis_output", self.cost_analysis_output, 0.0),
+            ("cost_generation_input", self.cost_generation_input, 0.0),
+            ("cost_generation_output", self.cost_generation_output, 0.0),
+        ):
+            if not supplied:
+                derived[field] = blank
+
+        return derived
+
+    @staticmethod
+    def plain(value: Any) -> Any:
+        """A secret as the string that has to reach YAML and the provider.
+
+        Left wrapped, a credential would be written to `config.user.yaml` as
+        the mask and the deployment would come back up unconfigured.
+        """
+        return value.get_secret_value() if isinstance(value, SecretStr) else value
+
     def changes(self, section: str) -> dict[str, Any]:
         """Supplied values for one section, keyed as that section names them.
 
@@ -396,7 +499,7 @@ class ConfigUpdate(ConfigSection):
         """
         supplied = self.model_dump()
         return {
-            key: supplied[field]
+            key: self.plain(supplied[field])
             for field, (owner, key) in self.FIELD_MAP.items()
             if owner == section and supplied[field]
         }
@@ -404,6 +507,20 @@ class ConfigUpdate(ConfigSection):
     def touches(self, section: str) -> bool:
         """Whether that section's client must be rebuilt after applying this."""
         return bool(self.changes(section))
+
+    def reconnects(self, section: str) -> bool:
+        """Whether this change could stop that section's dependency answering.
+
+        Narrower than `touches`: a price is a number the UI reports back, so
+        editing one must not spend a completion, nor fail because the provider
+        happens to be down.
+        """
+        supplied = self.model_dump()
+        return any(
+            field in CONNECTING
+            for field, (owner, _) in self.FIELD_MAP.items()
+            if owner == section and supplied[field]
+        )
 
     @property
     def is_empty(self) -> bool:

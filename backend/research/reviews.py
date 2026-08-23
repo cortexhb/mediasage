@@ -5,7 +5,7 @@ with readability rather than a per-site rule. What comes back is one article's
 prose with the navigation, ads and related-links chrome removed.
 
 The URLs are curated by MusicBrainz, not supplied by a user, but they still
-point at third-party servers -- so every fetch goes through `safety`.
+point at third-party servers -- so every fetch goes through `SafeFetcher`.
 
 Entry point: `Reviews`.
 """
@@ -19,33 +19,12 @@ from readability import Document as ReadableDocument
 
 from backend.config import ResearchConfig
 from backend.research.http import SharedHttp
-from backend.research.safety import fetch_safely
+from backend.research.safety import SafeFetcher
 
 logger = logging.getLogger(__name__)
 
 TAGS: Final = re.compile(r"<[^>]+>")
 WHITESPACE: Final = re.compile(r"\s+")
-
-
-def plain_text(html: str) -> str:
-    """The readable article out of a page, as one run of prose."""
-    readable = ReadableDocument(html).summary()
-    return WHITESPACE.sub(" ", TAGS.sub(" ", readable)).strip()
-
-
-def trimmed(text: str, max_chars: int, min_chars: int) -> str:
-    """Cut to `max_chars`, on a sentence end when there is one near it.
-
-    Args:
-        text: The article prose
-        max_chars: Characters kept
-        min_chars: Earliest character a sentence break is accepted at; below
-            it the cut throws away more than the tidy ending is worth
-    """
-    if len(text) <= max_chars:
-        return text
-    end = text.rfind(". ", min_chars, max_chars)
-    return text[: (end + 1) if end != -1 else max_chars]
 
 
 class Reviews:
@@ -65,15 +44,34 @@ class Reviews:
 
         client = await self.http.client()
         try:
-            response = await fetch_safely(client, url, self.config.max_redirects)
+            fetcher = SafeFetcher(max_redirects=self.config.max_redirects)
+            response = await fetcher.get(client, url)
             if response is None:
                 return None
             response.raise_for_status()
-            text = plain_text(response.text)
+            text = self.plain_text(response.text)
         except (httpx.HTTPError, ValueError) as err:
             logger.warning("Review fetch failed for %s: %s", url, err)
             return None
 
         if not text:
             return None
-        return trimmed(text, self.config.review_max_chars, self.config.review_min_chars)
+        return self.trimmed(text)
+
+    @staticmethod
+    def plain_text(html: str) -> str:
+        """The readable article out of a page, as one run of prose."""
+        readable = ReadableDocument(html).summary()
+        return WHITESPACE.sub(" ", TAGS.sub(" ", readable)).strip()
+
+    def trimmed(self, text: str) -> str:
+        """Cut to the configured cap, on a sentence end when one is near it.
+
+        A break below `review_min_chars` is ignored: cutting there throws away
+        more than the tidy ending is worth.
+        """
+        cap = self.config.review_max_chars
+        if len(text) <= cap:
+            return text
+        end = text.rfind(". ", self.config.review_min_chars, cap)
+        return text[: (end + 1) if end != -1 else cap]

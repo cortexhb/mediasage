@@ -32,40 +32,6 @@ HEADER: Final = re.compile(r"(^={2,}\s*.+?\s*={2,}\s*$)", re.MULTILINE)
 HEADER_TITLE: Final = re.compile(r"^={2,}\s*(.+?)\s*={2,}\s*$")
 
 
-def useful_sections(text: str, max_chars: int, drop_sections: list[str]) -> str:
-    """The article with its table-like sections removed and a cap applied.
-
-    Args:
-        text: The plain-text extract, section headers included
-        max_chars: Characters kept after filtering
-        drop_sections: A section whose title contains one of these is dropped;
-            the lead section has no title and is always kept
-    """
-    kept: list[str] = []
-    dropping = False
-
-    for part in HEADER.split(text):
-        title = HEADER_TITLE.match(part.strip())
-        if title:
-            dropping = any(word in title.group(1).lower() for word in drop_sections)
-        if not dropping:
-            kept.append(part)
-
-    return _capped("".join(kept).strip(), max_chars)
-
-
-def _capped(text: str, max_chars: int) -> str:
-    """Cut to `max_chars`, on a paragraph break when one is near enough.
-
-    Falling back to a hard cut past the halfway mark: an article whose first
-    paragraph is longer than the cap has no break to use.
-    """
-    if len(text) <= max_chars:
-        return text
-    break_at = text[:max_chars].rfind("\n\n")
-    return text[: break_at if break_at > max_chars // 2 else max_chars].strip()
-
-
 class Wikipedia:
     """Article text, and the Wikidata hop that sometimes precedes it."""
 
@@ -75,7 +41,7 @@ class Wikipedia:
 
     async def summary(self, article_url: str) -> str | None:
         """The useful part of one article, or None when it cannot be read."""
-        title = _title_of(article_url)
+        title = self._title_of(article_url)
         if not title:
             return None
 
@@ -101,9 +67,7 @@ class Wikipedia:
         extract = next(iter(pages.values())).get("extract", "")
         if not extract:
             return None
-        return useful_sections(
-            extract, self.config.wikipedia_max_chars, self.config.wikipedia_drop_sections
-        )
+        return self.useful_sections(extract)
 
     async def article_for(self, wikidata_url: str) -> str | None:
         """The English article a Wikidata item links to, if it has one."""
@@ -121,8 +85,41 @@ class Wikipedia:
             logger.warning("Wikidata resolution failed for %s: %s", wikidata_url, err)
             return None
 
+    def useful_sections(self, text: str) -> str:
+        """The article with its table-like sections removed and a cap applied.
 
-def _title_of(article_url: str) -> str | None:
-    """The article title out of its URL, percent-decoded."""
-    _, marker, title = article_url.rstrip("/").partition("/wiki/")
-    return unquote(title) if marker and title else None
+        A section whose title contains a configured keyword is dropped; the
+        lead section has no title and is always kept.
+        """
+        kept: list[str] = []
+        dropping = False
+
+        for part in HEADER.split(text):
+            title = HEADER_TITLE.match(part.strip())
+            if title:
+                dropping = any(
+                    word in title.group(1).lower()
+                    for word in self.config.wikipedia_drop_sections
+                )
+            if not dropping:
+                kept.append(part)
+
+        return self._capped("".join(kept).strip(), self.config.wikipedia_max_chars)
+
+    @staticmethod
+    def _capped(text: str, max_chars: int) -> str:
+        """Cut to `max_chars`, on a paragraph break when one is near enough.
+
+        Falling back to a hard cut past the halfway mark: an article whose first
+        paragraph is longer than the cap has no break to use.
+        """
+        if len(text) <= max_chars:
+            return text
+        break_at = text[:max_chars].rfind("\n\n")
+        return text[: break_at if break_at > max_chars // 2 else max_chars].strip()
+
+    @staticmethod
+    def _title_of(article_url: str) -> str | None:
+        """The article title out of its URL, percent-decoded."""
+        _, marker, title = article_url.rstrip("/").partition("/wiki/")
+        return unquote(title) if marker and title else None
