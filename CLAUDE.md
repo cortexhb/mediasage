@@ -152,14 +152,6 @@ i` adds nothing.
   every test, and `clean_config_env` clears the variables for tests that assert on loading.
 - Use descriptive test names and parameterize over inputs rather than copy-pasting a test body.
 
-## Constitution principles
-
-1. **Library-First**: All playlist tracks MUST exist in the user's library
-2. **Simplicity**: No build steps, no frontend frameworks, single container
-3. **User Agency**: Users control filters and can remove/regenerate
-4. **Cost Transparency**: Display token counts and estimated costs
-5. **Plexamp Aesthetic**: Dark theme (#1a1a1a), amber accent (#e5a00d)
-
 ## Key design decisions
 
 - **Filter-first**: Apply genre/decade filters before sending to the LLM (handles 50k+ libraries)

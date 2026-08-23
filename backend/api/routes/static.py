@@ -1,8 +1,10 @@
-"""The frontend, served by the same process as the API.
+"""The frontend, served by the same process as the API when one is present.
 
-One container serves both, so there is no separate web server and no CORS.
-The index is rewritten on each request to carry the running version on its
-asset URLs: without it a browser holds a cached stylesheet across an upgrade.
+The image ships the API alone while the UI is rebuilt, so `locate` finds
+nothing there and the root reports it; a checkout still serves the directory
+beside it. The index is rewritten on each request to carry the running version
+on its asset URLs: without it a browser holds a cached stylesheet across an
+upgrade.
 """
 
 import logging
@@ -18,7 +20,7 @@ from backend.version import Version
 
 logger = logging.getLogger(__name__)
 
-# A checkout keeps it here; the image puts it there.
+# A checkout keeps it here; the image ships no frontend, so neither exists there.
 REPO_FRONTEND: Final = Path(__file__).resolve().parents[3] / "frontend"
 IMAGE_FRONTEND: Final = Path("/app/frontend")
 

@@ -38,9 +38,11 @@ initial-spec.md
 README.md
 CLAUDE.md
 .specify/
-frontend/preview-*.html
+frontend/
+spa/
 
 # Docker
 Dockerfile*
+dev/
 docker-compose*.yml
 .dockerignore
