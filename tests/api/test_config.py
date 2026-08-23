@@ -59,6 +59,14 @@ class TestGetConfig:
         assert data["max_tracks_to_ai"] > 0
         assert data["max_albums_to_ai"] > 0
 
+    def test_reports_smart_generation(self, client, plex):
+        """The form disables the generation model when it is on."""
+        config = mediasage_config(smart_generation=True)
+        with patch("backend.config.store.ConfigStore.get", return_value=config):
+            data = client.get("/api/config").json()
+
+        assert data["smart_generation"] is True
+
 
 class TestUpdateConfig:
     """A change is proved, written, published, and then rebuilt."""
@@ -78,6 +86,15 @@ class TestUpdateConfig:
 
         assert response.status_code == 200
         assert response.json()["llm_provider"] == "openai"
+
+    def test_saves_smart_generation(self, client, plex, answering):
+        """Only settable from YAML before, so a save had no way to turn it off."""
+        config = mediasage_config(smart_generation=True)
+        with patch("backend.config.store.ConfigStore.commit", return_value=config):
+            response = client.post("/api/config", json={"smart_generation": True})
+
+        assert response.status_code == 200
+        assert response.json()["smart_generation"] is True
 
     def test_a_plex_change_rebuilds_the_plex_client(self, client, plex, answering, rebuilds):
         """Without the rebuild the next request would use the old server."""

@@ -105,4 +105,13 @@ describe('Field', () => {
       expect(screen.getByLabelText('Plex Server URL')).toBeValid()
     })
   })
+
+  it('describes the input when an empty hint accompanies an error', () => {
+    // An empty hint is falsy: testing it first dropped the id.
+    render(<Field label="Plex Server URL" hint="" error="Invalid URL format" />)
+
+    expect(
+      screen.getByLabelText('Plex Server URL'),
+    ).toHaveAccessibleDescription('Invalid URL format')
+  })
 })

@@ -21,6 +21,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from backend.api.clients import shared
+from backend.api.middleware import RequestLog
 from backend.api.routes.analyze import register_analyze_routes
 from backend.api.routes.art import register_art_routes
 from backend.api.routes.config import register_config_routes
@@ -76,6 +77,8 @@ def create_app() -> FastAPI:
         version=Version.current(),
         lifespan=lifespan,
     )
+
+    app.add_middleware(RequestLog)
 
     app.add_exception_handler(PlexNotConnected, _unavailable)
     app.add_exception_handler(LLMNotConfigured, _unavailable)

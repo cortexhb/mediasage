@@ -35,6 +35,7 @@ def mediasage_config(
     llm_api_key: str = "key",
     model_analysis: str = "claude-sonnet-4-5",
     model_generation: str = "claude-haiku-4-5",
+    smart_generation: bool = False,
     track_count: int = 25,
     endpoint_url: str = "http://localhost:11434",
     context_window: int = 32768,
@@ -45,6 +46,7 @@ def mediasage_config(
         "api_key": llm_api_key,
         "model_analysis": model_analysis,
         "model_generation": model_generation,
+        "smart_generation": smart_generation,
         "context_window": context_window,
     }
     if llm_provider in LOCAL_PROVIDERS:

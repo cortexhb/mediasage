@@ -261,6 +261,10 @@ class LibraryConfig(ConfigSection):
     # Hours before the cache is treated as stale and worth re-syncing.
     stale_after_hours: int = Field(default=24, gt=0)
 
+    # Seconds a live stats read is reused; 0 disables it.
+    # Plex takes 8.75s aggregating track genres over an 80k library.
+    stats_cache_seconds: float = Field(default=600.0, ge=0)
+
     # Average plays per track at which an album counts as well-loved.
     well_loved_avg_plays: float = Field(default=3.0, gt=0)
 
@@ -450,6 +454,7 @@ class ConfigUpdate(ConfigSection):
     llm_api_key: SecretStr | None = None
     model_analysis: str | None = None
     model_generation: str | None = None
+    smart_generation: bool | None = None
 
     endpoint_url: str | None = None
     context_window: int | None = None
@@ -467,6 +472,7 @@ class ConfigUpdate(ConfigSection):
         "llm_api_key": ("llm", "api_key"),
         "model_analysis": ("llm", "model_analysis"),
         "model_generation": ("llm", "model_generation"),
+        "smart_generation": ("llm", "smart_generation"),
         "endpoint_url": ("llm", "endpoint_url"),
         "context_window": ("llm", "context_window"),
         "cost_analysis_input": ("llm", "cost_analysis_input"),

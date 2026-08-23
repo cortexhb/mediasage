@@ -11,10 +11,12 @@ sync fetches albums separately instead of reading them per track.
 """
 
 import logging
+import threading
+import time
 from collections.abc import Iterator
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from backend.config.store import config_store
 from backend.library import AlbumMetadata, DecadeCount, GenreCount, LiveVersionRule
@@ -31,6 +33,10 @@ class PlexLibrary(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     connection: PlexConnection
+
+    # When `stats` last read Plex, and what it got back.
+    _stats: tuple[float, LibraryStatsResponse] | None = PrivateAttr(default=None)
+    _stats_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     def total_tracks(self) -> int:
         """How many tracks the library holds, or 0 when it cannot be read."""
@@ -139,6 +145,10 @@ class PlexLibrary(BaseModel):
     def stats(self) -> LibraryStatsResponse:
         """The genre and decade choices the server offers, with the track total.
 
+        Held for `library.stats_cache_seconds` between reads. Plex aggregates
+        genre tags across every track to answer this, measured at 8.75s over an
+        80k library, and the answer only moves when the library does.
+
         Raises:
             PlexQueryError: When the server cannot be queried. A broken Plex must
                 not read as an empty library -- the UI would offer no filters and
@@ -147,6 +157,19 @@ class PlexLibrary(BaseModel):
         if not self.connection.library:
             raise PlexQueryError("Not connected to a Plex music library")
 
+        held = config_store.get().library.stats_cache_seconds
+        with self._stats_lock:
+            cached = self._stats
+            if cached is not None and time.monotonic() - cached[0] < held:
+                return cached[1]
+
+        fresh = self._read_stats()
+        with self._stats_lock:
+            self._stats = (time.monotonic(), fresh)
+        return fresh
+
+    def _read_stats(self) -> LibraryStatsResponse:
+        """The three Plex reads behind `stats`, with nothing held."""
         try:
             genres = sorted(
                 (

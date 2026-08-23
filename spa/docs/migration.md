@@ -68,6 +68,10 @@ and a route table full of them reads as coverage the app does not have.
 | 7     | Parity sweep                                         | Each slice adds its own checklist rows         |
 | 8     | Cutover                                              | SPA fallback, Docker stage, delete `frontend/` |
 
+Plex login lands between Phase 2 and Phase 3, and is specified in `docs/plex_login.md`. It replaces
+the Plex URL and token fields Phase 2 ports with a browser sign-in, so it needs those fields to exist
+first and rewrites the Plex half of the Settings card when it arrives.
+
 ### Settings Leads the Page Slices
 
 Four reasons, in order of weight.

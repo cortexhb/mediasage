@@ -35,7 +35,7 @@ export function Field({ label, optional, hint, error, ...input }: FieldProps) {
         {...input}
         id={id}
         aria-invalid={error ? true : undefined}
-        aria-describedby={(hint ?? error) ? described : undefined}
+        aria-describedby={(error ?? hint) ? described : undefined}
       />
       {error ? (
         <Text tone="error" id={described} role="alert">

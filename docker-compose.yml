@@ -1,9 +1,6 @@
 services:
   mediasage:
     image: ecwilson/mediasage:latest
-    # Alternative registries:
-    # image: ghcr.io/ecwilsonaz/mediasage:latest
-    # To build locally instead, comment out 'image' and uncomment 'build':
     build: .
     container_name: mediasage
     # Optional: Run as specific user for NAS/Synology (use your PUID:PGID)
@@ -11,46 +8,28 @@ services:
     ports:
       - "5765:5765"
     environment:
-      # Required: Plex server settings
-      - MEDIASAGE_PLEX__URL=${MEDIASAGE_PLEX__URL}
-      - MEDIASAGE_PLEX__TOKEN=${MEDIASAGE_PLEX__TOKEN}
-      - MEDIASAGE_PLEX__MUSIC_LIBRARY=${MEDIASAGE_PLEX__MUSIC_LIBRARY:-Music}
-
       # Performance tuning
       - UVICORN_WORKERS=${UVICORN_WORKERS:-1}
-
-      # LLM provider: anthropic, openai, gemini, ollama, or custom.
-      # Required -- an unconfigured provider fails at startup, not mid-request.
-      # CONTEXT_WINDOW is required too: there is no per-model table to fall back on.
-
-      # Hosted: Gemini
-      #- MEDIASAGE_LLM__PROVIDER=gemini
-      #- MEDIASAGE_LLM__API_KEY=${MEDIASAGE_LLM__API_KEY:-}
-      #- MEDIASAGE_LLM__MODEL_ANALYSIS=gemini-2.5-flash
-      #- MEDIASAGE_LLM__MODEL_GENERATION=gemini-2.5-flash
-      #- MEDIASAGE_LLM__CONTEXT_WINDOW=1000000
-
-      # Local: Ollama
-      #- MEDIASAGE_LLM__PROVIDER=ollama
-      #- MEDIASAGE_LLM__ENDPOINT_URL=http://host.docker.internal:11434
-      #- MEDIASAGE_LLM__CONTEXT_WINDOW=32768
-
-      # Local or proxied: any OpenAI-compatible API (MLX, LM Studio, OpenRouter)
-      - MEDIASAGE_LLM__PROVIDER=custom
-      - MEDIASAGE_LLM__ENDPOINT_URL=https://openrouter.ai/api/v1
-      - MEDIASAGE_LLM__API_KEY=sk-or-your-key
-      - MEDIASAGE_LLM__CONTEXT_WINDOW=32768
-
-      # Cost display, per million tokens. Unset means unpriced, not free.
-      #- MEDIASAGE_LLM__COST_ANALYSIS_INPUT=3.00
-      #- MEDIASAGE_LLM__COST_ANALYSIS_OUTPUT=15.00
-      #- MEDIASAGE_LLM__COST_GENERATION_INPUT=1.00
-      #- MEDIASAGE_LLM__COST_GENERATION_OUTPUT=5.00
     volumes:
       # Persist library cache across restarts
       # Ensure directory is writable: either set 'user' above, or run:
       #   mkdir -p ./data && chmod 777 ./data
       - ./data:/app/data
-      # Optional: persist UI settings
-      # - ./config.user.yaml:/app/config.user.yaml
     restart: unless-stopped
+    # `docker compose watch` (Compose 2.22+) applies edits without a manual
+    # rebuild. The image runs uvicorn without --reload, so a Python edit has
+    # to restart the container to take effect.
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./backend
+          target: /app/backend
+          ignore:
+            - __pycache__/
+        # A dependency change has to be resolved and installed again.
+        - action: rebuild
+          path: ./pyproject.toml
+        - action: rebuild
+          path: ./uv.lock
+        - action: rebuild
+          path: Dockerfile

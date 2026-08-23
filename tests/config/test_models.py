@@ -116,6 +116,7 @@ class TestConfigUpdate:
             ("cost_generation_output", "cost_generation_output", 0.0),
             ("context_window", "context_window", 0),
             ("model_analysis", "model_analysis", ""),
+            ("smart_generation", "smart_generation", False),
         ],
     )
     def test_a_falsy_value_is_still_a_change(self, field, key, value):
@@ -135,6 +136,12 @@ class TestConfigUpdate:
 
         assert "cost_analysis_input" not in update.provider_changes
         assert update.changes("llm")["cost_analysis_input"] == 0.0
+
+    def test_smart_generation_survives_a_provider_switch(self):
+        """It is a taste, not something naming what the old provider served."""
+        update = ConfigUpdate(llm_provider="openai")
+
+        assert "smart_generation" not in update.provider_changes
 
     def test_plex_changes_are_keyed_for_the_section(self):
         """API field names should map onto PlexConfig field names."""

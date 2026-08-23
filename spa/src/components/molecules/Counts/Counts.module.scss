@@ -1,0 +1,22 @@
+/**
+ * The counts, from `frontend/style.css:1431`.
+ *
+ * A grid rather than the legacy `<p><strong>` pairs, so label and value line
+ * up in a column instead of only reading as a pair.
+ */
+
+.counts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--spacing-xs) var(--spacing-md);
+  margin-top: var(--spacing-lg);
+  font-size: var(--font-size-sm);
+}
+
+.counts__term {
+  font-weight: 600;
+}
+
+.counts__value {
+  margin: 0;
+}

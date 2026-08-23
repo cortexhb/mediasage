@@ -1,0 +1,30 @@
+/**
+ * The Settings form, and what it looks like mid-save.
+ *
+ * Everything above the save row dims and stops taking input while a save is in
+ * flight: the save reaches Plex and the provider before it writes, so there is
+ * a wait, and an editable field during it would submit nothing.
+ */
+
+.settings__save {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  margin-top: var(--spacing-lg);
+}
+
+/* Child selector: the sections are their own modules and unreachable by name. */
+.settings > *:not(.settings__save) {
+  transition: opacity var(--transition-fast);
+}
+
+.settings[data-saving] > *:not(.settings__save) {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings > *:not(.settings__save) {
+    transition: none;
+  }
+}

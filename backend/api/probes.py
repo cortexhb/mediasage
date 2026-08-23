@@ -14,6 +14,9 @@ decides whether to commit.
 """
 
 import asyncio
+import logging
+import time
+from collections.abc import Awaitable
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict
@@ -21,6 +24,8 @@ from pydantic import BaseModel, ConfigDict
 from backend.config import ConfigUpdate, LLMSection, MediasageConfig, PlexConfig
 from backend.llm import ModelListing
 from backend.plex import PlexClient
+
+logger = logging.getLogger(__name__)
 
 
 class Probe(BaseModel):
@@ -43,16 +48,34 @@ class Probe(BaseModel):
         spend a completion, nor fail because the provider happens to be down.
         """
         if update.reconnects("plex"):
-            plex = await PlexProbe.of(config.plex)
+            plex = await cls.timed("Plex", PlexProbe.of(config.plex))
             if not plex.ok:
                 return f"Plex: {plex.error}"
 
         if update.reconnects("llm"):
-            llm = await LLMProbe.of(config.llm)
+            llm = await cls.timed(config.llm.label, LLMProbe.of(config.llm))
             if not llm.ok:
                 return f"{config.llm.label}: {llm.error}"
 
         return ""
+
+    @staticmethod
+    async def timed(subject: str, probing: Awaitable[Probe]) -> Probe:
+        """Await a probe and log what it cost, since a save waits on it.
+
+        Logged before as well as after: a probe that never answers is the
+        case the log is being read for, and only the first line shows it.
+        """
+        logger.info("Probing %s", subject)
+        started = time.perf_counter()
+        probed = await probing
+        logger.info(
+            "Probed %s in %.0fms: %s",
+            subject,
+            (time.perf_counter() - started) * 1000,
+            probed.error or "ok",
+        )
+        return probed
 
 
 class PlexProbe(Probe):

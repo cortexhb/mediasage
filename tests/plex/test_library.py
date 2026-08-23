@@ -206,6 +206,50 @@ class TestStats:
         with pytest.raises(PlexQueryError):
             PlexLibrary(connection=make_connection()).stats()
 
+    def test_a_second_read_is_held_rather_than_asked_again(
+        self, connection, section, library_settings
+    ):
+        """Plex spends 8.75s aggregating track genres on an 80k library."""
+        library_settings(stats_cache_seconds=600)
+        section.listFilterChoices.side_effect = [[choice("Rock")], [choice("1990")]]
+        section.totalViewSize.return_value = 500
+        library = PlexLibrary(connection=connection)
+
+        first = library.stats()
+        second = library.stats()
+
+        assert first == second
+        assert section.listFilterChoices.call_count == 2
+
+    def test_a_zero_lifetime_asks_every_time(self, connection, section, library_settings):
+        library_settings(stats_cache_seconds=0)
+        section.listFilterChoices.side_effect = [
+            [choice("Rock")],
+            [choice("1990")],
+            [choice("Rock")],
+            [choice("1990")],
+        ]
+        section.totalViewSize.return_value = 500
+        library = PlexLibrary(connection=connection)
+
+        library.stats()
+        library.stats()
+
+        assert section.listFilterChoices.call_count == 4
+
+    def test_a_failure_is_not_held(self, connection, section, library_settings):
+        """A held failure would outlive the outage that caused it."""
+        library_settings(stats_cache_seconds=600)
+        section.listFilterChoices.side_effect = RuntimeError("boom")
+        library = PlexLibrary(connection=connection)
+
+        with pytest.raises(PlexQueryError):
+            library.stats()
+
+        section.listFilterChoices.side_effect = [[choice("Rock")], [choice("1990")]]
+        section.totalViewSize.return_value = 500
+        assert library.stats().total_tracks == 500
+
 
 class TestFiltered:
     """Filtered queries, and the live versions dropped afterwards."""

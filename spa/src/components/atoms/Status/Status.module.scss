@@ -1,0 +1,39 @@
+/**
+ * A connection indicator, from `frontend/style.css:1305-1334`.
+ *
+ * State is an attribute rather than a class, so a caller passes a value and
+ * never picks a class name.
+ */
+
+.status {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+  font-size: var(--font-size-sm);
+
+  /* The dot, which carries no text of its own. */
+  &::before {
+    width: 10px;
+    height: 10px;
+    content: '';
+    background: var(--text-muted);
+    border-radius: var(--radius-full);
+  }
+
+  &[data-state='connected'] {
+    color: var(--success);
+
+    &::before {
+      background: var(--success);
+    }
+  }
+
+  &[data-state='error'] {
+    color: var(--error);
+
+    &::before {
+      background: var(--error);
+    }
+  }
+}

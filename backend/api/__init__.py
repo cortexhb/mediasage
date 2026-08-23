@@ -1,6 +1,7 @@
 """The HTTP layer: the application, its routes, and what they share.
 
   app.py         create_app(), the factory, and the startup/shutdown lifespan
+  middleware.py  RequestLog, one log line per request with its duration
   probes.py      whether settings that are not saved yet actually work
   estimates.py   the preview responses, each estimating itself before a run
   clients.py     SharedClients, the outbound clients built on first use

@@ -4,6 +4,7 @@ Reports what is already configured and what came from the deployment rather
 than the form, so the wizard can skip steps the operator has already made.
 """
 
+import asyncio
 import os
 from typing import Annotated, Final
 
@@ -35,7 +36,13 @@ async def _status(
     The uid and gid are reported so a permission failure on the data directory
     can be diagnosed without shelling into the container.
     """
-    connected = plex is not None and plex.connection.is_connected()
+    # Off the event loop: both reach the Plex server over the network.
+    connected = plex is not None and await asyncio.to_thread(plex.connection.is_connected)
+    libraries = (
+        await asyncio.to_thread(plex.connection.music_libraries)
+        if plex is not None and connected
+        else []
+    )
     sync_state = library.library_sync.status()
 
     return SetupStatusResponse(
@@ -46,7 +53,7 @@ async def _status(
         plex_connected=connected,
         plex_error=plex.connection.error if plex and not connected else None,
         plex_from_env=bool(os.environ.get("PLEX_URL")),
-        music_libraries=plex.connection.music_libraries() if connected else [],
+        music_libraries=libraries,
         llm_configured=config.llm.is_configured,
         llm_provider=config.llm.provider,
         llm_from_env=any(os.environ.get(key) for key in LLM_ENV_KEYS),

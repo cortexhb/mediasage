@@ -5,10 +5,11 @@ mounts every route; this module exists so there is one stable import path for
 uvicorn, the Dockerfile, and the tests.
 """
 
-import logging
-
 from backend.api import create_app
+from backend.logs import Logs
 
-logging.basicConfig(level=logging.INFO)
+# Before the app: uvicorn has already configured logging by the time this
+# module is imported, so this is what replaces it.
+Logs.configure()
 
 app = create_app()

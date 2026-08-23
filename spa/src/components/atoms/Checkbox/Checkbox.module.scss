@@ -1,0 +1,26 @@
+/**
+ * A checkbox, sized to itself rather than to its row.
+ */
+
+@use 'mixins' as ds;
+
+.checkbox {
+  width: var(--spacing-lg);
+  height: var(--spacing-lg);
+  cursor: pointer;
+  accent-color: var(--accent);
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+  }
+
+  @include ds.on-mobile {
+    min-width: 24px;
+    min-height: 24px;
+  }
+}

@@ -6,6 +6,8 @@ change re-initialises whichever client it touched, so the next request uses
 the new settings without a restart.
 """
 
+import asyncio
+import logging
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -15,6 +17,8 @@ from backend.config import ConfigSaveError, ConfigUpdate, MediasageConfig, confi
 from backend.llm import LLMClient, client_store
 from backend.models import ConfigResponse
 from backend.plex import PlexClient, plex_store
+
+logger = logging.getLogger(__name__)
 
 
 async def _get_config(
@@ -34,10 +38,15 @@ async def _update_config(request: ConfigUpdate) -> ConfigResponse:
     if request.is_empty:
         raise HTTPException(status_code=400, detail="No configuration values provided")
 
+    # Field names only: two of them are credentials.
+    supplied = sorted(name for name, value in request.model_dump().items() if value is not None)
+    logger.info("Saving settings: %s", ", ".join(supplied))
+
     change = config_store.candidate(request)
 
     refused = await probes.Probe.rejection(request, change.config)
     if refused:
+        logger.warning("Refused settings: %s", refused)
         raise HTTPException(status_code=422, detail=refused)
 
     try:
@@ -45,8 +54,9 @@ async def _update_config(request: ConfigUpdate) -> ConfigResponse:
     except ConfigSaveError as err:
         raise HTTPException(status_code=500, detail=str(err)) from err
 
+    # Off the event loop: building a Plex client opens the connection.
     if request.touches("plex"):
-        plex_store.client = PlexClient.of(config.plex)
+        plex_store.client = await asyncio.to_thread(PlexClient.of, config.plex)
     if request.touches("llm"):
         client_store.client = LLMClient.of(config.llm)
 

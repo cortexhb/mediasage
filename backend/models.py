@@ -401,6 +401,7 @@ class ConfigResponse(BaseModel):
     llm_api_key_set: bool
     model_analysis: str  # The analysis model being used
     model_generation: str  # The generation model being used
+    smart_generation: bool = False  # True if the analysis model generates too
     max_tracks_to_ai: int  # Recommended max tracks for this model
     max_albums_to_ai: int  # Recommended max albums for this model
     # Per million tokens, as configured; 0.0 throughout means unpriced.
@@ -436,6 +437,7 @@ class ConfigResponse(BaseModel):
             llm_api_key_set=bool(config.llm.api_key),
             model_analysis=config.llm.model_analysis,
             model_generation=config.llm.model_generation,
+            smart_generation=config.llm.smart_generation,
             max_tracks_to_ai=budget.max_tracks,
             max_albums_to_ai=budget.max_albums,
             cost_generation_input=config.llm.cost_generation_input,
