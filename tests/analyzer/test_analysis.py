@@ -12,8 +12,13 @@ from backend.models import LibraryStatsResponse, Track
 from backend.plex import PlexClient
 
 TRACK = Track(
-    rating_key="1", title="Fake Plastic Trees", artist="Radiohead",
-    album="The Bends", duration_ms=290000, year=1995, genres=["Alternative", "Rock"],
+    rating_key="1",
+    title="Fake Plastic Trees",
+    artist="Radiohead",
+    album="The Bends",
+    duration_ms=290000,
+    year=1995,
+    genres=["Alternative", "Rock"],
 )
 
 
@@ -23,16 +28,17 @@ def library(
     """What Plex reports the library holds."""
     return LibraryStatsResponse(
         total_tracks=300,
-        genres=genres if genres is not None else [
-            GenreCount(name="Alternative", count=100), GenreCount(name="Rock", count=200),
+        genres=genres
+        if genres is not None
+        else [
+            GenreCount(name="Alternative", count=100),
+            GenreCount(name="Rock", count=200),
         ],
         decades=decades if decades is not None else [DecadeCount(name="1990s", count=150)],
     )
 
 
-def build(
-    reply: object, stats: LibraryStatsResponse | None = None
-) -> tuple[Analyzer, MagicMock]:
+def build(reply: object, stats: LibraryStatsResponse | None = None) -> tuple[Analyzer, MagicMock]:
     """An analyzer over a model that answers `reply`, and its Plex double.
 
     The reply is scripted as content and decoded by the real parser, so the
@@ -42,7 +48,10 @@ def build(
     llm = MagicMock(spec=LLMClient)
     llm.analyze.return_value = LLMResponse(
         content=reply if isinstance(reply, str) else json.dumps(reply),
-        input_tokens=100, output_tokens=50, model="test-model", role="analysis",
+        input_tokens=100,
+        output_tokens=50,
+        model="test-model",
+        role="analysis",
     )
 
     plex = MagicMock(spec=PlexClient)
@@ -103,10 +112,14 @@ class TestAnalyzePrompt:
 
 class TestAnalyzeTrack:
     def test_it_returns_the_dimensions(self):
-        analyzer, _ = build({"dimensions": [
-            {"id": "mood", "label": "Melancholy, bittersweet", "description": "Reflective"},
-            {"id": "era", "label": "Mid-90s British alternative", "description": "Britpop"},
-        ]})
+        analyzer, _ = build(
+            {
+                "dimensions": [
+                    {"id": "mood", "label": "Melancholy, bittersweet", "description": "Reflective"},
+                    {"id": "era", "label": "Mid-90s British alternative", "description": "Britpop"},
+                ]
+            }
+        )
 
         found = analyzer.analyze_track(TRACK)
 

@@ -13,16 +13,22 @@ def track(
 ) -> Track:
     """One library track; the rating key follows the title so it stays unique."""
     return Track(
-        rating_key=title, title=title, artist=artist,
-        album=album, duration_ms=duration_ms, year=year,
+        rating_key=title,
+        title=title,
+        artist=artist,
+        album=album,
+        duration_ms=duration_ms,
+        year=year,
     )
 
 
 def picked(**overrides: object) -> dict:
     """One selection as the model returns it."""
     fields: dict[str, object] = {
-        "artist": "Radiohead", "title": "Fake Plastic Trees",
-        "album": "The Bends", "reason": "It aches",
+        "artist": "Radiohead",
+        "title": "Fake Plastic Trees",
+        "album": "The Bends",
+        "reason": "It aches",
     }
     fields.update(overrides)
     return fields

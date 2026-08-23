@@ -153,6 +153,7 @@ class TestSave:
         with pytest.raises(ConfigSaveError):
             store.save({"plex": {"url": "http://new:32400"}})
 
+
 # The smallest loadable llm section; these tests are about the plex half.
 LLM = {"provider": "openai", "context_window": 128_000}
 
@@ -198,7 +199,13 @@ class TestApply:
         """The old provider's model names do not survive; nothing is guessed in their place."""
         store = store_over(
             tmp_path,
-            {"llm": {"provider": "anthropic", "model_analysis": "claude-old", "context_window": 200_000}},
+            {
+                "llm": {
+                    "provider": "anthropic",
+                    "model_analysis": "claude-old",
+                    "context_window": 200_000,
+                }
+            },
         )
 
         config = applied(store, ConfigUpdate(llm_provider="openai"))
@@ -222,12 +229,13 @@ class TestApply:
         """A provider switch changes which section class holds the settings."""
         store = store_over(tmp_path, {"llm": {"provider": "openai", "context_window": 128_000}})
 
-        config = applied(store,
+        config = applied(
+            store,
             ConfigUpdate(
                 llm_provider="custom",
                 endpoint_url="http://localhost:5000/v1",
                 context_window=8192,
-            )
+            ),
         )
 
         llm = config.llm
@@ -241,7 +249,10 @@ class TestApply:
         """An empty update should leave the file untouched."""
         store = store_over(
             tmp_path,
-            {"plex": {"url": "http://old:32400"}, "llm": {"provider": "openai", "context_window": 128_000}},
+            {
+                "plex": {"url": "http://old:32400"},
+                "llm": {"provider": "openai", "context_window": 128_000},
+            },
         )
 
         applied(store, ConfigUpdate())

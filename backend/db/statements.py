@@ -57,8 +57,6 @@ class Upsert(BaseModel):
 
         statement = builder(self.table).values(self.rows)
         updates = {
-            column: statement.excluded[column]
-            for column in self.rows[0]
-            if column not in self.keys
+            column: statement.excluded[column] for column in self.rows[0] if column not in self.keys
         }
         return statement.on_conflict_do_update(index_elements=self.keys, set_=updates)

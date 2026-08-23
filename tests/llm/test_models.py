@@ -25,9 +25,7 @@ class TestLLMResponse:
 
     def test_survives_a_provider_that_reports_no_usage(self):
         """A missing usage block must not break the call."""
-        response = LLMResponse.from_message(
-            AIMessage(content="hi"), model="m", role="generation"
-        )
+        response = LLMResponse.from_message(AIMessage(content="hi"), model="m", role="generation")
 
         assert response.input_tokens == 0
         assert response.output_tokens == 0
@@ -48,8 +46,11 @@ class TestLLMResponse:
     def test_costs_at_the_price_for_its_role(self, cloud_config: CloudLLMConfig):
         """A generation response is billed at generation rates."""
         response = LLMResponse(
-            content="x", input_tokens=1_000_000, output_tokens=0,
-            model="m", role="generation",
+            content="x",
+            input_tokens=1_000_000,
+            output_tokens=0,
+            model="m",
+            role="generation",
         )
 
         assert response.cost(cloud_config) == pytest.approx(1.00)
@@ -59,9 +60,7 @@ class TestTokenBudget:
     """Tests for how much of the library fits in one prompt."""
 
     def _budget(self, context_window: int, **overrides) -> TokenBudget:
-        return TokenBudget(
-            context_window=context_window, budget=BudgetConfig(**overrides)
-        )
+        return TokenBudget(context_window=context_window, budget=BudgetConfig(**overrides))
 
     def test_subtracts_buffer_and_reserve(self):
         """Available space is the window less the buffer and the reserve."""

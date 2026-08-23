@@ -36,9 +36,16 @@ def register_stats_routes(app: FastAPI) -> None:
     # Before `/api/library/stats` would shadow it, FastAPI matches in mount
     # order and the literal path has to be registered first.
     app.add_api_route(
-        "/api/library/stats/cached", _cached_stats, methods=["GET"],
+        "/api/library/stats/cached",
+        _cached_stats,
+        methods=["GET"],
         response_model=LibraryStatsResponse,
+        operation_id="getCachedLibraryStats",
     )
     app.add_api_route(
-        "/api/library/stats", _stats, methods=["GET"], response_model=LibraryStatsResponse
+        "/api/library/stats",
+        _stats,
+        methods=["GET"],
+        response_model=LibraryStatsResponse,
+        operation_id="getLibraryStats",
     )

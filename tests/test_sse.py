@@ -2,7 +2,7 @@
 
 import json
 
-from backend.sse import HEADERS, MEDIA_TYPE, SSE
+from backend.sse import HEADERS, MEDIA_TYPE, SSE, EventStreamResponse, ProgressFrame
 
 
 class TestFrame:
@@ -51,6 +51,24 @@ class TestNamedFrames:
         assert json.loads(frame.split("data: ", 1)[1]) == {"message": "boom"}
 
 
+class TestOf:
+    """Tests for framing a model, so the wire matches the schema."""
+
+    def test_a_model_is_framed_as_its_json_dump(self):
+        frame = SSE.of("tick", ProgressFrame(step="matching", message="Matching..."))
+
+        assert json.loads(frame.split("data: ", 1)[1]) == {
+            "step": "matching",
+            "message": "Matching...",
+        }
+
+    def test_json_mode_is_used_so_the_payload_survives_encoding(self):
+        """`model_dump()` alone leaves datetimes and enums `json.dumps` refuses."""
+        frame = SSE.of("tick", ProgressFrame(step="a", message="b"))
+
+        assert json.loads(frame.split("data: ", 1)[1])
+
+
 class TestServe:
     """Tests for serving a stream of frames."""
 
@@ -59,6 +77,10 @@ class TestServe:
         response = SSE.serve(iter([]))
 
         assert response.media_type == MEDIA_TYPE
+
+    def test_the_media_type_is_on_the_class_not_the_instance(self):
+        """FastAPI reads it off `response_class` to document the route."""
+        assert EventStreamResponse.media_type == MEDIA_TYPE
 
     def test_tells_proxies_not_to_buffer(self):
         """nginx otherwise holds every progress event until the stream ends."""

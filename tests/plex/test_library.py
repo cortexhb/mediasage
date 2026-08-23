@@ -27,6 +27,7 @@ def fake_items(count: int, start: int = 0) -> list[MagicMock]:
 
 def paged(section: MagicMock, items: list[object], page_size: int) -> None:
     """Make `section.search` serve `items` in pages of `page_size`."""
+
     def search(**kwargs):
         start = kwargs.get("container_start", 0)
         return items[start : start + page_size]
@@ -140,8 +141,8 @@ class TestAlbumMetadataFetch:
         type(album).genres = property(lambda self: probe())
 
         section.listFilterChoices.return_value = []
-        section.search.side_effect = (
-            lambda **kw: [album] if kw.get("container_start", 0) == 0 else []
+        section.search.side_effect = lambda **kw: (
+            [album] if kw.get("container_start", 0) == 0 else []
         )
 
         assert PlexLibrary(connection=connection).album_metadata()["1"].genres == []
@@ -150,8 +151,8 @@ class TestAlbumMetadataFetch:
         album = fake_items(1)[0]
         album.year = 1985
         section.listFilterChoices.side_effect = RuntimeError("not supported")
-        section.search.side_effect = (
-            lambda **kw: [album] if kw.get("container_start", 0) == 0 else []
+        section.search.side_effect = lambda **kw: (
+            [album] if kw.get("container_start", 0) == 0 else []
         )
 
         assert PlexLibrary(connection=connection).album_metadata()["0"] == AlbumMetadata(year=1985)
@@ -219,14 +220,14 @@ class TestFiltered:
 
     def test_a_limited_query_samples_at_random(self, connection, section, library_settings):
         section.search.return_value = [raw_track(str(i)) for i in range(20)]
-        tracks = PlexLibrary(connection=connection).filtered(PlexFilter(exclude_live=False), limit=5)
+        tracks = PlexLibrary(connection=connection).filtered(
+            PlexFilter(exclude_live=False), limit=5
+        )
 
         assert section.search.call_args.kwargs["sort"] == "random"
         assert len(tracks) == 5
 
-    def test_live_versions_are_dropped_after_the_fetch(
-        self, connection, section, library_settings
-    ):
+    def test_live_versions_are_dropped_after_the_fetch(self, connection, section, library_settings):
         section.search.return_value = [
             raw_track("1", "Song"),
             raw_track("2", "Song (Live)"),
@@ -263,11 +264,14 @@ class TestCount:
 
     def test_a_filtered_count_counts_the_rows(self, connection, section, library_settings):
         section.search.return_value = [raw_track("1"), raw_track("2")]
-        assert PlexLibrary(connection=connection).count(PlexFilter(genres=["Rock"], exclude_live=False)) == 2
+        assert (
+            PlexLibrary(connection=connection).count(
+                PlexFilter(genres=["Rock"], exclude_live=False)
+            )
+            == 2
+        )
 
-    def test_live_versions_are_excluded_from_the_count(
-        self, connection, section, library_settings
-    ):
+    def test_live_versions_are_excluded_from_the_count(self, connection, section, library_settings):
         section.search.return_value = [raw_track("1", "Song"), raw_track("2", "Song (Live)")]
         assert PlexLibrary(connection=connection).count(PlexFilter(exclude_live=True)) == 1
 
@@ -381,7 +385,10 @@ class TestTrackOfPlex:
         track = Track.of_plex(raw_track("1", "Song", artist="Artist", album="Album"))
 
         assert (track.rating_key, track.title, track.artist, track.album) == (
-            "1", "Song", "Artist", "Album",
+            "1",
+            "Song",
+            "Artist",
+            "Album",
         )
         assert track.genres == ["Rock"]
 

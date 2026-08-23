@@ -65,9 +65,7 @@ class OllamaClient(BaseModel):
         except httpx.ConnectError:
             return OllamaModelsResponse(error=f"Cannot reach Ollama at {self.base_url}")
         except httpx.TimeoutException:
-            return OllamaModelsResponse(
-                error=f"Timeout connecting to Ollama at {self.base_url}"
-            )
+            return OllamaModelsResponse(error=f"Timeout connecting to Ollama at {self.base_url}")
         except (ollama.RequestError, ollama.ResponseError, httpx.HTTPError) as err:
             logger.exception("Error listing Ollama models")
             return OllamaModelsResponse(error=str(err))
@@ -97,7 +95,7 @@ class OllamaClient(BaseModel):
             if err.status_code != 404:
                 logger.exception("Error getting Ollama model info")
             return None
-        except (ollama.RequestError, httpx.HTTPError):
+        except ollama.RequestError, httpx.HTTPError:
             logger.exception("Error getting Ollama model info")
             return None
 

@@ -50,9 +50,7 @@ class RecommendationPipeline(BaseModel):
         The default runs ahead of any session -- what it costs is logged but
         attributed to nobody, which is what filter suggestion needs.
         """
-        call = MeteredClient(
-            client=self.client, sessions=self.sessions, session_id=session_id
-        )
+        call = MeteredClient(client=self.client, sessions=self.sessions, session_id=session_id)
         return RoundStages(
             selection=Selection(call=call), facts=Facts(call=call), pitches=Pitches(call=call)
         )

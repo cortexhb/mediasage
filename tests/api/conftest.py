@@ -6,7 +6,7 @@ are absorbed for every test: saving settings must never open a real connection.
 """
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,7 +20,7 @@ from backend.config import (
     PlexConfig,
     config_store,
 )
-from backend.llm import LLMClient
+from backend.llm import LLMClient, ModelListing
 from backend.plex import PlexClient, PlexNotConnected, plex_store
 
 # Local providers are reached by URL and must carry one; cloud ones must not.
@@ -117,11 +117,13 @@ def serve_plex(app, monkeypatch, client: MagicMock | None) -> None:
         return client
 
     monkeypatch.setattr(plex_store, "client", client)
-    app.dependency_overrides.update({
-        plex_store.require: required,
-        plex_store.get: lambda: client,
-        plex_store.is_connected: lambda: connected,
-    })
+    app.dependency_overrides.update(
+        {
+            plex_store.require: required,
+            plex_store.get: lambda: client,
+            plex_store.is_connected: lambda: connected,
+        }
+    )
 
 
 @pytest.fixture
@@ -148,12 +150,12 @@ def answering():
     probe.connection.is_connected.return_value = True
     probe.connection.music_libraries.return_value = ["Music"]
 
-    # Patched by module name, not on the class: the class is also what a route
-    # rebuilds through, and `rebuilds` has to still see that call.
+    # Patched by module, not class: `rebuilds` must still see that call.
     with (
         patch("backend.api.probes.PlexClient") as plex,
-        patch("backend.api.probes.LLMClient") as llm,
+        patch("backend.api.probes.ModelListing.of", new_callable=AsyncMock) as listing,
     ):
         plex.of.return_value = probe
-        llm.of.return_value.complete.return_value = MagicMock(content="ok")
+        # Unsupported refuses no model name, whatever the test configured.
+        listing.return_value = ModelListing(supported=False)
         yield

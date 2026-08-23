@@ -55,7 +55,7 @@ class Version(BaseModel):
                 timeout=GIT_DESCRIBE_TIMEOUT,
                 cwd=Path(__file__).resolve().parent,
             )
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        except subprocess.TimeoutExpired, FileNotFoundError, OSError:
             return None
         if result.returncode != 0:
             return None

@@ -52,7 +52,6 @@ ALBUM_GENERATION_INPUT: Final = 600 + 400 + 2000
 ALBUM_GENERATION_OUTPUT: Final = 200 + 300 + 500
 
 
-
 class Preview(BaseModel):
     """What one run will send to a model, and what that will cost."""
 
@@ -111,20 +110,14 @@ class AlbumPreviewResponse(Preview):
         """Estimate one round over `matching_albums` of the library."""
         albums_to_send = cls.capped(matching_albums, max_albums)
 
-        generation_input = (
-            ALBUM_GENERATION_INPUT + albums_to_send * config.budget.tokens_per_album
-        )
+        generation_input = ALBUM_GENERATION_INPUT + albums_to_send * config.budget.tokens_per_album
 
         return cls(
             matching_albums=matching_albums,
             albums_to_send=albums_to_send,
             estimated_input_tokens=ALBUM_ANALYSIS_INPUT + generation_input,
             estimated_cost=(
-                config.llm.estimate_cost(
-                    "analysis", ALBUM_ANALYSIS_INPUT, ALBUM_ANALYSIS_OUTPUT
-                )
-                + config.llm.estimate_cost(
-                    "generation", generation_input, ALBUM_GENERATION_OUTPUT
-                )
+                config.llm.estimate_cost("analysis", ALBUM_ANALYSIS_INPUT, ALBUM_ANALYSIS_OUTPUT)
+                + config.llm.estimate_cost("generation", generation_input, ALBUM_GENERATION_OUTPUT)
             ),
         )

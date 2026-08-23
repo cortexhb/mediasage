@@ -1,7 +1,7 @@
-"""``/api/setup/validate-ai`` -- spend one real completion, then save.
+"""``/api/setup/validate-ai`` -- prove the provider serves the model, then save.
 
-A real call rather than a reachability check: a key can be valid and the model
-name wrong, and only the provider knows which.
+Listing rather than completing: a key can be valid and the model name wrong,
+and the provider's model list answers that without billing for it.
 """
 
 from fastapi import FastAPI
@@ -14,7 +14,7 @@ from backend.models import ValidateAIRequest, ValidateAIResponse
 
 
 async def _validate_ai(request: ValidateAIRequest) -> ValidateAIResponse:
-    """``POST /api/setup/validate-ai`` -- spend one real completion, then save."""
+    """``POST /api/setup/validate-ai`` -- list the provider's models, then save."""
     provider_name = request.provider_name
 
     def rejected(reason: str) -> ValidateAIResponse:
@@ -28,14 +28,16 @@ async def _validate_ai(request: ValidateAIRequest) -> ValidateAIResponse:
         return rejected("A context window is required")
 
     try:
-        change = config_store.candidate(ConfigUpdate(
-            llm_provider=request.provider,
-            llm_api_key=request.api_key or None,
-            endpoint_url=request.endpoint_url or None,
-            model_analysis=request.model,
-            model_generation=request.model,
-            context_window=request.context_window,
-        ))
+        change = config_store.candidate(
+            ConfigUpdate(
+                llm_provider=request.provider,
+                llm_api_key=request.api_key or None,
+                endpoint_url=request.endpoint_url or None,
+                model_analysis=request.model,
+                model_generation=request.model,
+                context_window=request.context_window,
+            )
+        )
     except ValidationError as err:
         return rejected(str(err))
 
@@ -54,6 +56,9 @@ async def _validate_ai(request: ValidateAIRequest) -> ValidateAIResponse:
 
 def register_validate_ai_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/setup/validate-ai", _validate_ai, methods=["POST"],
+        "/api/setup/validate-ai",
+        _validate_ai,
+        methods=["POST"],
         response_model=ValidateAIResponse,
+        operation_id="validateAi",
     )

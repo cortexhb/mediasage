@@ -101,23 +101,70 @@ return `index.html` for unknown paths.
 
 ## Styles
 
-The design system is a sibling of `components/` and governs the whole look: tokens, mixins, codified sizes, layouts,
-theme. It is extracted from the legacy
+The design system is a sibling of `components/` and governs the whole look. It is extracted from the legacy
 `frontend/style.css`, which stays in that directory as the working reference until the port is finished, and is then
 deleted.
 
+```
+design-system/
+    global.scss     the only global stylesheet: tokens, reset, skip link
+    _tokens.scss    the palette, scales and timings, as custom properties
+    _sizes.scss     what a media query needs, which var() cannot supply
+    _mixins.scss    breakpoints, touch targets, animation
+```
+
+`design-system/` is on Sass's load path, so a module at any depth reaches it by name:
+
+```scss
+@use 'mixins' as ds;
+
+.button {
+  padding: var(--spacing-sm) var(--spacing-md);
+
+  @include ds.on-mobile {
+    @include ds.touch-target;
+  }
+}
+```
+
+Tokens are read as `var(--accent)`, never by `@use`ing `tokens` — that file emits a `:root` rule, and a second import
+emits a second one.
+
 **A style enters the SPA only when a component actively uses it.** Nothing is copied across wholesale. The SPA carries
-no dead CSS.
+no dead CSS. That applies to the design system too: a breakpoint or an animation with one caller belongs in that
+caller's module, not here.
 
 Component styles are CSS Modules (`.module.scss`), so scoping is automatic. BEM notation is still used _inside_ a module
 to express element and modifier relationships legibly — not to prevent collisions, which the module already does.
 
-Only two things are global: the design-system entry point and the reset.
+Class names are camelCase blocks with BEM parts — `trackRow`, `trackRow__title`, `trackRow--active` — because CSS
+Modules exposes them as JavaScript properties, and `styles.trackRow__title` resolves where a kebab-case name needs
+bracket access. Mixins and Sass variables are kebab-case: nothing reads those from JavaScript, so they follow Sass.
+
+Shared animations are mixins rather than global keyframes. CSS Modules hashes a keyframe name per file, so sharing one
+would mean `animation-name: :global(spin)` — an escape hatch the module system cannot check. Including the mixin gives
+each module its own hashed copy instead.
+
+Only two things are global: the design-system entry point and the reset. Both live in `global.scss`.
 
 ## Testing
 
 Vitest, React Testing Library, `user-event`, `jest-dom`. Network is mocked at the boundary, not by stubbing `fetch` per
 test.
+
+Two projects. **`unit`** runs under jsdom and is where a test goes unless there is a reason it cannot. **`dom`** runs in
+real Chromium through Playwright, matches `*.browser.test.tsx`, and exists only for behaviour a DOM emulator does not
+implement.
+
+That bar is high on purpose — browser tests are slower and need `npx playwright install chromium` before they run.
+Today one thing clears it: native `<dialog>`. jsdom 30.0.1 declares `HTMLDialogElement` but implements none of `show`,
+`showModal` or `close`; happy-dom's `showModal` is `setAttribute('open', '')` with no focus management and no inertness.
+Shimming either would mean the assertions described the shim rather than the platform, so `atoms/Overlay` is verified
+where the behaviour is real.
+
+Browser tests take input from `vitest/browser`, not `@testing-library/user-event`. Escape-to-close and the focus trap
+are driven by the browser and ignore synthesised events — a synthetic Escape leaves a native dialog open. Queries stay
+RTL's, so the role-and-label conventions below are the same in both projects.
 
 Test wiring lives at the project root, not in `src/` — `vitest.config.ts` and `vitest.setup.ts`. The setup file owns the
 mock server; tests import it as `@test`, so a component four directories deep does not reach it through a chain of `../`:
@@ -139,12 +186,18 @@ No rubber-stamp assertions. Concretely, a test is not done if it:
 
 - asserts something that cannot fail (`expect(x).toBeDefined()` on a literal)
 - is a snapshot and nothing else
-- reaches for a `data-testid` where a role, label, or visible text would work
+- puts a `data-testid` on an interactive control, or reaches for one where a role, label, or visible text would work
 - asserts on internal state, props, or a hook's return rather than what a user sees
 - uses `fireEvent` where `user-event` models the real interaction
 - covers only the success path of something that can fail
 
 A component that can show a loading, empty, error, and populated state has at least four tests.
+
+A failing accessible query is information — usually that a control is unlabelled or is a `div`
+pretending to be a button — so a `data-testid` on one silences a free accessibility check. Testids
+are still legitimate for scoping a query to a layout region with no honest role, and for content the
+app does not control, where a track title can be anything including empty. Each carries a one-line
+reason at the usage site.
 
 ## Types
 
@@ -196,4 +249,5 @@ npm run format:check
    that the fixing form would have changed.
 3. Tests cover happy path, edges, and failure modes — and would fail if the behaviour broke.
 4. No styles in the component file, no dead CSS carried over.
-5. The legacy behaviour it replaces is gone from `frontend/app.js`, not duplicated.
+5. The SPA route is the only implementation of the behaviour. `frontend/` is never edited during
+   the port — it stays as the working reference and is deleted whole at cutover.

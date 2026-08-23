@@ -38,7 +38,10 @@ class TestFill:
         assert catalogue.fill(["era", "era"]) == ["era", "energy"]
 
     def test_truncates_an_over_long_answer(self):
-        assert len(catalogue.fill(["era", "tempo", "rawness"])) == config_store.get().recommend.question_count
+        assert (
+            len(catalogue.fill(["era", "tempo", "rawness"]))
+            == config_store.get().recommend.question_count
+        )
 
     def test_count_is_tunable(self, tuned):
         tuned("recommend", question_count=4)

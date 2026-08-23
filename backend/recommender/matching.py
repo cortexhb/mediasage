@@ -37,9 +37,7 @@ class AlbumMatcher(FuzzyMatcher):
         have to hold up.
         """
         matching = config_store.get().matching
-        return cls(
-            artist_min=matching.album_artist_min, combined_min=matching.album_combined_min
-        )
+        return cls(artist_min=matching.album_artist_min, combined_min=matching.album_combined_min)
 
     @classmethod
     def for_pitches(cls) -> Self:

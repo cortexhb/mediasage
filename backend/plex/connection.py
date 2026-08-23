@@ -147,7 +147,10 @@ class PlexConnection(BaseModel):
                     break
                 logger.warning(
                     "Plex fetch %s failed (attempt %d), retrying in %.0fs: %s",
-                    label, attempt + 1, delay, error,
+                    label,
+                    attempt + 1,
+                    delay,
+                    error,
                 )
                 time.sleep(delay)
 

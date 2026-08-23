@@ -110,4 +110,10 @@ async def _external_art(url: str = Query(...)) -> Response:
 
 
 def register_external_art_routes(app: FastAPI) -> None:
-    app.add_api_route("/api/external-art", _external_art, methods=["GET"], response_model=None)
+    app.add_api_route(
+        "/api/external-art",
+        _external_art,
+        methods=["GET"],
+        response_model=None,
+        operation_id="getExternalArt",
+    )

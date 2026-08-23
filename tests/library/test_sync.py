@@ -83,9 +83,11 @@ class TestGenreIndex:
     def test_a_genre_row_is_written_per_track_genre(self, temp_db, plex):
         library_sync.run(plex)
         assert cached_genres() == [
-            ("1", "alternative"), ("1", "rock"),
+            ("1", "alternative"),
+            ("1", "rock"),
             ("2", "electronic"),
-            ("3", "alternative"), ("3", "rock"),
+            ("3", "alternative"),
+            ("3", "rock"),
         ]
 
     def test_case_variants_do_not_collide(self, temp_db, library_settings):
@@ -125,14 +127,16 @@ class TestSweep:
     """Rows the completed sync did not write are removed, but only then."""
 
     def test_tracks_gone_from_plex_are_removed(self, temp_db, library_settings, seed_tracks):
-        seed_tracks({"rating_key": "stale", "title": "T", "artist": "A", "album": "B",
-                     "genres": ["Rock"]})
+        seed_tracks(
+            {"rating_key": "stale", "title": "T", "artist": "A", "album": "B", "genres": ["Rock"]}
+        )
         library_sync.run(FakePlexClient())
         assert set(cached_tracks()) == {"1"}
 
     def test_their_genre_rows_go_with_them(self, temp_db, library_settings, seed_tracks):
-        seed_tracks({"rating_key": "stale", "title": "T", "artist": "A", "album": "B",
-                     "genres": ["Polka"]})
+        seed_tracks(
+            {"rating_key": "stale", "title": "T", "artist": "A", "album": "B", "genres": ["Polka"]}
+        )
         library_sync.run(FakePlexClient())
         assert all(key != "stale" for key, _ in cached_genres())
 
@@ -252,8 +256,10 @@ class TestProgress:
     def test_the_callback_fires_once_per_batch(self, temp_db, library_settings):
         library_settings(sync_batch_size=2)
         seen: list[tuple[int, int]] = []
-        library_sync.run(FakePlexClient(tracks=[plex_track(str(i)) for i in range(4)]),
-                         on_progress=lambda current, total: seen.append((current, total)))
+        library_sync.run(
+            FakePlexClient(tracks=[plex_track(str(i)) for i in range(4)]),
+            on_progress=lambda current, total: seen.append((current, total)),
+        )
         assert seen == [(2, 4), (4, 4)]
 
     def test_a_library_smaller_than_a_batch_reports_nothing(self, temp_db, plex):

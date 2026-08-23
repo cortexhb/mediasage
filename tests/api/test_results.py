@@ -1,13 +1,46 @@
 """Tests for ``/api/results`` -- the saved history."""
 
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
 
-from backend.results import ResultListResponse
+from backend.results import ResultListResponse, ResultType, SavedResult
 
 # A canonical uuid4, the one shape `results_store` mints.
 GOOD_ID = "0f8fad5b-7dcb-11e0-9753-00215ad9d078"
+
+# Snapshots as the two generators write them, cut down to required fields.
+PLAYLIST_SNAPSHOT = {
+    "tracks": [
+        {
+            "rating_key": "1",
+            "title": "Song",
+            "artist": "Band",
+            "album": "Record",
+            "duration_ms": 1000,
+        }
+    ],
+    "token_count": 10,
+    "estimated_cost": 0.5,
+    "playlist_title": "Rainy Monday",
+}
+
+ALBUM_SNAPSHOT = {"recommendations": [{"rank": "primary", "album": "Kid A", "artist": "Radiohead"}]}
+
+
+def saved(result_type: ResultType, snapshot: dict) -> SavedResult:
+    """One stored row, as `results_store.get` hands it back."""
+    return SavedResult(
+        id=GOOD_ID,
+        type=result_type,
+        title="Saved",
+        prompt="something",
+        track_count=1,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        snapshot=snapshot,
+    )
+
 
 # Ids the store never mints, each a 400 rather than a lookup miss. The last
 # three are forms `uuid.UUID()` accepts but `save()` never writes.
@@ -70,6 +103,44 @@ class TestFetch:
         _, get, _ = store
         client.get("/api/results/NOTHEX00")
         get.assert_not_called()
+
+
+class TestSnapshotIsTyped:
+    """The snapshot is narrowed to the shape its `type` says it is."""
+
+    def test_a_playlist_snapshot_comes_back_whole(self, client, store):
+        _, get, _ = store
+        get.return_value = saved("prompt_playlist", PLAYLIST_SNAPSHOT)
+
+        body = client.get(f"/api/results/{GOOD_ID}").json()
+
+        assert body["snapshot"]["playlist_title"] == "Rainy Monday"
+        assert body["snapshot"]["tracks"][0]["title"] == "Song"
+
+    def test_an_album_snapshot_comes_back_whole(self, client, store):
+        _, get, _ = store
+        get.return_value = saved("album_recommendation", ALBUM_SNAPSHOT)
+
+        body = client.get(f"/api/results/{GOOD_ID}").json()
+
+        assert body["snapshot"]["recommendations"][0]["album"] == "Kid A"
+
+    def test_a_snapshot_of_the_wrong_shape_for_its_type_is_refused(self, client, store):
+        """The discriminator is `type`; an album payload is not a playlist."""
+        _, get, _ = store
+        get.return_value = saved("prompt_playlist", ALBUM_SNAPSHOT)
+
+        assert client.get(f"/api/results/{GOOD_ID}").status_code == 422
+
+    def test_a_snapshot_the_models_outgrew_is_422_not_500(self, client, store):
+        """An older row is unrenderable, which is an answer rather than a fault."""
+        _, get, _ = store
+        get.return_value = saved("prompt_playlist", {"tracks": [], "token_count": 1})
+
+        response = client.get(f"/api/results/{GOOD_ID}")
+
+        assert response.status_code == 422
+        assert "earlier version" in response.json()["detail"]
 
 
 class TestDelete:

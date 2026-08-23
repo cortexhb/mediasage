@@ -128,6 +128,5 @@ class ModelReply(BaseModel):
             if len(content) > ERROR_PREVIEW_CHARS:
                 preview += "..."
             raise JSONParseError(
-                f"Failed to parse LLM response as JSON: {original}\n"
-                f"Response preview: {preview}"
+                f"Failed to parse LLM response as JSON: {original}\nResponse preview: {preview}"
             ) from original

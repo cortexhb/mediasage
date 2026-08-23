@@ -115,7 +115,7 @@ def narrative(track_selections: list[dict], user_request: str = "") -> str:
     """The picked tracks and why each was picked, for the liner note."""
     chosen = "\n".join(
         f"- {selection.get('artist', 'Unknown')} - "
-        f"\"{selection.get('title', 'Unknown')}\": "
+        f'"{selection.get("title", "Unknown")}": '
         f"{selection.get('reason', 'Selected for this playlist')}"
         for selection in track_selections[:NARRATIVE_TRACK_LIMIT]
     )

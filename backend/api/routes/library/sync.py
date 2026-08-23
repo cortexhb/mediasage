@@ -30,5 +30,9 @@ async def _sync(plex: Annotated[PlexClient, Depends(plex_store.require)]) -> Syn
 
 def register_sync_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/library/sync", _sync, methods=["POST"], response_model=SyncTriggerResponse
+        "/api/library/sync",
+        _sync,
+        methods=["POST"],
+        response_model=SyncTriggerResponse,
+        operation_id="syncLibrary",
     )

@@ -113,6 +113,7 @@ class SessionStore(BaseModel):
         album_candidates: list[AlbumCandidate],
     ) -> None:
         """Set up one generation round, resetting the cost it will accrue."""
+
         def apply(session: RecommendSession) -> None:
             session.mode = mode
             session.filters = filters
@@ -125,6 +126,7 @@ class SessionStore(BaseModel):
 
     def add_spend(self, session_id: str, tokens: int, cost: float) -> None:
         """Accumulate what one LLM call cost this round."""
+
         def apply(session: RecommendSession) -> None:
             session.total_tokens += tokens
             session.total_cost += cost
@@ -158,7 +160,8 @@ class SessionStore(BaseModel):
         limits = config_store.get().recommend
         now = time.time()
         for session_id in [
-            key for key, (_, touched) in self._sessions.items()
+            key
+            for key, (_, touched) in self._sessions.items()
             if now - touched > limits.session_expiry
         ]:
             del self._sessions[session_id]

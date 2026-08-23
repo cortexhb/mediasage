@@ -48,9 +48,7 @@ class PlexPlaylists(BaseModel):
         except Exception as error:
             logger.warning("Failed to set playlist description: %s", error)
 
-    def create(
-        self, name: str, rating_keys: list[str], description: str = ""
-    ) -> PlaylistResult:
+    def create(self, name: str, rating_keys: list[str], description: str = "") -> PlaylistResult:
         """Create a playlist from rating keys.
 
         Args:
@@ -69,7 +67,9 @@ class PlexPlaylists(BaseModel):
             if fetched.skipped:
                 logger.info(
                     "Playlist '%s': skipped %d of %d tracks",
-                    name, fetched.skipped_count, len(rating_keys),
+                    name,
+                    fetched.skipped_count,
+                    len(rating_keys),
                 )
             if not fetched:
                 return PlaylistResult(success=False, error="No valid tracks found")
@@ -223,9 +223,7 @@ class PlexPlaylists(BaseModel):
             logger.warning("Failed to search for scratch playlist: %s", error)
         return None
 
-    def _create_scratch(
-        self, rating_keys: list[str], description: str
-    ) -> PlaylistUpdateResult:
+    def _create_scratch(self, rating_keys: list[str], description: str) -> PlaylistUpdateResult:
         """Create the scratch playlist around its first set of tracks."""
         result = self.create(SCRATCH_TITLE, rating_keys, description)
         return PlaylistUpdateResult(

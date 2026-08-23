@@ -23,12 +23,14 @@ async def _list_results(
             raise HTTPException(
                 status_code=400, detail=f"Invalid result type: {', '.join(sorted(unknown))}"
             )
-    return await asyncio.to_thread(
-        results_store.page, result_type=type, limit=limit, offset=offset
-    )
+    return await asyncio.to_thread(results_store.page, result_type=type, limit=limit, offset=offset)
 
 
 def register_listing_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/results", _list_results, methods=["GET"], response_model=ResultListResponse
+        "/api/results",
+        _list_results,
+        methods=["GET"],
+        response_model=ResultListResponse,
+        operation_id="listResults",
     )

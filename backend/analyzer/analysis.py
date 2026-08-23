@@ -39,18 +39,14 @@ class Analyzer(BaseModel):
             ValueError: The model returned something that will not parse
         """
         stats = self.plex.library.stats()
-        response = self.llm.analyze(
-            prompts.filters(prompt, stats), prompts.PROMPT_ANALYSIS_SYSTEM
-        )
+        response = self.llm.analyze(prompts.filters(prompt, stats), prompts.PROMPT_ANALYSIS_SYSTEM)
         data = response.parsed()
 
         available_genres = {genre.name for genre in stats.genres}
         available_decades = {decade.name for decade in stats.decades}
 
         return AnalyzePromptResponse(
-            suggested_genres=[
-                name for name in data.get("genres", []) if name in available_genres
-            ],
+            suggested_genres=[name for name in data.get("genres", []) if name in available_genres],
             suggested_decades=[
                 name for name in data.get("decades", []) if name in available_decades
             ],

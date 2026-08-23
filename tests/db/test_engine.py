@@ -48,9 +48,7 @@ class TestDataDirectory:
     def test_a_refused_write_is_not_writable(self, tmp_path, monkeypatch):
         """`os.access` can disagree, so the answer comes from writing."""
         monkeypatch.setattr("backend.db.engine.DATA_DIR", tmp_path)
-        monkeypatch.setattr(
-            Path, "write_text", MagicMock(side_effect=PermissionError("read-only"))
-        )
+        monkeypatch.setattr(Path, "write_text", MagicMock(side_effect=PermissionError("read-only")))
         assert not Database().data_dir_writable()
 
     def test_the_directory_is_the_one_the_engine_defaults_to(self, tmp_path, monkeypatch):

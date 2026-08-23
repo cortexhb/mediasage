@@ -26,9 +26,7 @@ def build(
 
 def trimmed(text: str, max_chars: int, min_chars: int) -> str:
     """`Reviews.trimmed` over a client carrying those caps."""
-    client, _ = build(
-        config=ResearchConfig(review_max_chars=max_chars, review_min_chars=min_chars)
-    )
+    client, _ = build(config=ResearchConfig(review_max_chars=max_chars, review_min_chars=min_chars))
     return client.trimmed(text)
 
 
@@ -39,7 +37,9 @@ def fetches(answer: object) -> AbstractContextManager[AsyncMock]:
     hop limit, which one test below asserts on.
     """
     return patch.object(
-        SafeFetcher, "get", autospec=True,
+        SafeFetcher,
+        "get",
+        autospec=True,
         side_effect=answer if isinstance(answer, Exception) else None,
         return_value=None if isinstance(answer, Exception) else answer,
     )

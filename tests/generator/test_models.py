@@ -23,8 +23,13 @@ class TestCachedTracks:
     def test_a_cached_row_becomes_a_track(self, temp_db):
         """`library.tracks` answers with models, not the dicts this once read."""
         cached = TrackRecord(
-            rating_key="42", title="Song", artist="Band", album="Record",
-            duration_ms=180000, year=1994, genres=["Rock"],
+            rating_key="42",
+            title="Song",
+            artist="Band",
+            album="Record",
+            duration_ms=180000,
+            year=1994,
+            genres=["Rock"],
         )
         with (
             patch("backend.library.sync.LibrarySync.has_tracks", return_value=True),
@@ -120,8 +125,11 @@ class TestNarrative:
         """An LLM client whose analysis call answers with `payload` as JSON."""
         client = MagicMock()
         client.analyze.return_value = LLMResponse(
-            content=json.dumps(payload), input_tokens=500, output_tokens=50,
-            model="test-model", role="analysis",
+            content=json.dumps(payload),
+            input_tokens=500,
+            output_tokens=50,
+            model="test-model",
+            role="analysis",
         )
         return client
 
@@ -132,10 +140,12 @@ class TestNarrative:
         ]
 
     def test_it_returns_the_title_and_the_narrative(self):
-        client = self.answering({
-            "title": "Rainstorm Reverie",
-            "narrative": "It weaves through 'Fake Plastic Trees' and 'Black'.",
-        })
+        client = self.answering(
+            {
+                "title": "Rainstorm Reverie",
+                "narrative": "It weaves through 'Fake Plastic Trees' and 'Black'.",
+            }
+        )
 
         written = Narrative.of(self.selections(), client)
 
@@ -193,16 +203,24 @@ class TestNarrative:
         assert Narrative.of(self.selections(), client).text == "Under another name."
 
     def test_the_narrative_key_wins_over_the_alternatives(self):
-        client = self.answering({
-            "title": "Test", "narrative": "Primary value", "description": "Not this",
-        })
+        client = self.answering(
+            {
+                "title": "Test",
+                "narrative": "Primary value",
+                "description": "Not this",
+            }
+        )
 
         assert Narrative.of(self.selections(), client).text == "Primary value"
 
     def test_an_empty_narrative_falls_through_to_an_alternative(self):
-        client = self.answering({
-            "title": "Test", "narrative": "", "description": "Fallback used",
-        })
+        client = self.answering(
+            {
+                "title": "Test",
+                "narrative": "",
+                "description": "Fallback used",
+            }
+        )
 
         assert Narrative.of(self.selections(), client).text == "Fallback used"
 

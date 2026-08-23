@@ -18,17 +18,24 @@ KEY = "sigur rós|||ágætis byrjun"
 
 def primary() -> AlbumRecommendation:
     return AlbumRecommendation(
-        rank="primary", album="Ágætis byrjun", artist="Sigur Rós", year=1999,
-        rating_key="123", track_rating_keys=["456"],
+        rank="primary",
+        album="Ágætis byrjun",
+        artist="Sigur Rós",
+        year=1999,
+        rating_key="123",
+        track_rating_keys=["456"],
     )
 
 
 def written(**overrides) -> dict[str, str]:
     """One pitch as the model returns it."""
     fields = {
-        "artist": "Sigur Rós", "album": "Ágætis byrjun",
-        "hook": "A hook", "context": "A context",
-        "listening_guide": "A guide", "connection": "A connection",
+        "artist": "Sigur Rós",
+        "album": "Ágætis byrjun",
+        "hook": "A hook",
+        "context": "A context",
+        "listening_guide": "A guide",
+        "connection": "A connection",
     }
     fields.update(overrides)
     return fields
@@ -64,12 +71,16 @@ class TestWrite:
 
     def test_the_extracted_facts_are_in_the_user_prompt(self, metered):
         call, llm = metered([written()])
-        facts = {KEY: ExtractedFacts(
-            origin_story="Recorded in a Reykjavik swimming pool",
-            vocal_approach="Mostly Icelandic; Vonlenska on 2 tracks only",
-            common_misconceptions="Not entirely in Vonlenska despite common belief",
-        )}
-        research = {KEY: ResearchData(track_listing=["Intro", "Svefn-g-englar"], label="Smekkleysa")}
+        facts = {
+            KEY: ExtractedFacts(
+                origin_story="Recorded in a Reykjavik swimming pool",
+                vocal_approach="Mostly Icelandic; Vonlenska on 2 tracks only",
+                common_misconceptions="Not entirely in Vonlenska despite common belief",
+            )
+        }
+        research = {
+            KEY: ResearchData(track_listing=["Intro", "Svefn-g-englar"], label="Smekkleysa")
+        }
 
         Pitches(call=call).write([primary()], "test", AnswerSet(), research, facts)
 
@@ -126,17 +137,26 @@ class TestValidate:
     def test_a_clean_pitch_passes(self, metered):
         call, _ = metered({"valid": True, "issues": []})
 
-        result = Pitches(call=call).fact_check(SommelierPitch(full_text="A pitch"), ExtractedFacts())
+        result = Pitches(call=call).fact_check(
+            SommelierPitch(full_text="A pitch"), ExtractedFacts()
+        )
 
         assert result.valid is True
         assert result.issues == []
 
     def test_a_contradiction_is_flagged(self, metered):
-        call, _ = metered({"valid": False, "issues": [{
-            "claim": "touring stint with David Berman",
-            "problem": "contradicts research",
-            "correction": "Jenkins rehearsed with Purple Mountains; Berman died first",
-        }]})
+        call, _ = metered(
+            {
+                "valid": False,
+                "issues": [
+                    {
+                        "claim": "touring stint with David Berman",
+                        "problem": "contradicts research",
+                        "correction": "Jenkins rehearsed with Purple Mountains; Berman died first",
+                    }
+                ],
+            }
+        )
 
         result = Pitches(call=call).fact_check(
             SommelierPitch(full_text="Born from her touring stint with David Berman"),
@@ -166,11 +186,16 @@ class TestRewrite:
     def test_the_corrections_reach_the_prompt(self, metered):
         call, llm = metered({"hook": "Corrected hook", "context": "What really happened"})
         rec = primary()
-        issues = PitchValidation(valid=False, issues=[PitchIssue(
-            claim="touring stint with David Berman",
-            problem="contradicts research",
-            correction="Rehearsed for four days, never toured",
-        )])
+        issues = PitchValidation(
+            valid=False,
+            issues=[
+                PitchIssue(
+                    claim="touring stint with David Berman",
+                    problem="contradicts research",
+                    correction="Rehearsed for four days, never toured",
+                )
+            ],
+        )
 
         Pitches(call=call).rewrite(rec, ExtractedFacts(), issues, "contemplative", AnswerSet())
 
@@ -183,7 +208,9 @@ class TestRewrite:
         rec = primary()
         rec.pitch = SommelierPitch(hook="The wrong hook")
 
-        Pitches(call=call).rewrite(rec, ExtractedFacts(), PitchValidation(valid=False), "x", AnswerSet())
+        Pitches(call=call).rewrite(
+            rec, ExtractedFacts(), PitchValidation(valid=False), "x", AnswerSet()
+        )
 
         assert rec.pitch.hook == "Corrected hook"
         assert rec.pitch.full_text == "Corrected hook\n\nWhat really happened"

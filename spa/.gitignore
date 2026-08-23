@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Vitest browser mode writes these on a failed test.
+.vitest-attachments
+__screenshots__

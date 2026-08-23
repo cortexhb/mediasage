@@ -25,7 +25,10 @@ class TestAbsentIsEmpty:
     """
 
     def test_a_null_prompt_reads_as_blank(self):
-        assert generate(prompt=None, seed_track={"rating_key": "1", "selected_dimensions": []}).prompt == ""
+        assert (
+            generate(prompt=None, seed_track={"rating_key": "1", "selected_dimensions": []}).prompt
+            == ""
+        )
 
     def test_a_null_note_reads_as_blank(self):
         assert generate(additional_notes=None).additional_notes == ""

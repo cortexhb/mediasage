@@ -54,7 +54,7 @@ class MusicBrainz:
             ref: The album as the library or a model names it
             year: The library's year, which disambiguates a common title
         """
-        exact = await self._first(self._strict(ref ), STRICT_LIMIT)
+        exact = await self._first(self._strict(ref), STRICT_LIMIT)
         if exact:
             return exact
 
@@ -105,9 +105,7 @@ class MusicBrainz:
 
     async def _search(self, query: str, limit: int) -> list[ReleaseGroupMatch]:
         """Run one release-group search; an empty list is also a failure."""
-        payload = await self._get(
-            "release-group", {"query": query, "fmt": "json", "limit": limit}
-        )
+        payload = await self._get("release-group", {"query": query, "fmt": "json", "limit": limit})
         if payload is None:
             return []
         return [

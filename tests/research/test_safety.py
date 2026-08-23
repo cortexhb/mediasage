@@ -13,7 +13,8 @@ def resolves_to(address: str):
     """Patch name resolution so a test does not depend on a working DNS."""
     family = socket.AF_INET6 if ":" in address else socket.AF_INET
     return patch.object(
-        safety.socket, "getaddrinfo",
+        safety.socket,
+        "getaddrinfo",
         return_value=[(family, socket.SOCK_STREAM, 6, "", (address, 0))],
     )
 
@@ -45,11 +46,14 @@ def final() -> MagicMock:
 
 
 class TestIsSafe:
-    @pytest.mark.parametrize("url", (
-        "file:///etc/passwd",
-        "ftp://example.com/x",
-        "gopher://example.com",
-    ))
+    @pytest.mark.parametrize(
+        "url",
+        (
+            "file:///etc/passwd",
+            "ftp://example.com/x",
+            "gopher://example.com",
+        ),
+    )
     def test_rejects_a_non_http_scheme(self, url):
         assert SafeFetcher.is_safe(url) is False
 
@@ -59,13 +63,16 @@ class TestIsSafe:
     def test_rejects_a_malformed_url(self):
         assert SafeFetcher.is_safe("http://[") is False
 
-    @pytest.mark.parametrize("address", (
-        "127.0.0.1",      # loopback
-        "10.0.0.5",       # private
-        "192.168.1.10",   # private
-        "169.254.1.1",    # link-local
-        "::1",            # loopback, v6
-    ))
+    @pytest.mark.parametrize(
+        "address",
+        (
+            "127.0.0.1",  # loopback
+            "10.0.0.5",  # private
+            "192.168.1.10",  # private
+            "169.254.1.1",  # link-local
+            "::1",  # loopback, v6
+        ),
+    )
     def test_rejects_a_host_resolving_to_a_reserved_address(self, address):
         """An open redirect on a public host would otherwise reach the LAN."""
         with resolves_to(address):

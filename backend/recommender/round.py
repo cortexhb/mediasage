@@ -66,15 +66,12 @@ NOT_IN_MUSICBRAINZ: Final = (
 FAILED_VALIDATION: Final = (
     "The primary recommendation could not be fully verified against available sources."
 )
-STILL_UNVERIFIED: Final = (
-    "Some details could not be fully verified against available sources."
-)
+STILL_UNVERIFIED: Final = "Some details could not be fully verified against available sources."
 
 # Raised as a ValueError so the endpoint can tell a message meant for the user
 # from an internal failure it has to sanitise.
-NO_ALBUMS: Final = (
-    "No matching albums found. Try broadening your prompt or adjusting filters."
-)
+NO_ALBUMS: Final = "No matching albums found. Try broadening your prompt or adjusting filters."
+
 
 class Step(BaseModel):
     """One stage of the round, reported as it starts."""
@@ -189,7 +186,10 @@ class RecommendationRound:
         tokens, cost = self.pipeline.sessions.spend(self.inputs.session_id)
         logger.info(
             "recommend.round | session=%s researched=%d facts=%d warned=%s",
-            self.inputs.session_id, len(self.research), len(self.facts), self.warning is not None,
+            self.inputs.session_id,
+            len(self.research),
+            len(self.facts),
+            self.warning is not None,
         )
         yield RecommendGenerateResponse(
             recommendations=recommendations,
@@ -225,8 +225,7 @@ class RecommendationRound:
                         else None
                     ),
                     subtitle=(
-                        primary.pitch.hook if primary and primary.pitch.hook
-                        else self.inputs.prompt
+                        primary.pitch.hook if primary and primary.pitch.hook else self.inputs.prompt
                     ),
                 )
             )
@@ -292,9 +291,7 @@ class RecommendationRound:
         name an album that exists and is nothing like the request.
         """
         try:
-            found = await self.research_client.of_album(
-                primary.ref, full=True, year=primary.year
-            )
+            found = await self.research_client.of_album(primary.ref, full=True, year=primary.year)
         except Exception as err:
             logger.warning("Primary research failed: %s", err)
             self.warning = PRIMARY_RESEARCH_FAILED
@@ -311,7 +308,9 @@ class RecommendationRound:
         if self.inputs.is_discovery:
             valid = await asyncio.to_thread(
                 self.stages.facts.matches_request,
-                primary, found, self.inputs.prompt,
+                primary,
+                found,
+                self.inputs.prompt,
             )
             if not valid:
                 logger.info("Primary discovery album failed validation")
@@ -374,7 +373,8 @@ class RecommendationRound:
         try:
             validation = await asyncio.to_thread(
                 self.stages.pitches.fact_check,
-                pitch=primary.pitch, facts=facts,
+                pitch=primary.pitch,
+                facts=facts,
             )
             if validation.valid:
                 return
@@ -383,13 +383,17 @@ class RecommendationRound:
             yield self._step("rewriting")
             await asyncio.to_thread(
                 self.stages.pitches.rewrite,
-                rec=primary, facts=facts, issues=validation,
-                prompt=self.inputs.prompt, answers=self.inputs.answers,
+                rec=primary,
+                facts=facts,
+                issues=validation,
+                prompt=self.inputs.prompt,
+                answers=self.inputs.answers,
             )
 
             rechecked = await asyncio.to_thread(
                 self.stages.pitches.fact_check,
-                pitch=primary.pitch, facts=facts,
+                pitch=primary.pitch,
+                facts=facts,
             )
             if not rechecked.valid:
                 logger.warning("Pitch still has %d issues after rewrite", len(rechecked.issues))

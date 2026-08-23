@@ -78,7 +78,9 @@ class TestUnconfiguredProvider:
 
     def test_unknown_provider_is_rejected(self, tmp_path, clean_config_env):
         """A provider outside the supported set should refuse to load."""
-        config_file = write_config(tmp_path, {"llm": {"provider": "notaprovider", "context_window": 128_000}})
+        config_file = write_config(
+            tmp_path, {"llm": {"provider": "notaprovider", "context_window": 128_000}}
+        )
 
         with pytest.raises(ValidationError):
             MediasageConfig.load(config_file)
@@ -115,7 +117,11 @@ class TestLoadConfig:
                     "token": "yaml-token",
                     "music_library": "My Music",
                 },
-                "llm": {"provider": "anthropic", "api_key": "sk-yaml-key", "context_window": 200_000},
+                "llm": {
+                    "provider": "anthropic",
+                    "api_key": "sk-yaml-key",
+                    "context_window": 200_000,
+                },
                 "defaults": {"track_count": 40},
             },
         )
@@ -151,18 +157,24 @@ class TestLoadConfig:
 
     def test_api_key_is_provider_independent(self, tmp_path, clean_config_env):
         """One key serves whichever provider is selected."""
-        config_file = write_config(tmp_path, {"llm": {"provider": "anthropic", "context_window": 200_000}})
+        config_file = write_config(
+            tmp_path, {"llm": {"provider": "anthropic", "context_window": 200_000}}
+        )
         clean_config_env.setenv("MEDIASAGE_LLM__API_KEY", "the-key")
 
         assert MediasageConfig.load(config_file).llm.api_key.get_secret_value() == "the-key"
 
-        config_file = write_config(tmp_path, {"llm": {"provider": "openai", "context_window": 128_000}})
+        config_file = write_config(
+            tmp_path, {"llm": {"provider": "openai", "context_window": 128_000}}
+        )
 
         assert MediasageConfig.load(config_file).llm.api_key.get_secret_value() == "the-key"
 
     def test_models_are_not_guessed(self, tmp_path, clean_config_env):
         """A provider named without models leaves them blank rather than guessing."""
-        config_file = write_config(tmp_path, {"llm": {"provider": "openai", "context_window": 128_000}})
+        config_file = write_config(
+            tmp_path, {"llm": {"provider": "openai", "context_window": 128_000}}
+        )
 
         config = MediasageConfig.load(config_file)
 
@@ -198,7 +210,9 @@ class TestLoadConfig:
         assert config.plex.music_library == "Music"
         assert config.defaults.track_count == 25
 
-    def test_user_config_overrides_base_file(self, tmp_path, clean_config_env, isolated_user_config):
+    def test_user_config_overrides_base_file(
+        self, tmp_path, clean_config_env, isolated_user_config
+    ):
         """UI-saved settings should win over the deployment's base file."""
         config_file = write_config(
             tmp_path,
@@ -217,7 +231,11 @@ class TestLoadConfig:
             tmp_path,
             {
                 "plex": {"url": "http://test:32400", "token": "secret-token"},
-                "llm": {"provider": "anthropic", "api_key": "secret-api-key", "context_window": 200_000},
+                "llm": {
+                    "provider": "anthropic",
+                    "api_key": "secret-api-key",
+                    "context_window": 200_000,
+                },
             },
         )
 

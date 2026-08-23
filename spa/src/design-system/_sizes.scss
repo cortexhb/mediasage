@@ -1,0 +1,18 @@
+/**
+ * Sizes a media query needs, which is why they are not custom properties:
+ * `@media` cannot read `var()`.
+ *
+ * Only the two breakpoints with cross-component consumers are here. The
+ * results grid's `769px`-`1023px` tablet query and the prompt pills' `767px`
+ * query each have exactly one caller in `frontend/style.css` and belong to
+ * that component's module when it is ported.
+ */
+
+/* At or below: nav loses entries, home cards restack, the stepper shrinks. */
+$compact: 600px;
+
+/* At or below: every control is operated by a finger. */
+$mobile: 768px;
+
+/* Apple Human Interface Guidelines minimum for a touch target. */
+$touch-target: 44px;

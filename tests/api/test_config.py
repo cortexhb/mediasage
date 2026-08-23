@@ -1,16 +1,20 @@
 """Tests for ``/api/config`` and ``/api/ollama``."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.config import ConfigSaveError
-from backend.llm import OllamaModel, OllamaModelInfo, OllamaModelsResponse, OllamaStatus
+from backend.llm import (
+    ModelListing,
+    OllamaModel,
+    OllamaModelInfo,
+    OllamaModelsResponse,
+    OllamaStatus,
+)
 from tests.api.conftest import mediasage_config
 
-OLLAMA_CONFIG = mediasage_config(
-    llm_provider="ollama", endpoint_url="http://localhost:11434"
-)
+OLLAMA_CONFIG = mediasage_config(llm_provider="ollama", endpoint_url="http://localhost:11434")
 
 
 @pytest.fixture
@@ -118,10 +122,12 @@ class TestUpdateConfigProbes:
 
     def test_a_provider_that_does_not_answer_is_refused(self, client, plex):
         with (
-            patch("backend.api.probes.LLMClient") as llm,
+            patch(
+                "backend.api.probes.ModelListing.of",
+                AsyncMock(return_value=ModelListing(error="nope")),
+            ),
             patch("backend.config.store.ConfigStore.commit") as commit,
         ):
-            llm.of.return_value.complete.side_effect = RuntimeError("nope")
             response = client.post("/api/config", json={"llm_provider": "openai"})
 
         assert response.status_code == 422
@@ -141,19 +147,17 @@ class TestUpdateConfigProbes:
 
         rebuilds.plex.assert_not_called()
 
-    def test_a_price_edit_spends_no_completion(self, client, plex):
+    def test_a_price_edit_probes_nothing(self, client, plex):
         """A number the UI reports back must not fail because a provider is down."""
         with (
-            patch("backend.api.probes.LLMClient") as llm,
+            patch("backend.api.probes.ModelListing.of", new_callable=AsyncMock) as listing,
             patch("backend.api.probes.PlexClient") as plex_client,
-            patch(
-                "backend.config.store.ConfigStore.commit", return_value=mediasage_config()
-            ),
+            patch("backend.config.store.ConfigStore.commit", return_value=mediasage_config()),
         ):
             response = client.post("/api/config", json={"cost_analysis_input": 3.0})
 
         assert response.status_code == 200
-        llm.of.assert_not_called()
+        listing.assert_not_called()
         plex_client.of.assert_not_called()
 
     def test_a_failed_write_is_a_500(self, client, plex, answering):
@@ -195,10 +199,14 @@ class TestOllama:
         assert ollama.configured.call_args.args == ("http://custom-host:11434",)
 
     def test_models_lists_what_is_pulled(self, client, ollama):
-        ollama.return_value.list_models.return_value = OllamaModelsResponse(models=[
-            OllamaModel(name="llama3:8b", size=4661224676, modified_at="2024-01-15T00:00:00Z"),
-            OllamaModel(name="mistral:latest", size=3825819904, modified_at="2024-01-14T00:00:00Z"),
-        ])
+        ollama.return_value.list_models.return_value = OllamaModelsResponse(
+            models=[
+                OllamaModel(name="llama3:8b", size=4661224676, modified_at="2024-01-15T00:00:00Z"),
+                OllamaModel(
+                    name="mistral:latest", size=3825819904, modified_at="2024-01-14T00:00:00Z"
+                ),
+            ]
+        )
 
         data = client.get("/api/ollama/models").json()
 

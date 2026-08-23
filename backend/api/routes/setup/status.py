@@ -59,5 +59,9 @@ async def _status(
 
 def register_setup_status_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/setup/status", _status, methods=["GET"], response_model=SetupStatusResponse
+        "/api/setup/status",
+        _status,
+        methods=["GET"],
+        response_model=SetupStatusResponse,
+        operation_id="getSetupStatus",
     )

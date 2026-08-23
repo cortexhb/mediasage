@@ -52,7 +52,9 @@ class PlexPlayback(BaseModel):
 
         logger.debug(
             "Client discovery: %d found (%d local, %d cloud)",
-            len(found), local_count, len(found) - local_count,
+            len(found),
+            local_count,
+            len(found) - local_count,
         )
         return found
 
@@ -80,13 +82,15 @@ class PlexPlayback(BaseModel):
                 )
                 continue
 
-            found.append(PlexClientInfo(
-                client_id=client.machineIdentifier,
-                name=client.title,
-                product=client.product,
-                platform=client.platform,
-                is_playing=is_playing,
-            ))
+            found.append(
+                PlexClientInfo(
+                    client_id=client.machineIdentifier,
+                    name=client.title,
+                    product=client.product,
+                    platform=client.platform,
+                    is_playing=is_playing,
+                )
+            )
         return found
 
     def _cloud_clients(self, seen: set[str]) -> list[PlexClientInfo]:
@@ -124,13 +128,15 @@ class PlexPlayback(BaseModel):
                 or getattr(resource, "platformVersion", None)
                 or "Unknown"
             )
-            found.append(PlexClientInfo(
-                client_id=client_id,
-                name=resource.name,
-                product=product,
-                platform=platform,
-                is_playing=client_id in playing,
-            ))
+            found.append(
+                PlexClientInfo(
+                    client_id=client_id,
+                    name=resource.name,
+                    product=product,
+                    platform=platform,
+                    is_playing=client_id in playing,
+                )
+            )
         return found
 
     def play_queue(

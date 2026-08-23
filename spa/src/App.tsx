@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 
+import { Overlay } from './components/atoms/Overlay/Overlay.tsx'
+import styles from './App.module.scss'
+
 /** What the API reported about itself, or why it could not be reached. */
 type Health =
   | { readonly kind: 'loading' }
@@ -14,6 +17,7 @@ type Health =
  */
 export default function App() {
   const [health, setHealth] = useState<Health>({ kind: 'loading' })
+  const [overlayOpen, setOverlayOpen] = useState(false)
 
   useEffect(() => {
     const aborter = new AbortController()
@@ -42,23 +46,54 @@ export default function App() {
   }, [])
 
   return (
-    <div className="app">
-      <header className="header">
-        <h1 className="logo">MediaSage</h1>
+    <div className={styles.app}>
+      <header className={styles.header}>
+        <h1 className={styles.logo}>MediaSage</h1>
       </header>
       <main id="main-content">
         <h2>Scaffold</h2>
         {health.kind === 'loading' && <p>Reaching the API…</p>}
         {health.kind === 'unreachable' && (
-          <p style={{ color: 'var(--error)' }}>
+          <p className={styles.unreachable}>
             API unreachable: {health.reason}. Start it on port 5765.
           </p>
         )}
         {health.kind === 'ok' && (
-          <pre style={{ color: 'var(--success)' }}>
+          <pre className={styles.payload}>
             {JSON.stringify(health.body, null, 2)}
           </pre>
         )}
+
+        <button
+          type="button"
+          onClick={() => {
+            setOverlayOpen(true)
+          }}
+        >
+          Show the overlay
+        </button>
+
+        <Overlay
+          open={overlayOpen}
+          label="Overlay spike"
+          onClose={() => {
+            setOverlayOpen(false)
+          }}
+        >
+          <h3>Native &lt;dialog&gt;</h3>
+          <p>
+            Escape closes this. Tab stays inside. The page behind is inert and
+            cannot be clicked or scrolled to.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setOverlayOpen(false)
+            }}
+          >
+            Close
+          </button>
+        </Overlay>
       </main>
     </div>
   )

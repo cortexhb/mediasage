@@ -27,9 +27,7 @@ JSON_FENCE: Final = re.compile(r"```json\s*\n?(.*?)```", re.DOTALL | re.IGNORECA
 ANY_FENCE: Final = re.compile(r"```(?:\w+)?\s*\n?(.*?)```", re.DOTALL)
 
 # Typographic quotes models emit inside otherwise valid JSON.
-SMART_QUOTES: Final = str.maketrans(
-    {"\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'"}
-)
+SMART_QUOTES: Final = str.maketrans({"\u201c": '"', "\u201d": '"', "\u2018": "'", "\u2019": "'"})
 
 # Longest snippet echoed back in a parse error, enough to identify it.
 ERROR_PREVIEW_CHARS: Final = 200

@@ -9,7 +9,9 @@ and testing. This document records order and rationale, not rules.
 
 Versions the plan holds for, from `spa/package-lock.json`: React 19.2.8, React Router 8.3.0,
 Vite 8.2.2, TypeScript 6.0.3, Vitest 4.1.11, msw 2.15.0, sass-embedded 1.103.1,
-@hey-api/openapi-ts 0.99.0, ESLint 10.9.0.
+@hey-api/openapi-ts 0.99.0, ESLint 10.9.0, stylelint 17.14.1 with
+stylelint-config-standard-scss 17.0.0, jsdom 30.0.1, @vitest/browser 4.1.11 with
+@vitest/browser-playwright 4.1.11 and Playwright 1.62.1.
 
 ## The Legacy App Is Unusable, Not Merely Outdated
 
@@ -50,7 +52,7 @@ Components are born in `organisms/`. The second consumer moves one down a layer,
 
 | Phase | Scope                                                               | Why here                                       |
 | ----- | ------------------------------------------------------------------- | ---------------------------------------------- |
-| 0     | Design-system core, API boundary, SSE reader, spikes                | Nothing can be built without it                |
+| 0     | Design-system core, API boundary, SSE reader, spikes                | Nothing can be built without it. Mostly done   |
 | 1     | App shell, nav, `Overlay`, route table with stubs, legacy-hash shim | Proves routing and tokens                      |
 | 2     | Settings                                                            | Only configuration surface; the broken screen  |
 | 3     | Home, history feed, library sync                                    | Read-mostly; exercises loaders                 |
@@ -136,21 +138,32 @@ mirroring today's `sessionId === null` behaviour with no extra concept.
 
 ### One SSE Reader, Frame-Agnostic
 
-The two streams do not agree on their terminal frame. `backend/generator/playlists.py:266` emits a
-`complete` event; `backend/api/routes/recommend/generate.py:156` emits `result`. Playlists also
-emits a bare `: heartbeat` comment frame to flush iOS buffers.
+Built, in two pieces: `spa/src/libs/parseSse/` frames the text, `spa/src/api/readEventStream/`
+decodes and reads.
+
+The two streams do not agree on their terminal frame. `backend/generator/playlists.py:275` emits a
+`complete` event; `backend/api/routes/recommend/generate.py:159` emits `result`. Playlists also
+emits a bare `: heartbeat` comment frame (`backend/generator/playlists.py:289`) to flush iOS
+buffers.
 
 So the shared reader has no concept of a terminal frame — it ends when the body ends, and each
 caller declares its own terminator. It is an async generator consumed with `for await`, which
-replaces the nested callback recursion in the legacy reader, makes cancellation a plain
-`AbortSignal`, and makes cleanup a `try/finally`.
+replaces the nested callback recursion in the legacy reader and makes cleanup a `try/finally` that
+cancels the body on every exit path. It takes a `ReadableStream` rather than a `Response`, so
+cancellation stays the caller's `AbortSignal` on the `fetch` and a test can drive it with real bytes.
 
-Frame parsing is pure and separately tested: multi-line `data:`, comment frames, a frame split
-across two chunk boundaries, and a trailing partial. The legacy buffering bug class becomes a unit
-test.
+Frame parsing is pure and stateless: given everything received so far, it returns the complete frames
+and the tail that is not one yet. That is what fixes the legacy buffering bug — `frontend/app.js:382`
+re-initialises the `event`/`data` accumulator on every chunk, so a frame split at a line boundary
+lost its `event:` line and was dropped silently.
+
+Two departures from the legacy reader, both because errors are never swallowed: a payload that is not
+JSON throws rather than being logged and skipped, and a stalled stream throws an error naming the
+elapsed time rather than a hardcoded message about filters.
 
 The stale-chunk timeout is an option rather than two implementations: playlists pass 600s or 300s
-depending on `is_local_provider`, recommendations pass 120s.
+depending on `is_local_provider`, recommendations pass 120s. It is per chunk, not per stream, because
+a stream is legitimately silent for minutes while a model works.
 
 The iOS synthetic-completion fallback — accumulating track batches and fabricating a completion when
 the body ends without one — stays in the playlist wrapper, not the shared reader.
@@ -181,9 +194,28 @@ trapping, Escape handling, top-layer stacking, a backdrop, and inertness of the 
 That deletes `focusManager` (`frontend/app.js:9-62`), the z-index tiers above the overlay level, and
 the scroll-lock trio at `frontend/app.js:3331-3350`.
 
-Spike this against jsdom in Phase 0 before committing to it: confirm `HTMLDialogElement.prototype.showModal`
-exists under the installed jsdom and that Testing Library can drive it. Named fallback if not: a
-`div` with `role="dialog"` plus a `useFocusTrap` hook ported from `focusManager`.
+The Phase 0 spike settled this, and not the way it was framed. `HTMLDialogElement.prototype.showModal`
+does not exist under jsdom 30.0.1 — nor do `show` or `close`, though the IDL wrapper is declared. The
+proposed fallback was a `div` with `role="dialog"` plus a `useFocusTrap` hook ported from
+`focusManager`; the alternative considered was shimming the methods in test setup.
+
+Both were rejected in favour of a second Vitest project running real Chromium. A shim would have
+meant the assertions described the shim rather than the platform the component delegates to, which is
+the whole point of choosing native `<dialog>`. happy-dom was measured too and does not help: its
+`showModal` is `setAttribute('open', '')`, identical to `show()`, with no focus management and no
+inertness — the method exists, the semantics do not.
+
+`atoms/Overlay` and its browser tests now hold the evidence for this section: focus enters the
+dialog, Tab never reaches the page behind it, Escape closes and reports to the caller, the backdrop
+covers the page so a click cannot land on it, and the page comes back on close. Those tests take
+input from `vitest/browser` rather than `@testing-library/user-event`, because the browser's dialog
+behaviour ignores synthesised events.
+
+Two things the harness cannot show. Tab order inside an iframe passes through the document between
+laps, so the trap is asserted as "focus never reaches the buttons outside" rather than as a landing
+spot — asserting the lap length would encode a number found by trial. And Chromium's real
+accessibility tree excludes inert content, but RTL walks the DOM rather than asking the browser, so
+inertness is asserted through `elementFromPoint` instead of a role query.
 
 This is the one place the port deliberately does not mirror the legacy CSS structure. The rendered
 result must match; the source will not.
@@ -228,49 +260,71 @@ is a bug report about the control.
 Each one carries a one-line reason at the usage site, the same shape `CLAUDE.md` already requires
 for module-level functions.
 
-## Backend Defects
+## Backend Defects — Fixed
 
-Four defects the port depends on, in descending order of importance.
+Four defects the port depended on. All four are fixed; recorded here because later phases assume
+the new behaviour rather than the old.
 
-**Configuring inference must never spend an inference call.** Both `POST /api/config` and
-`POST /api/setup/validate-ai` run a real completion (`backend/api/probes.py:100`) whenever a field in
-`CONNECTING` (`backend/config/models.py:404`) is present. Saving settings is therefore billable and
-can block for `llm.request_timeout`. This is a backend defect to fix, not a constraint for the UI to
-design around; the Settings slice assumes it is fixed rather than building a pending-and-abort
-experience on top of it.
+**Configuring inference no longer spends an inference call.** Saving settings used to run a real
+completion whenever a `CONNECTING` field was present, making it billable and able to block for
+`llm.request_timeout`. `backend/llm/listing.py` replaced the probe with a model listing through each
+provider's own SDK, so a save now asks whether the configured models exist. A provider whose listing
+endpoint is absent answers `supported=False` rather than refusing the save. The Settings slice
+assumes this, and builds no pending-and-abort experience.
 
-**`ResultDetail.snapshot` is `dict[str, Any]`**, against the house convention of strong typing via
-pydantic models. As a discriminated union keyed on `type`, codegen produces a real TypeScript union
-and the `/result/:resultId` switch becomes compiler-checked. Without it, the three highest-traffic
-payloads in the app are untyped, which contradicts the generated-types rule in `spa/README.md`.
+**`ResultDetail.snapshot` is a discriminated union** keyed on `type`, assembled in `backend/models.py`
+because both snapshot shapes import `backend.results`. `GET /api/results/{id}` narrows at the
+boundary and answers 422 for a row the models have outgrown. Codegen produces a real TypeScript
+union, so the `/result/:resultId` switch is compiler-checked.
 
-**`ConfigUpdate.changes()` filters on truthiness** (`backend/config/models.py:491`), so a cost of
-`0.0` cannot be cleared and `context_window: 0` is dropped silently. An all-falsy body then returns 400. One-line fix. Until then the Settings form must refuse zero with a stated reason rather than
-appear to save it.
+**`ConfigUpdate.changes()` filters on presence, not truthiness**, so a cost of `0.0` and a
+`context_window: 0` now survive. The Settings form does not need to refuse zero.
 
-**No route sets `operation_id`**, so codegen emits names like `_get_config_api_config_get`.
-Mechanical to fix, and it improves `/docs` at the same time. Separately, both streaming routes are
-`response_model=None`, so their payloads never enter the schema and cannot be generated at all.
+**Every route sets a camelCase `operation_id`**, and both streaming routes declare their frame union
+through `EventStreamResponse`, so the schema carries the payloads codegen needs.
 
-## Prerequisites in `spa/`
+## Prerequisites in `spa/` — Done
 
-Three items introduced during the scaffold, all Phase 0.
+Three items introduced during the scaffold, all cleared in Phase 0. The stylelint class pattern is
+camelCase BEM, `spa/index.html` has its skip link back, and `spa/README.md` resolves
+definition-of-done item 5 toward cutover and carries the testid scoping rule above.
 
-The BEM pattern in `spa/stylelint.config.js:10` permits a `--modifier` but rejects an `__element`,
-and assumes kebab-case blocks. Class names are camelCase blocks with BEM parts — `trackRow`,
-`trackRow__title`, `trackRow--active` — because CSS Module classes are read as JavaScript
-properties, so `styles.trackRow__title` resolves where a kebab-case name would need bracket access.
-The pattern must be replaced before the first module, or `npm run lint:css:check` fails on it.
+## Phase 0 Status
 
-`spa/index.html` is missing the skip link that `frontend/index.html:13` provides. Its CSS is already
-in the must-stay-global set. Restoring it closes an accessibility regression that predates any port
-work.
+Done: the API boundary, the design system, and the SSE reader.
 
-`spa/README.md:199` contradicts the cutover decision: definition-of-done item 5 requires legacy
-behaviour to be gone from `frontend/app.js`, but `frontend/` is never edited during the port.
-Resolve toward cutover — the item is satisfied once, by deleting the directory. The testid line in
-the same file's rubber-stamp list also needs replacing with the scoping rule above, which it
-currently reads as prohibiting outright.
+Codegen is **types only** — `plugins: ['@hey-api/typescript']`. The generated runtime does not
+compile under `exactOptionalPropertyTypes`, and `spa/README.md` already commits to one fetch client
+and one SSE reader of our own, so the runtime was a second client the architecture did not ask for.
+The generated SSE client goes with it, which the frame-agnostic decision below already required.
+
+The design system is `spa/src/design-system/`: `global.scss` (the only global stylesheet),
+`_tokens.scss`, `_sizes.scss`, `_mixins.scss`. It is on Sass's load path, so a module at any depth
+writes `@use 'mixins' as ds`. Three departures from the legacy stylesheet, all deliberate:
+`touch-target` sets `min-width` as well as `min-height`, entrance animations honour
+`prefers-reduced-motion` where the legacy has none, and `--font-size-xs` is left undeclared because
+the legacy reads it without ever defining it — declaring it would silently change how
+`frontend/style.css:3153` and `:3331` render.
+
+The `<dialog>` spike is settled — see Six Overlays. It added a second Vitest project, `dom`, running
+real Chromium through Playwright and matching `*.browser.test.tsx`; `atoms/Overlay` arrived early as
+its subject. `npx playwright install chromium` is a prerequisite for `npm run test:run`.
+
+The fetch client is `spa/src/api/request/`. It builds a URL, sends JSON, and turns a non-2xx answer
+into an `ApiError` carrying the status, the whole body, and a message read out of FastAPI's `detail`
+— a string for `HTTPException`, the joined `msg` fields for a 422. An abort and a network failure
+propagate as themselves, so a caller can still tell a cancellation from a server that is down.
+`stream()` is the same request returning the body unread, for `readEventStream`.
+
+`signal` is a required option rather than an optional one. Every caller has one — the router hands
+loaders and actions `request.signal` — and making it optional would make the leaking case the easy
+one to write.
+
+There is no endpoint list and no generated SDK. A per-resource wrapper pairs a generated request type
+with its generated response type and lives beside the page that needs it, so Phase 2 adds
+`api/config/` and nothing before it has to.
+
+Phase 0 is complete.
 
 ## Verification
 
@@ -336,3 +390,5 @@ or retired in favour of `POST /api/config`, which already probes then saves and 
 ## Sources
 
 - [React Router — Modes](https://reactrouter.com/start/modes#data) — read 2026-08-23, React Router 8.3.0
+- [HTML Standard — Server-sent events](https://html.spec.whatwg.org/multipage/server-sent-events.html)
+  — read 2026-08-23; the parse rules `libs/parseSse` implements

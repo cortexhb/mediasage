@@ -11,7 +11,12 @@ export default defineConfig({
   input: `${process.env.MEDIASAGE_API_URL ?? 'http://localhost:5765'}/openapi.json`,
   output: {
     path: 'src/api/generated',
-    format: 'prettier',
-    lint: 'eslint',
+    // Formatted so the committed diff is reviewable, but not linted: ESLint
+    // ignores this directory, and `strictTypeChecked` on generated code would
+    // only ever report defects nobody here can fix.
+    postProcess: ['prettier'],
   },
+  // No runtime: the client is ours, and hey-api's fails
+  // `exactOptionalPropertyTypes`.
+  plugins: ['@hey-api/typescript'],
 })

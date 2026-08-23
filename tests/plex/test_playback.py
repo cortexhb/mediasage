@@ -63,9 +63,7 @@ class TestIsMobile:
 
     @staticmethod
     def player(product: str, platform: str) -> PlexClientInfo:
-        return PlexClientInfo(
-            client_id="c", name="Player", product=product, platform=platform
-        )
+        return PlexClientInfo(client_id="c", name="Player", product=product, platform=platform)
 
     @pytest.mark.parametrize(
         ("product", "platform"),
@@ -115,7 +113,9 @@ class TestClients:
         server.myPlexAccount.return_value.resources.return_value = [resource()]
         server.sessions.return_value = []
 
-        assert [client.client_id for client in PlexPlayback(connection=connection).clients()] == ["cloud-1"]
+        assert [client.client_id for client in PlexPlayback(connection=connection).clients()] == [
+            "cloud-1"
+        ]
 
     def test_a_cloud_player_is_listed(self, connection, server):
         server.clients.return_value = []
@@ -229,7 +229,9 @@ class TestPlayQueueNext:
 
         with patch.object(playback, "PlayQueue") as queue:
             existing = queue.get.return_value
-            result = PlexPlayback(connection=connection).play_queue(["1", "2"], "client-1", mode="play_next")
+            result = PlexPlayback(connection=connection).play_queue(
+                ["1", "2"], "client-1", mode="play_next"
+            )
 
         added = [call.args[0] for call in existing.addItem.call_args_list]
         assert added == ["b", "a"]
@@ -255,7 +257,9 @@ class TestPlayQueueNext:
         server.fetchItem.side_effect = ["a"]
 
         with patch.object(playback, "PlayQueue"):
-            result = PlexPlayback(connection=connection).play_queue(["1"], "client-1", mode="play_next")
+            result = PlexPlayback(connection=connection).play_queue(
+                ["1"], "client-1", mode="play_next"
+            )
 
         assert (result.success, result.error) == (False, "No active play queue on this client")
 
@@ -266,7 +270,9 @@ class TestPlayQueueNext:
         server.fetchItem.side_effect = ["a"]
 
         with patch.object(playback, "PlayQueue"):
-            result = PlexPlayback(connection=connection).play_queue(["1"], "client-1", mode="play_next")
+            result = PlexPlayback(connection=connection).play_queue(
+                ["1"], "client-1", mode="play_next"
+            )
 
         assert result.error == "Could not read active queue from client"
 
@@ -278,7 +284,9 @@ class TestPlayQueueNext:
 
         with patch.object(playback, "PlayQueue") as queue:
             queue.get.return_value.addItem.side_effect = RuntimeError("refused")
-            result = PlexPlayback(connection=connection).play_queue(["1"], "client-1", mode="play_next")
+            result = PlexPlayback(connection=connection).play_queue(
+                ["1"], "client-1", mode="play_next"
+            )
 
         assert (result.success, result.tracks_queued) == (False, 0)
 
@@ -290,7 +298,9 @@ class TestPlayQueueNext:
 
         with patch.object(playback, "PlayQueue") as queue:
             queue.get.return_value.addItem.side_effect = [RuntimeError("refused"), None]
-            result = PlexPlayback(connection=connection).play_queue(["1", "2"], "client-1", mode="play_next")
+            result = PlexPlayback(connection=connection).play_queue(
+                ["1", "2"], "client-1", mode="play_next"
+            )
 
         assert (result.success, result.tracks_queued) == (True, 1)
 

@@ -21,11 +21,13 @@ def research() -> ResearchData:
 
 class TestExtract:
     def test_returns_structured_facts(self, metered):
-        call, llm = metered({
-            "origin_story": "Recorded in Reykjavik",
-            "personnel": ["Jónsi"],
-            "vocal_approach": "Mostly Icelandic, Vonlenska on 2 tracks only",
-        })
+        call, llm = metered(
+            {
+                "origin_story": "Recorded in Reykjavik",
+                "personnel": ["Jónsi"],
+                "vocal_approach": "Mostly Icelandic, Vonlenska on 2 tracks only",
+            }
+        )
 
         extracted = Facts(call=call).extract(REF, research())
 

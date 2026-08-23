@@ -32,7 +32,9 @@ class TestSuggestFilters:
     def test_keeps_only_what_the_library_offers(self, metered):
         call, _ = metered({"genres": ["Rock", "Polka"], "decades": ["1990s"], "reasoning": "why"})
 
-        suggestion = Selection(call=call).suggest_filters("test", ["Rock", "Jazz"], ["1990s", "2000s"])
+        suggestion = Selection(call=call).suggest_filters(
+            "test", ["Rock", "Jazz"], ["1990s", "2000s"]
+        )
 
         assert suggestion.genres == ["Rock"]
         assert suggestion.decades == ["1990s"]
@@ -54,9 +56,11 @@ class TestSuggestFilters:
 
 class TestGenerateQuestions:
     def test_builds_questions_from_the_reply(self, metered):
-        call, _ = metered([
-            {"question_text": "How loud?", "options": ["Quiet", "Loud"], "dimension": "energy"},
-        ])
+        call, _ = metered(
+            [
+                {"question_text": "How loud?", "options": ["Quiet", "Loud"], "dimension": "energy"},
+            ]
+        )
 
         questions = Selection(call=call).generate_questions("test", ["energy"])
 
@@ -95,10 +99,12 @@ class TestSelectAlbums:
         assert picked[1].rank == "secondary"
 
     def test_matches_the_model_back_to_the_library(self, metered):
-        call, _ = metered([
-            {"artist": "Nirvana", "album": "Nevermind", "rank": "primary"},
-            {"artist": "pearl jam", "album": "ten", "rank": "secondary"},
-        ])
+        call, _ = metered(
+            [
+                {"artist": "Nirvana", "album": "Nevermind", "rank": "primary"},
+                {"artist": "pearl jam", "album": "ten", "rank": "secondary"},
+            ]
+        )
         pool = [candidate(f"Filler{i}", f"Album{i}") for i in range(5)]
         pool += [candidate("Nirvana", "Nevermind"), candidate("Pearl Jam", "Ten")]
 
@@ -108,10 +114,12 @@ class TestSelectAlbums:
 
     def test_drops_an_album_it_cannot_place(self, metered):
         """Library mode guarantees a pick is playable, so a stray name is dropped."""
-        call, _ = metered([
-            {"artist": "Nirvana", "album": "Nevermind", "rank": "primary"},
-            {"artist": "Some Band", "album": "Not In The Library", "rank": "secondary"},
-        ])
+        call, _ = metered(
+            [
+                {"artist": "Nirvana", "album": "Nevermind", "rank": "primary"},
+                {"artist": "Some Band", "album": "Not In The Library", "rank": "secondary"},
+            ]
+        )
         pool = [candidate(f"Filler{i}", f"Album{i}") for i in range(5)]
         pool += [candidate("Nirvana", "Nevermind")]
 
@@ -183,10 +191,12 @@ class TestSelectAlbums:
 class TestSelectDiscoveryAlbums:
     def test_filters_out_albums_the_user_already_owns(self, metered):
         """The exclusion list in the prompt is capped, so some owned names return."""
-        call, _ = metered([
-            {"artist": "Nirvana", "album": "Nevermind", "rank": "primary"},
-            {"artist": "Slint", "album": "Spiderland", "rank": "secondary"},
-        ])
+        call, _ = metered(
+            [
+                {"artist": "Nirvana", "album": "Nevermind", "rank": "primary"},
+                {"artist": "Slint", "album": "Spiderland", "rank": "secondary"},
+            ]
+        )
         profile = TasteProfile.of([candidate("Nirvana", "Nevermind")])
 
         picked = Selection(call=call).select_discovery_albums("test", AnswerSet(), profile)
@@ -194,20 +204,21 @@ class TestSelectDiscoveryAlbums:
         assert [rec.album for rec in picked] == ["Spiderland"]
 
     def test_stops_at_the_pick_count(self, metered, limits):
-        call, _ = metered([
-            {"artist": f"Band{i}", "album": f"Album{i}"}
-            for i in range(limits.discovery_request)
-        ])
+        call, _ = metered(
+            [{"artist": f"Band{i}", "album": f"Album{i}"} for i in range(limits.discovery_request)]
+        )
 
         picked = Selection(call=call).select_discovery_albums("test", AnswerSet(), TasteProfile())
 
         assert len(picked) == limits.pick_count
 
     def test_keeps_a_year_only_when_it_is_a_number(self, metered):
-        call, _ = metered([
-            {"artist": "A", "album": "One", "year": 1991},
-            {"artist": "B", "album": "Two", "year": "sometime"},
-        ])
+        call, _ = metered(
+            [
+                {"artist": "A", "album": "One", "year": 1991},
+                {"artist": "B", "album": "Two", "year": "sometime"},
+            ]
+        )
 
         picked = Selection(call=call).select_discovery_albums("test", AnswerSet(), TasteProfile())
 

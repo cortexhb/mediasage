@@ -54,6 +54,9 @@ async def _preview_filters(
 
 def register_filter_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/filter/preview", _preview_filters, methods=["POST"],
+        "/api/filter/preview",
+        _preview_filters,
+        methods=["POST"],
         response_model=FilterPreviewResponse,
+        operation_id="previewFilters",
     )

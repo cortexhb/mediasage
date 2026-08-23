@@ -88,7 +88,10 @@ class TestListing:
 
     def test_audio_playlists_are_listed_alphabetically(self, connection, server):
         server.playlists.return_value = [listed(2, "Zebra"), listed(1, "apple")]
-        assert [p.title for p in PlexPlaylists(connection=connection).listing()] == ["apple", "Zebra"]
+        assert [p.title for p in PlexPlaylists(connection=connection).listing()] == [
+            "apple",
+            "Zebra",
+        ]
 
     def test_smart_and_radio_playlists_are_excluded(self, connection, server):
         """Their contents are a query, so added tracks would not stick."""

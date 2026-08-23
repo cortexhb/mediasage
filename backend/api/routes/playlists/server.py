@@ -28,9 +28,16 @@ async def _plex_clients(
 
 def register_server_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/plex/playlists", _plex_playlists, methods=["GET"],
+        "/api/plex/playlists",
+        _plex_playlists,
+        methods=["GET"],
         response_model=list[PlexPlaylistInfo],
+        operation_id="listPlexPlaylists",
     )
     app.add_api_route(
-        "/api/plex/clients", _plex_clients, methods=["GET"], response_model=list[PlexClientInfo]
+        "/api/plex/clients",
+        _plex_clients,
+        methods=["GET"],
+        response_model=list[PlexClientInfo],
+        operation_id="listPlexClients",
     )

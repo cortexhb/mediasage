@@ -56,7 +56,10 @@ class LLMClient(BaseModel):
         name = self.models.name_for(role)
         logger.info(
             "Calling %s (%s) for %s with %d char prompt",
-            self.provider, name, role, len(prompt),
+            self.provider,
+            name,
+            role,
+            len(prompt),
         )
 
         message = self.models.for_role(role).invoke(
@@ -73,8 +76,10 @@ class LLMClient(BaseModel):
 
         logger.debug(
             "%s returned %d chars, %d in / %d out tokens",
-            self.provider, len(response.content),
-            response.input_tokens, response.output_tokens,
+            self.provider,
+            len(response.content),
+            response.input_tokens,
+            response.output_tokens,
         )
         return response
 

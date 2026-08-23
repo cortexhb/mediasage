@@ -36,9 +36,7 @@ async def _album_art(
     if thumb_path:
         etag = f'"{hashlib.md5(thumb_path.encode()).hexdigest()}"'
         if request.headers.get("if-none-match") == etag:
-            return Response(
-                status_code=304, headers={"Cache-Control": policy.header, "ETag": etag}
-            )
+            return Response(status_code=304, headers={"Cache-Control": policy.header, "ETag": etag})
 
         config = config_store.get()
         try:
@@ -61,5 +59,9 @@ async def _album_art(
 
 def register_plex_art_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/art/{rating_key}", _album_art, methods=["GET"], response_model=None
+        "/api/art/{rating_key}",
+        _album_art,
+        methods=["GET"],
+        response_model=None,
+        operation_id="getAlbumArt",
     )

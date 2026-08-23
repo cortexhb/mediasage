@@ -4,12 +4,11 @@ A probe never raises: every way a dependency can refuse is an answer a form
 has to show.
 """
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from backend.api.probes import LLMProbe, PlexProbe, Probe
 from backend.config import ConfigUpdate, PlexConfig
+from backend.llm import ModelListing
 from tests.api.conftest import mediasage_config
 
 CANDIDATE = PlexConfig(url="http://plex:32400", token="tok", music_library="Music")
@@ -27,13 +26,13 @@ def plex_answering(**attributes) -> MagicMock:
 class TestPlexProbe:
     async def test_a_connected_server_is_ok(self):
         with patch("backend.api.probes.PlexClient.of", return_value=plex_answering()):
-            probe = await (PlexProbe.of(CANDIDATE))
+            probe = await PlexProbe.of(CANDIDATE)
 
         assert probe.ok is True
 
     async def test_what_the_wizard_shows_next_is_read_off_the_probe(self):
         with patch("backend.api.probes.PlexClient.of", return_value=plex_answering()):
-            probe = await (PlexProbe.of(CANDIDATE))
+            probe = await PlexProbe.of(CANDIDATE)
 
         assert probe.server_name == "My Plex Server"
         assert probe.music_libraries == ["Music", "Audiobooks"]
@@ -44,13 +43,13 @@ class TestPlexProbe:
         refused.connection.error = "Invalid Plex token - unauthorized"
 
         with patch("backend.api.probes.PlexClient.of", return_value=refused):
-            probe = await (PlexProbe.of(CANDIDATE))
+            probe = await PlexProbe.of(CANDIDATE)
 
         assert (probe.ok, probe.error) == (False, "Invalid Plex token - unauthorized")
 
     async def test_a_client_that_will_not_build_is_an_answer_not_a_crash(self):
         with patch("backend.api.probes.PlexClient.of", side_effect=RuntimeError("no route")):
-            probe = await (PlexProbe.of(CANDIDATE))
+            probe = await PlexProbe.of(CANDIDATE)
 
         assert (probe.ok, probe.error) == (False, "no route")
 
@@ -61,49 +60,65 @@ class TestPlexProbe:
         silent.connection.error = None
 
         with patch("backend.api.probes.PlexClient.of", return_value=silent):
-            probe = await (PlexProbe.of(CANDIDATE))
+            probe = await PlexProbe.of(CANDIDATE)
 
         assert probe.error == "Connection failed"
 
 
+def listed(**fields) -> AsyncMock:
+    """`ModelListing.of` answering with one listing, whatever it was asked."""
+    return AsyncMock(return_value=ModelListing(**fields))
+
+
 class TestLLMProbe:
-    async def test_a_completion_that_returns_is_ok(self):
-        with patch("backend.api.probes.LLMClient") as llm:
-            llm.of.return_value.complete.return_value = MagicMock(content="ok")
-            probe = await (LLMProbe.of(mediasage_config().llm))
+    """A probe lists models. It must never spend a completion to do it."""
+
+    async def test_a_provider_serving_both_models_is_ok(self):
+        section = mediasage_config(model_analysis="big", model_generation="small").llm
+
+        with patch("backend.api.probes.ModelListing.of", listed(names=("big", "small"))):
+            probe = await LLMProbe.of(section)
 
         assert probe.ok is True
 
-    async def test_the_probe_is_spent_on_the_analysis_model(self):
-        """The model the app leans on hardest is the one worth proving."""
-        with patch("backend.api.probes.LLMClient") as llm:
-            llm.of.return_value.complete.return_value = MagicMock(content="ok")
-            await (LLMProbe.of(mediasage_config().llm))
+    async def test_no_completion_is_spent(self):
+        """Configuring inference must not bill the user for inference."""
+        with (
+            patch("backend.api.probes.ModelListing.of", listed(names=("gpt-4o",))),
+            patch("backend.llm.client.LLMClient.complete") as complete,
+        ):
+            await LLMProbe.of(mediasage_config(model_analysis="gpt-4o").llm)
 
-        assert llm.of.return_value.complete.call_args.args[-1] == "analysis"
+        complete.assert_not_called()
 
-    async def test_whatever_the_provider_raises_becomes_the_error(self):
-        with patch("backend.api.probes.LLMClient") as llm:
-            llm.of.return_value.complete.side_effect = RuntimeError("nope")
-            probe = await (LLMProbe.of(mediasage_config().llm))
+    async def test_a_model_the_provider_does_not_serve_is_named(self):
+        section = mediasage_config(model_analysis="typo", model_generation="typo").llm
 
-        assert (probe.ok, probe.error) == (False, "nope")
+        with patch("backend.api.probes.ModelListing.of", listed(names=("gpt-4o",))):
+            probe = await LLMProbe.of(section)
 
-    @pytest.mark.parametrize(
-        "raised",
-        ["Error code: 401 - Unauthorized", "AuthenticationError: bad key"],
-    )
-    async def test_an_unauthorised_key_says_so(self, raised):
-        with patch("backend.api.probes.LLMClient") as llm:
-            llm.of.return_value.complete.side_effect = RuntimeError(raised)
-            probe = await (LLMProbe.of(mediasage_config().llm))
+        assert probe.error == "Anthropic (Claude) does not serve typo"
 
-        assert probe.error == "Invalid API key"
+    async def test_a_listing_the_provider_will_not_give_refuses_nothing(self):
+        """No listing endpoint means saving unvalidated, not saving refused."""
+        section = mediasage_config(model_analysis="anything").llm
+
+        with patch("backend.api.probes.ModelListing.of", listed(supported=False)):
+            probe = await LLMProbe.of(section)
+
+        assert probe.ok is True
+
+    async def test_a_listing_error_becomes_the_probe_error(self):
+        with patch("backend.api.probes.ModelListing.of", listed(error="Invalid API key")):
+            probe = await LLMProbe.of(mediasage_config().llm)
+
+        assert (probe.ok, probe.error) == (False, "Invalid API key")
 
     async def test_an_unreachable_host_names_the_provider(self):
-        with patch("backend.api.probes.LLMClient") as llm:
-            llm.of.return_value.complete.side_effect = RuntimeError("Could not resolve host")
-            probe = await (LLMProbe.of(mediasage_config(llm_provider="ollama").llm))
+        section = mediasage_config(llm_provider="ollama").llm
+
+        with patch("backend.api.probes.ModelListing.of", listed(error="Could not resolve host")):
+            probe = await LLMProbe.of(section)
 
         assert probe.error == "Cannot connect to Ollama (Local)"
 
@@ -111,25 +126,23 @@ class TestLLMProbe:
 class TestRejected:
     """Only what a change could break is probed."""
 
-    async def test_a_price_edit_spends_nothing(self):
+    async def test_a_price_edit_touches_nothing(self):
         with (
             patch("backend.api.probes.PlexClient") as plex,
-            patch("backend.api.probes.LLMClient") as llm,
+            patch("backend.api.probes.ModelListing.of", listed()) as listing,
         ):
-            refusal = await (
-                Probe.rejection(ConfigUpdate(cost_analysis_input=3.0), mediasage_config())
+            refusal = await Probe.rejection(
+                ConfigUpdate(cost_analysis_input=3.0), mediasage_config()
             )
 
         assert refusal == ""
         plex.of.assert_not_called()
-        llm.of.assert_not_called()
+        listing.assert_not_called()
 
     async def test_a_music_library_edit_spends_nothing(self):
         """Plex resolves the library name later; it cannot stop the server answering."""
         with patch("backend.api.probes.PlexClient") as plex:
-            refusal = await (
-                Probe.rejection(ConfigUpdate(music_library="Other"), mediasage_config())
-            )
+            refusal = await Probe.rejection(ConfigUpdate(music_library="Other"), mediasage_config())
 
         assert refusal == ""
         plex.of.assert_not_called()
@@ -140,32 +153,26 @@ class TestRejected:
         refused.connection.error = "unauthorized"
 
         with patch("backend.api.probes.PlexClient.of", return_value=refused):
-            refusal = await (
-                Probe.rejection(ConfigUpdate(plex_url="http://new:32400"), mediasage_config())
+            refusal = await Probe.rejection(
+                ConfigUpdate(plex_url="http://new:32400"), mediasage_config()
             )
 
         assert refusal == "Plex: unauthorized"
 
     async def test_a_provider_that_will_not_answer_is_named(self):
-        with patch("backend.api.probes.LLMClient") as llm:
-            llm.of.return_value.complete.side_effect = RuntimeError("nope")
-            refusal = await (
-                Probe.rejection(ConfigUpdate(llm_provider="openai"), mediasage_config())
-            )
+        with patch("backend.api.probes.ModelListing.of", listed(error="nope")):
+            refusal = await Probe.rejection(ConfigUpdate(llm_provider="openai"), mediasage_config())
 
         assert refusal == "Anthropic (Claude): nope"
 
     async def test_a_change_that_breaks_nothing_is_not_refused(self):
         with (
             patch("backend.api.probes.PlexClient.of", return_value=plex_answering()),
-            patch("backend.api.probes.LLMClient") as llm,
+            patch("backend.api.probes.ModelListing.of", listed(supported=False)),
         ):
-            llm.of.return_value.complete.return_value = MagicMock(content="ok")
-            refusal = await (
-                Probe.rejection(
-                    ConfigUpdate(plex_url="http://new:32400", llm_provider="openai"),
-                    mediasage_config(),
-                )
+            refusal = await Probe.rejection(
+                ConfigUpdate(plex_url="http://new:32400", llm_provider="openai"),
+                mediasage_config(),
             )
 
         assert refusal == ""

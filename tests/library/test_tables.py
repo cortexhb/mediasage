@@ -37,8 +37,15 @@ class TestCascade:
     """Deleting a track takes its genre rows, which a trigger used to do."""
 
     def test_genre_rows_go_with_their_track(self, seed_tracks):
-        seed_tracks({"rating_key": "1", "title": "T", "artist": "A", "album": "B",
-                     "genres": ["Rock", "Jazz"]})
+        seed_tracks(
+            {
+                "rating_key": "1",
+                "title": "T",
+                "artist": "A",
+                "album": "B",
+                "genres": ["Rock", "Jazz"],
+            }
+        )
 
         with db.session() as session:
             session.execute(delete(Track).where(Track.rating_key == "1"))

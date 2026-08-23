@@ -61,9 +61,7 @@ def filters(prompt: str, stats: LibraryStatsResponse) -> str:
     genres = ", ".join(
         f"{g.name} ({g.count})" if g.count else g.name for g in stats.genres[:GENRE_LIMIT]
     )
-    decades = ", ".join(
-        f"{d.name} ({d.count})" if d.count else d.name for d in stats.decades
-    )
+    decades = ", ".join(f"{d.name} ({d.count})" if d.count else d.name for d in stats.decades)
 
     return f"""User's playlist request: "{prompt}"
 

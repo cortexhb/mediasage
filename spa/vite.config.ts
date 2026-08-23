@@ -8,6 +8,13 @@ const API = process.env.MEDIASAGE_API_URL ?? 'http://localhost:5765'
 
 export default defineConfig({
   plugins: [react()],
+  css: {
+    preprocessorOptions: {
+      // So a module at any depth writes `@use 'mixins'` rather than counting
+      // `../` back to the design system.
+      scss: { loadPaths: ['src/design-system'] },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

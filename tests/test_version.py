@@ -49,9 +49,7 @@ class TestDescribed:
     """`git describe` may be missing, may fail, and prefixes tags with v."""
 
     def test_the_v_prefix_is_dropped(self, monkeypatch):
-        monkeypatch.setattr(
-            subprocess, "run", lambda *a, **k: _Completed(0, "v0.1.0\n")
-        )
+        monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Completed(0, "v0.1.0\n"))
         assert Version.described() == "0.1.0"
 
     def test_a_failed_describe_answers_none(self, monkeypatch):

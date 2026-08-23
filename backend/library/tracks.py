@@ -69,9 +69,7 @@ class TrackCache(BaseModel):
         )
 
         with db.session() as session:
-            genres = [
-                GenreCount(name=name, count=n) for name, n in session.execute(genre_query)
-            ]
+            genres = [GenreCount(name=name, count=n) for name, n in session.execute(genre_query)]
             decades = [
                 DecadeCount(name=f"{int(start)}s", count=n)
                 for start, n in session.execute(decade_query)

@@ -62,7 +62,10 @@ class TestSampling:
         assert len(track_cache.filtered(TrackFilter(exclude_live=False), limit=2)) == 2
 
     def test_a_limit_applies_with_a_genre_filter(self, sample_library):
-        assert len(track_cache.filtered(TrackFilter(genres=["Rock"], exclude_live=False), limit=1)) == 1
+        assert (
+            len(track_cache.filtered(TrackFilter(genres=["Rock"], exclude_live=False), limit=1))
+            == 1
+        )
 
     def test_no_limit_returns_everything(self, sample_library):
         assert len(track_cache.filtered(TrackFilter(exclude_live=False), limit=0)) == 4

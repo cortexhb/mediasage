@@ -16,9 +16,9 @@ def _parse_sse_events(generator):
             continue  # SSE comment (heartbeat)
         for line in raw.strip().split("\n"):
             if line.startswith("event: "):
-                event_type = line[len("event: "):]
+                event_type = line[len("event: ") :]
             elif line.startswith("data: "):
-                events.append((event_type, json.loads(line[len("data: "):])))
+                events.append((event_type, json.loads(line[len("data: ") :])))
     return events
 
 
@@ -113,8 +113,11 @@ class TestPool:
 
     def test_the_request_becomes_the_pool_s_filters(self):
         run = PlaylistGeneration(
-            genres=["Rock"], decades=["1990s"], min_rating=8,
-            exclude_live=False, max_tracks_to_ai=300,
+            genres=["Rock"],
+            decades=["1990s"],
+            min_rating=8,
+            exclude_live=False,
+            max_tracks_to_ai=300,
         )
 
         assert run.pool.genres == ["Rock"]
@@ -132,20 +135,28 @@ class TestPlaylistGenerationStream:
         from backend.llm import LLMResponse
 
         mock_response = LLMResponse(
-            content=json.dumps([
-                {"artist": "Radiohead", "album": "The Bends", "title": "Fake Plastic Trees"},
-                {"artist": "Pearl Jam", "album": "Ten", "title": "Black"},
-            ]),
+            content=json.dumps(
+                [
+                    {"artist": "Radiohead", "album": "The Bends", "title": "Fake Plastic Trees"},
+                    {"artist": "Pearl Jam", "album": "Ten", "title": "Black"},
+                ]
+            ),
             input_tokens=1000,
             output_tokens=100,
-            model="test-model", role="analysis")
+            model="test-model",
+            role="analysis",
+        )
 
         with patch("backend.generator.playlists.client_store") as mock_store:
             mock_client = MagicMock()
             mock_client.generate.return_value = mock_response
             mock_client.analyze.return_value = LLMResponse(
                 content='{"title": "Test", "narrative": "Test narrative."}',
-                input_tokens=100, output_tokens=50, model="test-model", role="analysis")
+                input_tokens=100,
+                output_tokens=50,
+                model="test-model",
+                role="analysis",
+            )
             mock_store.get.return_value = mock_client
 
             with patch("backend.generator.playlists.plex_store") as mock_plex:
@@ -157,13 +168,15 @@ class TestPlaylistGenerationStream:
                     patch("backend.library.sync.LibrarySync.has_tracks", return_value=False),
                     patch("backend.generator.playlists.results_store.save", return_value="abc123"),
                 ):
-                    events = _parse_sse_events(PlaylistGeneration(
-                        prompt="90s alternative",
-                        genres=["Alternative", "Rock"],
-                        decades=["1990s"],
-                        track_count=25,
-                        exclude_live=True,
-                    ).stream())
+                    events = _parse_sse_events(
+                        PlaylistGeneration(
+                            prompt="90s alternative",
+                            genres=["Alternative", "Rock"],
+                            decades=["1990s"],
+                            track_count=25,
+                            exclude_live=True,
+                        ).stream()
+                    )
 
                     # Collect track rating keys from track batch events
                     track_keys = []
@@ -186,13 +199,15 @@ class TestPlaylistGenerationStream:
                 mock_plex.get.return_value = mock_plex_client
 
                 with patch("backend.library.sync.LibrarySync.has_tracks", return_value=False):
-                    events = _parse_sse_events(PlaylistGeneration(
-                        prompt="nonexistent genre",
-                        genres=["Nonexistent"],
-                        decades=["1800s"],
-                        track_count=25,
-                        exclude_live=True,
-                    ).stream())
+                    events = _parse_sse_events(
+                        PlaylistGeneration(
+                            prompt="nonexistent genre",
+                            genres=["Nonexistent"],
+                            decades=["1800s"],
+                            track_count=25,
+                            exclude_live=True,
+                        ).stream()
+                    )
 
                     error_events = [d for t, d in events if t == "error"]
                     assert len(error_events) == 1
@@ -203,19 +218,27 @@ class TestPlaylistGenerationStream:
         from backend.llm import LLMResponse
 
         mock_response = LLMResponse(
-            content=json.dumps([
-                {"artist": "Radiohead", "album": "The Bends", "title": "Fake Plastic Tree"},
-            ]),
+            content=json.dumps(
+                [
+                    {"artist": "Radiohead", "album": "The Bends", "title": "Fake Plastic Tree"},
+                ]
+            ),
             input_tokens=1000,
             output_tokens=100,
-            model="test-model", role="analysis")
+            model="test-model",
+            role="analysis",
+        )
 
         with patch("backend.generator.playlists.client_store") as mock_store:
             mock_client = MagicMock()
             mock_client.generate.return_value = mock_response
             mock_client.analyze.return_value = LLMResponse(
                 content='{"title": "Test", "narrative": "Test."}',
-                input_tokens=100, output_tokens=50, model="test-model", role="analysis")
+                input_tokens=100,
+                output_tokens=50,
+                model="test-model",
+                role="analysis",
+            )
             mock_store.get.return_value = mock_client
 
             with patch("backend.generator.playlists.plex_store") as mock_plex:
@@ -227,13 +250,15 @@ class TestPlaylistGenerationStream:
                     patch("backend.library.sync.LibrarySync.has_tracks", return_value=False),
                     patch("backend.generator.playlists.results_store.save", return_value="abc123"),
                 ):
-                    events = _parse_sse_events(PlaylistGeneration(
-                        prompt="radiohead",
-                        genres=["Alternative"],
-                        decades=["1990s"],
-                        track_count=25,
-                        exclude_live=True,
-                    ).stream())
+                    events = _parse_sse_events(
+                        PlaylistGeneration(
+                            prompt="radiohead",
+                            genres=["Alternative"],
+                            decades=["1990s"],
+                            track_count=25,
+                            exclude_live=True,
+                        ).stream()
+                    )
 
                     # Should complete without error
                     error_events = [d for t, d in events if t == "error"]

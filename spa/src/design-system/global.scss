@@ -1,0 +1,61 @@
+/**
+ * The only global stylesheet: the tokens, the reset, and the two rules that
+ * style markup outside `#root`.
+ *
+ * Everything else is a CSS Module beside the component that uses it.
+ * Imported once, by `main.tsx`. Ported from `frontend/style.css:54`.
+ */
+
+@use 'tokens';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Always reserved, so a page that grows does not shift sideways. */
+html {
+  overflow-y: scroll;
+}
+
+body {
+  min-height: 100vh;
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+}
+
+/* `:focus-visible`, so a mouse click does not draw a ring. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/**
+ * Global because it lives in `index.html`, outside `#root`: a static anchor
+ * survives every route change without re-rendering.
+ */
+.skipLink {
+  position: absolute;
+  top: -9999px;
+  left: var(--spacing-md);
+
+  /* Above page chrome. Modals are in the top layer and unaffected. */
+  z-index: 2000;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-weight: 600;
+  color: var(--bg-primary);
+  text-decoration: none;
+  background: var(--accent);
+  border-radius: var(--radius-md);
+  transition: top var(--transition-fast);
+}
+
+.skipLink:focus {
+  top: var(--spacing-sm);
+}

@@ -139,6 +139,12 @@ class LLMConfig(ConfigSection):
         """`smart_generation` spends the analysis model on generation too."""
         return self.model_analysis if self.smart_generation else self.model_generation
 
+    @property
+    def configured_models(self) -> tuple[str, ...]:
+        """Every model name this section will ask a provider for, deduplicated."""
+        wanted = (self.model_analysis, self.model_for_generation)
+        return tuple(dict.fromkeys(name for name in wanted if name))
+
     def estimate_cost(self, role: Role, input_tokens: int, output_tokens: int) -> float:
         """Cost in USD for a call in `role`; always zero when inference is local.
 
@@ -290,10 +296,25 @@ class ResearchConfig(ConfigSection):
 
     # Section titles containing any of these are tables rendered as prose.
     wikipedia_drop_sections: list[str] = [
-        "track listing", "chart", "certification", "personnel", "credits",
-        "reference", "external link", "see also", "note", "footnote",
-        "accolade", "award", "release history", "singles", "bibliography",
-        "further reading", "citation", "reissue", "remaster",
+        "track listing",
+        "chart",
+        "certification",
+        "personnel",
+        "credits",
+        "reference",
+        "external link",
+        "see also",
+        "note",
+        "footnote",
+        "accolade",
+        "award",
+        "release history",
+        "singles",
+        "bibliography",
+        "further reading",
+        "citation",
+        "reissue",
+        "remaster",
     ]
 
     # Reviews read per album, and the characters kept from each.
@@ -401,16 +422,18 @@ class DefaultsConfig(ConfigSection):
 # Fields whose value decides whether a dependency answers at all. Everything
 # else in an update -- prices, and the music library name Plex resolves later --
 # is saved on its own word.
-CONNECTING: Final[frozenset[str]] = frozenset({
-    "plex_url",
-    "plex_token",
-    "llm_provider",
-    "llm_api_key",
-    "endpoint_url",
-    "model_analysis",
-    "model_generation",
-    "context_window",
-})
+CONNECTING: Final[frozenset[str]] = frozenset(
+    {
+        "plex_url",
+        "plex_token",
+        "llm_provider",
+        "llm_api_key",
+        "endpoint_url",
+        "model_analysis",
+        "model_generation",
+        "context_window",
+    }
+)
 
 
 class ConfigUpdate(ConfigSection):
@@ -474,7 +497,7 @@ class ConfigUpdate(ConfigSection):
             ("cost_generation_input", self.cost_generation_input, 0.0),
             ("cost_generation_output", self.cost_generation_output, 0.0),
         ):
-            if not supplied:
+            if supplied is None:
                 derived[field] = blank
 
         return derived
@@ -491,6 +514,10 @@ class ConfigUpdate(ConfigSection):
     def changes(self, section: str) -> dict[str, Any]:
         """Supplied values for one section, keyed as that section names them.
 
+        Presence is `is not None`, not truthiness: a price of `0.0` and a
+        `context_window` of `0` are values the caller asked for, and dropping
+        them made a cost impossible to clear and an all-zero body a 400.
+
         Args:
             section: Either `plex` or `llm`
 
@@ -501,7 +528,7 @@ class ConfigUpdate(ConfigSection):
         return {
             key: self.plain(supplied[field])
             for field, (owner, key) in self.FIELD_MAP.items()
-            if owner == section and supplied[field]
+            if owner == section and supplied[field] is not None
         }
 
     def touches(self, section: str) -> bool:
@@ -519,7 +546,7 @@ class ConfigUpdate(ConfigSection):
         return any(
             field in CONNECTING
             for field, (owner, _) in self.FIELD_MAP.items()
-            if owner == section and supplied[field]
+            if owner == section and supplied[field] is not None
         )
 
     @property

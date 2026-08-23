@@ -25,7 +25,6 @@ CONFIG_ENV_VARS = (
 )
 
 
-
 @pytest.fixture(autouse=True)
 def installed_config(monkeypatch) -> MediasageConfig:
     """Install a complete configuration before every test.
@@ -47,11 +46,12 @@ def tuned(monkeypatch, installed_config):
     that needs a different one changes the configuration rather than patching
     a reader that no longer exists.
     """
+
     def install(section: str, **overrides) -> MediasageConfig:
         current = config_store.get()
-        config = current.model_copy(update={
-            section: getattr(current, section).model_copy(update=overrides)
-        })
+        config = current.model_copy(
+            update={section: getattr(current, section).model_copy(update=overrides)}
+        )
         monkeypatch.setattr(config_store, "config", config)
         return config
 
@@ -64,7 +64,6 @@ def clean_config_env(monkeypatch):
     for var in CONFIG_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
     return monkeypatch
-
 
 
 @pytest.fixture

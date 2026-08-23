@@ -35,13 +35,12 @@ async def _questions(
         )
         questions = await asyncio.to_thread(
             pipeline.stages(session_id).selection.generate_questions,
-            request.prompt, dimension_ids,
+            request.prompt,
+            dimension_ids,
         )
     except Exception as err:
         pipeline.sessions.delete(session_id)
-        raise HTTPException(
-            status_code=500, detail=f"Question generation failed: {err!s}"
-        ) from err
+        raise HTTPException(status_code=500, detail=f"Question generation failed: {err!s}") from err
 
     pipeline.sessions.set_questions(session_id, questions)
     tokens, cost = pipeline.sessions.spend(session_id)
@@ -67,25 +66,33 @@ async def _switch_mode(
     if request.mode == old.mode:
         return RecommendSwitchModeResponse(session_id=request.session_id)
 
-    switched = pipeline.sessions.create(RecommendSession(
-        mode=request.mode,
-        prompt=old.prompt,
-        filters=old.filters,
-        questions=old.questions,
-        answers=old.answers,
-        familiarity_pref=old.familiarity_pref,
-        previously_recommended=old.previously_recommended,
-    ))
+    switched = pipeline.sessions.create(
+        RecommendSession(
+            mode=request.mode,
+            prompt=old.prompt,
+            filters=old.filters,
+            questions=old.questions,
+            answers=old.answers,
+            familiarity_pref=old.familiarity_pref,
+            previously_recommended=old.previously_recommended,
+        )
+    )
     pipeline.sessions.delete(request.session_id)
     return RecommendSwitchModeResponse(session_id=switched)
 
 
 def register_recommend_session_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/recommend/questions", _questions, methods=["POST"],
+        "/api/recommend/questions",
+        _questions,
+        methods=["POST"],
         response_model=RecommendQuestionsResponse,
+        operation_id="createRecommendQuestions",
     )
     app.add_api_route(
-        "/api/recommend/switch-mode", _switch_mode, methods=["POST"],
+        "/api/recommend/switch-mode",
+        _switch_mode,
+        methods=["POST"],
         response_model=RecommendSwitchModeResponse,
+        operation_id="switchRecommendMode",
     )

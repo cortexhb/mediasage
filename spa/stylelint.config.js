@@ -4,45 +4,25 @@
  * malformed selectors, duplicate declarations.
  */
 
-// Kebab-case, optionally with a BEM modifier: `.setup-step--done` is the
-// project's convention, not a naming defect.
+// camelCase block, optional `__element`, optional `--modifier`. camelCase
+// because CSS Module classes are read as JavaScript properties, so
+// `styles.trackRow__title` resolves where a kebab-case name needs brackets.
+// Mixins and Sass variables are not read from JavaScript, so kebab stays.
 const BEM_CLASS =
-  '^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:--[a-z0-9]+(?:-[a-z0-9]+)*)?$'
-
-// Notation and naming preferences only. Silenced on the ported stylesheet
-// because fixing them rewrites 3650 lines and destroys the diff against
-// `frontend/style.css` that the React port is verified with. Correctness
-// rules stay on.
-// TODO: Delete this override once the old frontend is gone.
-const NOTATIONAL = [
-  'alpha-value-notation',
-  'color-function-alias-notation',
-  'color-function-notation',
-  'color-hex-length',
-  'comment-empty-line-before',
-  'declaration-block-no-redundant-longhand-properties',
-  'declaration-block-single-line-max-declarations',
-  'keyframes-name-pattern',
-  'media-feature-range-notation',
-  'no-descending-specificity',
-  'property-no-vendor-prefix',
-  'rule-empty-line-before',
-  'value-keyword-case',
-]
+  '^[a-z][a-zA-Z0-9]*(?:__[a-z][a-zA-Z0-9]*)?(?:--[a-z][a-zA-Z0-9]*)?$'
 
 export default {
-  extends: ['stylelint-config-standard'],
+  // The `-scss` config supplies the SCSS parser and swaps the rules that
+  // cannot see through `@use`, `@mixin`, or interpolation.
+  extends: ['stylelint-config-standard-scss'],
   ignoreFiles: ['dist/**', 'node_modules/**', '.omc/**'],
   rules: {
     'selector-class-pattern': [
       BEM_CLASS,
-      { message: 'Expected kebab-case, optionally with a BEM --modifier' },
+      {
+        message:
+          'Expected a camelCase block with an optional __element and --modifier',
+      },
     ],
   },
-  overrides: [
-    {
-      files: ['src/style.css'],
-      rules: Object.fromEntries(NOTATIONAL.map((rule) => [rule, null])),
-    },
-  ],
 }

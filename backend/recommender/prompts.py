@@ -124,8 +124,9 @@ QUESTIONS_SYSTEM: Final = (
 def questions(prompt: str, dimension_lines: list[str]) -> str:
     return (
         f'User wants: "{prompt}"\n\n'
-        f"Dimensions to ask about:\n" + "\n".join(dimension_lines) +
-        "\n\nGenerate 2 natural, conversational questions."
+        f"Dimensions to ask about:\n"
+        + "\n".join(dimension_lines)
+        + "\n\nGenerate 2 natural, conversational questions."
     )
 
 
@@ -229,11 +230,7 @@ FACTS_SYSTEM: Final = (
 
 
 def facts(ref: AlbumRef, sources: str) -> str:
-    return (
-        f"Album: {ref}\n\n"
-        f"SOURCES:\n{sources}\n\n"
-        f"Extract the structured facts."
-    )
+    return f"Album: {ref}\n\nSOURCES:\n{sources}\n\nExtract the structured facts."
 
 
 # ── Pitch writing ──────────────────────────────────────────────────────────

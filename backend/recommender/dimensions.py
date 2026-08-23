@@ -17,30 +17,54 @@ from backend.recommender.models import TasteDimension
 
 # Order matters: a short answer is topped up from the front.
 DIMENSIONS: Final = (
-    TasteDimension(id="energy", label="Energy Level",
-                   description="Calm vs intense, quiet vs loud"),
-    TasteDimension(id="emotional_direction", label="Emotional Direction",
-                   description="Sad, joyful, bittersweet, cathartic, neutral"),
-    TasteDimension(id="attention_level", label="Attention Level",
-                   description="Background listening vs active listening"),
-    TasteDimension(id="era", label="Era / Time Period",
-                   description="Classic, contemporary, timeless"),
-    TasteDimension(id="familiarity", label="Familiarity",
-                   description="Well-known vs deep cuts, mainstream vs obscure"),
-    TasteDimension(id="vocal_presence", label="Vocal Presence",
-                   description="Instrumental, minimal vocals, vocal-forward"),
-    TasteDimension(id="lyrical_mood", label="Lyrical Mood",
-                   description="Introspective, storytelling, abstract, anthemic"),
-    TasteDimension(id="social_context", label="Social Context",
-                   description="Solo listening, with friends, romantic, communal"),
-    TasteDimension(id="complexity", label="Musical Complexity",
-                   description="Simple and direct vs layered and complex"),
-    TasteDimension(id="rawness", label="Production Style",
-                   description="Lo-fi/raw vs polished/produced"),
-    TasteDimension(id="tempo", label="Tempo",
-                   description="Slow, mid-tempo, fast-paced"),
-    TasteDimension(id="cultural_specificity", label="Cultural Specificity",
-                   description="Universal appeal vs culturally rooted"),
+    TasteDimension(id="energy", label="Energy Level", description="Calm vs intense, quiet vs loud"),
+    TasteDimension(
+        id="emotional_direction",
+        label="Emotional Direction",
+        description="Sad, joyful, bittersweet, cathartic, neutral",
+    ),
+    TasteDimension(
+        id="attention_level",
+        label="Attention Level",
+        description="Background listening vs active listening",
+    ),
+    TasteDimension(
+        id="era", label="Era / Time Period", description="Classic, contemporary, timeless"
+    ),
+    TasteDimension(
+        id="familiarity",
+        label="Familiarity",
+        description="Well-known vs deep cuts, mainstream vs obscure",
+    ),
+    TasteDimension(
+        id="vocal_presence",
+        label="Vocal Presence",
+        description="Instrumental, minimal vocals, vocal-forward",
+    ),
+    TasteDimension(
+        id="lyrical_mood",
+        label="Lyrical Mood",
+        description="Introspective, storytelling, abstract, anthemic",
+    ),
+    TasteDimension(
+        id="social_context",
+        label="Social Context",
+        description="Solo listening, with friends, romantic, communal",
+    ),
+    TasteDimension(
+        id="complexity",
+        label="Musical Complexity",
+        description="Simple and direct vs layered and complex",
+    ),
+    TasteDimension(
+        id="rawness", label="Production Style", description="Lo-fi/raw vs polished/produced"
+    ),
+    TasteDimension(id="tempo", label="Tempo", description="Slow, mid-tempo, fast-paced"),
+    TasteDimension(
+        id="cultural_specificity",
+        label="Cultural Specificity",
+        description="Universal appeal vs culturally rooted",
+    ),
 )
 
 

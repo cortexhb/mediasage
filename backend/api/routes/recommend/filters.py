@@ -25,10 +25,9 @@ async def _analyze_prompt(
     A failure here is not worth blocking on: every filter stays selected and
     the user narrows them by hand.
     """
+
     def everything(reason: str) -> FilterSuggestion:
-        return FilterSuggestion(
-            genres=request.genres, decades=request.decades, reasoning=reason
-        )
+        return FilterSuggestion(genres=request.genres, decades=request.decades, reasoning=reason)
 
     if pipeline is None:
         return everything("LLM not configured; returning all filters.")
@@ -36,7 +35,9 @@ async def _analyze_prompt(
     try:
         return await asyncio.to_thread(
             pipeline.stages().selection.suggest_filters,
-            request.prompt, request.genres, request.decades,
+            request.prompt,
+            request.genres,
+            request.decades,
         )
     except Exception:
         logger.exception("analyze-prompt failed, returning all filters")
@@ -45,6 +46,9 @@ async def _analyze_prompt(
 
 def register_recommend_filter_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/recommend/analyze-prompt", _analyze_prompt, methods=["POST"],
+        "/api/recommend/analyze-prompt",
+        _analyze_prompt,
+        methods=["POST"],
         response_model=FilterSuggestion,
+        operation_id="analyzeRecommendPrompt",
     )

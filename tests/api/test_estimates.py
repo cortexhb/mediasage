@@ -4,14 +4,18 @@ from backend.api import estimates
 from backend.models import FilterPreviewRequest
 from tests.api.conftest import mediasage_config
 
-PRICED = mediasage_config().model_copy(update={"llm": mediasage_config().llm.model_copy(
+PRICED = mediasage_config().model_copy(
     update={
-        "cost_analysis_input": 3.0,
-        "cost_analysis_output": 15.0,
-        "cost_generation_input": 1.0,
-        "cost_generation_output": 5.0,
+        "llm": mediasage_config().llm.model_copy(
+            update={
+                "cost_analysis_input": 3.0,
+                "cost_analysis_output": 15.0,
+                "cost_generation_input": 1.0,
+                "cost_generation_output": 5.0,
+            }
+        )
     }
-)})
+)
 
 
 def request(**overrides) -> FilterPreviewRequest:
@@ -49,7 +53,10 @@ class TestPlaylist:
 
     def test_an_unpriced_provider_reports_no_cost(self):
         """An unset price means no cost shown rather than a wrong one."""
-        assert estimates.FilterPreviewResponse.of(request(), 500, mediasage_config()).estimated_cost == 0.0
+        assert (
+            estimates.FilterPreviewResponse.of(request(), 500, mediasage_config()).estimated_cost
+            == 0.0
+        )
 
     def test_a_priced_provider_reports_one(self):
         assert estimates.FilterPreviewResponse.of(request(), 500, PRICED).estimated_cost > 0

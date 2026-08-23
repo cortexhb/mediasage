@@ -61,7 +61,9 @@ class TestLLMConfig:
 
     def test_strips_trailing_slash_from_urls(self):
         """Should strip trailing slashes from endpoint URLs."""
-        assert self._config(endpoint_url="http://host:5000/v1/").endpoint_url == "http://host:5000/v1"
+        assert (
+            self._config(endpoint_url="http://host:5000/v1/").endpoint_url == "http://host:5000/v1"
+        )
 
     def test_local_and_cloud_differ_by_class(self):
         """Locality is a fact about the class, not a lookup on the provider name."""
@@ -106,6 +108,33 @@ class TestConfigUpdate:
     def test_is_not_empty_when_a_value_is_supplied(self):
         """Any supplied value should make the update non-empty."""
         assert ConfigUpdate(plex_url="http://plex:32400").is_empty is False
+
+    @pytest.mark.parametrize(
+        ("field", "key", "value"),
+        [
+            ("cost_analysis_input", "cost_analysis_input", 0.0),
+            ("cost_generation_output", "cost_generation_output", 0.0),
+            ("context_window", "context_window", 0),
+            ("model_analysis", "model_analysis", ""),
+        ],
+    )
+    def test_a_falsy_value_is_still_a_change(self, field, key, value):
+        """Presence is `is not None`: zero is a value, not an omission."""
+        update = ConfigUpdate(**{field: value})
+
+        assert update.is_empty is False
+        assert update.changes("llm") == {key: value}
+
+    def test_a_price_change_does_not_reconnect(self):
+        """A falsy price is a change, but not one that can stop the provider answering."""
+        assert ConfigUpdate(cost_analysis_input=0.0).reconnects("llm") is False
+
+    def test_a_supplied_zero_price_survives_a_provider_switch(self):
+        """`provider_changes` blanks only what the caller left out."""
+        update = ConfigUpdate(llm_provider="openai", cost_analysis_input=0.0)
+
+        assert "cost_analysis_input" not in update.provider_changes
+        assert update.changes("llm")["cost_analysis_input"] == 0.0
 
     def test_plex_changes_are_keyed_for_the_section(self):
         """API field names should map onto PlexConfig field names."""
@@ -244,10 +273,16 @@ class TestResearchConfig:
 class TestMatchingConfig:
     """Tests for the fuzzy matching floors."""
 
-    @pytest.mark.parametrize("field", (
-        "track_threshold", "album_artist_min", "album_combined_min",
-        "pitch_artist_min", "pitch_album_min",
-    ))
+    @pytest.mark.parametrize(
+        "field",
+        (
+            "track_threshold",
+            "album_artist_min",
+            "album_combined_min",
+            "pitch_artist_min",
+            "pitch_album_min",
+        ),
+    )
     def test_scores_are_bounded_to_a_ratio(self, field):
         """Every floor is a rapidfuzz ratio, so nothing outside 0-100 is valid."""
         with pytest.raises(ValidationError):

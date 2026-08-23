@@ -129,8 +129,7 @@ class TrackMatcher(FuzzyMatcher):
             return False
 
         return any(
-            self.ratio(variant, track.artist) >= self.floor
-            for variant in self.variants(artist)
+            self.ratio(variant, track.artist) >= self.floor for variant in self.variants(artist)
         )
 
 

@@ -146,9 +146,7 @@ class ReleaseGroup(BaseModel):
                 continue
             if kind in ("wikipedia", "wikidata", "discogs"):
                 urls[kind] = url
-            elif kind == "review" and not any(
-                host in url for host in config.blocked_review_hosts
-            ):
+            elif kind == "review" and not any(host in url for host in config.blocked_review_hosts):
                 reviews.append(url)
 
         # Earliest release: it carries the original track listing and label,

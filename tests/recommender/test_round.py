@@ -72,7 +72,9 @@ def inputs(**overrides) -> RoundInputs:
     return RoundInputs(**fields)
 
 
-async def collect(round_: RecommendationRound) -> tuple[list[Step], RecommendGenerateResponse | None]:
+async def collect(
+    round_: RecommendationRound,
+) -> tuple[list[Step], RecommendGenerateResponse | None]:
     """Drain a round into its steps and its result."""
     steps: list[Step] = []
     result = None
@@ -99,14 +101,19 @@ class TestProgress:
         steps, result = await collect(round_)
 
         assert [step.step for step in steps] == [
-            "selecting_library", "researching_primary", "researching_secondary",
-            "extracting_facts", "writing", "validating",
+            "selecting_library",
+            "researching_primary",
+            "researching_secondary",
+            "extracting_facts",
+            "writing",
+            "validating",
         ]
         assert result is not None
 
     async def test_discovery_says_it_is_discovering(self):
         round_ = RecommendationRound(
-            fake_pipeline(), fake_research(),
+            fake_pipeline(),
+            fake_research(),
             inputs(mode="discovery", profile=TasteProfile()),
         )
 
@@ -115,23 +122,20 @@ class TestProgress:
         assert steps[0].step == "selecting_discovery"
 
     async def test_every_step_carries_a_message(self):
-        steps, _ = await collect(
-            RecommendationRound(fake_pipeline(), fake_research(), inputs())
-        )
+        steps, _ = await collect(RecommendationRound(fake_pipeline(), fake_research(), inputs()))
         assert all(step.message for step in steps)
 
     async def test_a_rewrite_is_reported(self):
         pipeline = fake_pipeline()
         pipeline.stages.pitches.fact_check.side_effect = [
-            PitchValidation(valid=False, issues=[
-                PitchIssue(claim="a claim", problem="wrong", correction="right")
-            ]),
+            PitchValidation(
+                valid=False,
+                issues=[PitchIssue(claim="a claim", problem="wrong", correction="right")],
+            ),
             PitchValidation(valid=True),
         ]
 
-        steps, _ = await collect(
-            RecommendationRound(pipeline, fake_research(), inputs())
-        )
+        steps, _ = await collect(RecommendationRound(pipeline, fake_research(), inputs()))
 
         assert "rewriting" in [step.step for step in steps]
         pipeline.stages.pitches.rewrite.assert_called_once()
@@ -152,7 +156,10 @@ class TestSelection:
 
         await collect(round_)
 
-        assert pipeline.stages.selection.select_discovery_albums.call_args.kwargs["profile"].owned == []
+        assert (
+            pipeline.stages.selection.select_discovery_albums.call_args.kwargs["profile"].owned
+            == []
+        )
 
     async def test_library_mode_passes_the_candidates_through(self):
         pipeline = fake_pipeline()
@@ -178,9 +185,11 @@ class TestFamiliarity:
         queried = MagicMock(return_value={})
         monkeypatch.setattr(round_module.library.AlbumCache, "familiarity", queried)
 
-        await collect(RecommendationRound(
-            fake_pipeline(), fake_research(), inputs(familiarity_pref="comfort")
-        ))
+        await collect(
+            RecommendationRound(
+                fake_pipeline(), fake_research(), inputs(familiarity_pref="comfort")
+            )
+        )
 
         queried.assert_called_once()
 
@@ -189,22 +198,28 @@ class TestFamiliarity:
         queried = MagicMock(return_value={})
         monkeypatch.setattr(round_module.library.AlbumCache, "familiarity", queried)
 
-        await collect(RecommendationRound(
-            fake_pipeline(), fake_research(),
-            inputs(mode="discovery", profile=TasteProfile(), familiarity_pref="comfort"),
-        ))
+        await collect(
+            RecommendationRound(
+                fake_pipeline(),
+                fake_research(),
+                inputs(mode="discovery", profile=TasteProfile(), familiarity_pref="comfort"),
+            )
+        )
 
         queried.assert_not_called()
 
     async def test_a_failed_query_does_not_lose_the_round(self, monkeypatch):
         monkeypatch.setattr(
-            round_module.library.AlbumCache, "familiarity",
+            round_module.library.AlbumCache,
+            "familiarity",
             MagicMock(side_effect=RuntimeError("cache locked")),
         )
 
-        _, result = await collect(RecommendationRound(
-            fake_pipeline(), fake_research(), inputs(familiarity_pref="comfort")
-        ))
+        _, result = await collect(
+            RecommendationRound(
+                fake_pipeline(), fake_research(), inputs(familiarity_pref="comfort")
+            )
+        )
 
         assert result is not None
 
@@ -216,20 +231,14 @@ class TestResearch:
             found=ResearchData(musicbrainz_id="mbid-1", release_date="1999-06-12")
         )
 
-        result = await result_of(
-            RecommendationRound(fake_pipeline(), research, inputs())
-        )
+        result = await result_of(RecommendationRound(fake_pipeline(), research, inputs()))
 
         assert result.recommendations[0].year == 1999
 
     async def test_an_unparseable_date_leaves_the_year_alone(self):
-        research = fake_research(
-            found=ResearchData(musicbrainz_id="mbid-1", release_date="soon")
-        )
+        research = fake_research(found=ResearchData(musicbrainz_id="mbid-1", release_date="soon"))
 
-        result = await result_of(
-            RecommendationRound(fake_pipeline(), research, inputs())
-        )
+        result = await result_of(RecommendationRound(fake_pipeline(), research, inputs()))
 
         assert result.recommendations[0].year == 2001
 
@@ -239,18 +248,18 @@ class TestResearch:
             art="https://coverartarchive.org/release/rel-1/front",
         )
 
-        result = await result_of(
-            RecommendationRound(fake_pipeline(), research, inputs())
-        )
+        result = await result_of(RecommendationRound(fake_pipeline(), research, inputs()))
 
         art_url = result.recommendations[0].art_url
         assert art_url is not None
         assert art_url.startswith("/api/external-art?url=")
 
     async def test_plex_art_is_not_replaced(self):
-        pipeline = fake_pipeline(selected=[
-            AlbumRecommendation(rank="primary", artist="A", album="One", art_url="/api/art/7")
-        ])
+        pipeline = fake_pipeline(
+            selected=[
+                AlbumRecommendation(rank="primary", artist="A", album="One", art_url="/api/art/7")
+            ]
+        )
         research = fake_research(
             found=ResearchData(musicbrainz_id="mbid-1", earliest_release_mbid="rel-1"),
             art="https://coverartarchive.org/release/rel-1/front",
@@ -264,9 +273,7 @@ class TestResearch:
         research = fake_research()
         research.of_album = AsyncMock(side_effect=RuntimeError("MusicBrainz down"))
 
-        result = await result_of(
-            RecommendationRound(fake_pipeline(), research, inputs())
-        )
+        result = await result_of(RecommendationRound(fake_pipeline(), research, inputs()))
 
         assert len(result.recommendations) == 2
         assert result.research_warning == round_module.NO_RESEARCH
@@ -274,18 +281,18 @@ class TestResearch:
     async def test_no_research_at_all_is_said_plainly(self):
         research = fake_research(found=ResearchData())
 
-        result = await result_of(
-            RecommendationRound(fake_pipeline(), research, inputs())
-        )
+        result = await result_of(RecommendationRound(fake_pipeline(), research, inputs()))
 
         assert result.research_warning == round_module.NO_RESEARCH
 
     async def test_an_unverifiable_discovery_pick_is_flagged(self):
         research = fake_research(found=ResearchData())
 
-        result = await result_of(RecommendationRound(
-            fake_pipeline(), research, inputs(mode="discovery", profile=TasteProfile())
-        ))
+        result = await result_of(
+            RecommendationRound(
+                fake_pipeline(), research, inputs(mode="discovery", profile=TasteProfile())
+            )
+        )
 
         assert result.research_warning is not None
 
@@ -293,9 +300,11 @@ class TestResearch:
         pipeline = fake_pipeline()
         pipeline.stages.facts.matches_request.return_value = False
 
-        result = await result_of(RecommendationRound(
-            pipeline, fake_research(), inputs(mode="discovery", profile=TasteProfile())
-        ))
+        result = await result_of(
+            RecommendationRound(
+                pipeline, fake_research(), inputs(mode="discovery", profile=TasteProfile())
+            )
+        )
 
         assert result.research_warning == round_module.FAILED_VALIDATION
 
@@ -322,9 +331,7 @@ class TestGrounding:
         pipeline = fake_pipeline()
         pipeline.stages.facts.extract.side_effect = RuntimeError("model refused")
 
-        _, result = await collect(
-            RecommendationRound(pipeline, fake_research(), inputs())
-        )
+        _, result = await collect(RecommendationRound(pipeline, fake_research(), inputs()))
 
         pipeline.stages.pitches.write.assert_called_once()
         assert result is not None
@@ -336,9 +343,7 @@ class TestGrounding:
             issues=[PitchIssue(claim="a claim", problem="wrong", correction="right")],
         )
 
-        result = await result_of(
-            RecommendationRound(pipeline, fake_research(), inputs())
-        )
+        result = await result_of(RecommendationRound(pipeline, fake_research(), inputs()))
 
         assert result.research_warning == round_module.STILL_UNVERIFIED
         assert pipeline.stages.pitches.rewrite.call_count == 1
@@ -347,9 +352,7 @@ class TestGrounding:
         pipeline = fake_pipeline()
         pipeline.stages.pitches.fact_check.side_effect = RuntimeError("model refused")
 
-        result = await result_of(
-            RecommendationRound(pipeline, fake_research(), inputs())
-        )
+        result = await result_of(RecommendationRound(pipeline, fake_research(), inputs()))
 
         assert len(result.recommendations) == 2
 
@@ -379,9 +382,11 @@ class TestAbandoned:
         pipeline.stages.selection.select_albums.assert_called_once()
 
     async def test_a_connected_client_runs_to_the_end(self):
-        _, result = await collect(RecommendationRound(
-            fake_pipeline(), fake_research(), inputs(), AsyncMock(return_value=False)
-        ))
+        _, result = await collect(
+            RecommendationRound(
+                fake_pipeline(), fake_research(), inputs(), AsyncMock(return_value=False)
+            )
+        )
 
         assert result is not None
 
@@ -393,21 +398,17 @@ class TestResult:
         session_id = pipeline.sessions.create(RecommendSession(prompt="test"))
         pipeline.sessions.add_spend(session_id, 1500, 0.02)
 
-        result = await result_of(RecommendationRound(
-            pipeline, fake_research(), inputs(session_id=session_id)
-        ))
+        result = await result_of(
+            RecommendationRound(pipeline, fake_research(), inputs(session_id=session_id))
+        )
 
         assert result.token_count == 1500
         assert result.estimated_cost == 0.02
 
     async def test_returns_what_the_pitches_were_written_onto(self):
-        result = await result_of(
-            RecommendationRound(fake_pipeline(), fake_research(), inputs())
-        )
+        result = await result_of(RecommendationRound(fake_pipeline(), fake_research(), inputs()))
 
-        assert [rec.album for rec in result.recommendations] == [
-            "Ágætis byrjun", "Spiderland"
-        ]
+        assert [rec.album for rec in result.recommendations] == ["Ágætis byrjun", "Spiderland"]
 
 
 def saved(response: RecommendGenerateResponse, **round_inputs) -> Result:
@@ -429,9 +430,9 @@ class TestSave:
 
     def test_a_round_without_a_primary_still_has_a_title(self):
         response = RecommendGenerateResponse(
-            recommendations=[AlbumRecommendation(
-                rank="secondary", artist="Slint", album="Spiderland"
-            )]
+            recommendations=[
+                AlbumRecommendation(rank="secondary", artist="Slint", album="Spiderland")
+            ]
         )
 
         row = saved(response)

@@ -47,7 +47,7 @@ def _is_uuid(value: str) -> bool:
     """Whether an id is already canonical, so a re-run reissues nothing."""
     try:
         return str(uuid.UUID(value)) == value
-    except (ValueError, AttributeError, TypeError):
+    except ValueError, AttributeError, TypeError:
         return False
 
 

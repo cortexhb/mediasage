@@ -49,16 +49,12 @@ class TestUsefulSections:
         """A deployment that wants the personnel list can keep it."""
         article = "Lead.\n\n== Personnel ==\nKurt Cobain"
 
-        assert "Kurt Cobain" in sections(
-            article, ResearchConfig(wikipedia_drop_sections=["chart"])
-        )
+        assert "Kurt Cobain" in sections(article, ResearchConfig(wikipedia_drop_sections=["chart"]))
 
     def test_it_cuts_on_a_paragraph_break(self):
         article = "A" * 40 + "\n\n" + "B" * 200
 
-        kept = sections(
-            article, ResearchConfig(wikipedia_max_chars=60, wikipedia_drop_sections=[])
-        )
+        kept = sections(article, ResearchConfig(wikipedia_max_chars=60, wikipedia_drop_sections=[]))
 
         assert kept == "A" * 40
 

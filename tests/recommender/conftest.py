@@ -77,14 +77,16 @@ def llm_config(monkeypatch):
     Prices are set, so a test can tell a charged call from an uncharged one; an
     unpriced config reports no cost, which would make both look the same.
     """
-    config = MediasageConfig(llm={
-        "provider": "anthropic",
-        "context_window": 200000,
-        "cost_analysis_input": 3.0,
-        "cost_analysis_output": 15.0,
-        "cost_generation_input": 1.0,
-        "cost_generation_output": 5.0,
-    })
+    config = MediasageConfig(
+        llm={
+            "provider": "anthropic",
+            "context_window": 200000,
+            "cost_analysis_input": 3.0,
+            "cost_analysis_output": 15.0,
+            "cost_generation_input": 1.0,
+            "cost_generation_output": 5.0,
+        }
+    )
     monkeypatch.setattr(config_store, "config", config)
     return config
 

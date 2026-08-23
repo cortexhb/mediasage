@@ -40,10 +40,17 @@ async def _update_playlist(
 
 def register_saving_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/playlist", _save_playlist, methods=["POST"], response_model=PlaylistResult
+        "/api/playlist",
+        _save_playlist,
+        methods=["POST"],
+        response_model=PlaylistResult,
+        operation_id="savePlaylist",
     )
     # Before `/api/playlist` would shadow it under a path parameter later.
     app.add_api_route(
-        "/api/playlist/update", _update_playlist, methods=["POST"],
+        "/api/playlist/update",
+        _update_playlist,
+        methods=["POST"],
         response_model=PlaylistUpdateResult,
+        operation_id="updatePlaylist",
     )

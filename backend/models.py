@@ -1,9 +1,9 @@
 """Pydantic models for MediaSage API contracts and internal data structures."""
 
 import os
-from typing import Any, Final, Literal, Self
+from typing import Annotated, Any, Final, Literal, Self
 
-from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, TypeAdapter, field_validator, model_validator
 
 from backend.config.models import PROVIDER_LABELS, DefaultsConfig
 from backend.config.settings import MediasageConfig
@@ -11,7 +11,10 @@ from backend.library import DecadeCount, GenreCount, SyncProgress, TrackRecord
 from backend.llm.models import TokenBudget
 from backend.recommender import (
     ClarifyingQuestion,
+    RecommendGenerateResponse,
 )
+from backend.results import ResultFields
+from backend.sse import ErrorFrame, ProgressFrame
 from backend.version import Version
 
 # =============================================================================
@@ -103,7 +106,6 @@ class FilterSet(BaseModel):
         if v not in [15, 25, 50, 100]:
             raise ValueError("track_count must be 15, 25, 50, or 100")
         return v
-
 
 
 # =============================================================================
@@ -219,6 +221,84 @@ class GenerateResponse(BaseModel):
     playlist_title: str = ""
     narrative: str = ""
     track_reasons: dict[str, str] = {}
+
+
+# =============================================================================
+# Stream Frames
+# =============================================================================
+#
+# Untagged unions: the SSE event name is the discriminant, and it
+# travels outside the JSON payload rather than in it.
+
+
+class NarrativeFrame(BaseModel):
+    """The curator's writing, sent before the tracks it describes."""
+
+    playlist_title: str
+    narrative: str
+    track_reasons: dict[str, str]
+    user_request: str
+
+
+class TracksFrame(BaseModel):
+    """One batch of matched tracks, and where it starts in the playlist."""
+
+    batch: list[Track]
+    index: int
+
+
+class PlaylistCompleteFrame(BaseModel):
+    """The run's totals. Metadata only: the tracks already went out in batches."""
+
+    track_count: int
+    token_count: int
+    estimated_cost: float
+    playlist_title: str
+    narrative: str
+    track_reasons: dict[str, str]
+    # Absent when history could not be written; the playlist is still valid.
+    result_id: str | None = None
+
+
+PlaylistStreamFrame = (
+    ProgressFrame | NarrativeFrame | TracksFrame | PlaylistCompleteFrame | ErrorFrame
+)
+
+
+class RecommendResultFrame(RecommendGenerateResponse):
+    """The finished round, and where it was saved."""
+
+    result_id: str | None = None
+
+
+RecommendStreamFrame = ProgressFrame | RecommendResultFrame | ErrorFrame
+
+
+# =============================================================================
+# Saved Results
+# =============================================================================
+
+
+class PlaylistResultDetail(ResultFields):
+    """A saved playlist, with the response the history page re-renders it from."""
+
+    type: Literal["prompt_playlist", "seed_playlist"]
+    snapshot: GenerateResponse
+
+
+class AlbumResultDetail(ResultFields):
+    """A saved recommendation round, with the response it re-renders from."""
+
+    type: Literal["album_recommendation"]
+    snapshot: RecommendGenerateResponse
+
+
+# Not in `backend.results`: both snapshot shapes import that package.
+ResultDetail = Annotated[PlaylistResultDetail | AlbumResultDetail, Field(discriminator="type")]
+
+RESULT_DETAIL_ADAPTER: TypeAdapter[PlaylistResultDetail | AlbumResultDetail] = TypeAdapter(
+    ResultDetail
+)
 
 
 # Plex stores no more of a playlist summary than this.
@@ -553,4 +633,3 @@ class ValidateAIResponse(BaseModel):
     success: bool
     error: str | None = None
     provider_name: str = ""
-

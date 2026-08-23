@@ -115,11 +115,13 @@ class Pitches(Stage):
         issues = []
         for item in self.as_list(raw.get("issues")):
             fields = self.as_dict(item)
-            issues.append(PitchIssue(
-                claim=str(fields.get("claim", "") or ""),
-                problem=str(fields.get("problem", "") or ""),
-                correction=str(fields.get("correction", "") or ""),
-            ))
+            issues.append(
+                PitchIssue(
+                    claim=str(fields.get("claim", "") or ""),
+                    problem=str(fields.get("problem", "") or ""),
+                    correction=str(fields.get("correction", "") or ""),
+                )
+            )
 
         # An unparseable reply defaults to valid: an unread answer is not evidence
         # the pitch is wrong, and the user would rather see it than not.
@@ -162,8 +164,7 @@ class Pitches(Stage):
             facts_text = known.to_text(include_track_listing=False)
             if facts_text:
                 description += (
-                    "\n\nEXTRACTED FACTS (from Wikipedia, MusicBrainz, and reviews):\n"
-                    f"{facts_text}"
+                    f"\n\nEXTRACTED FACTS (from Wikipedia, MusicBrainz, and reviews):\n{facts_text}"
                 )
 
         found = research.get(rec.ref.key) if research else None

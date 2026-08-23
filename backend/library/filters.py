@@ -34,7 +34,7 @@ class DecadeRange(BaseModel):
         """Read a decade label like "1990s"; None when it is not one."""
         try:
             return cls(start_year=int(label.strip().rstrip("sS")))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return None
 
     def clause(self) -> ColumnElement[bool]:

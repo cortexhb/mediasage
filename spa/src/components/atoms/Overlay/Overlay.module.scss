@@ -1,0 +1,25 @@
+@use 'mixins' as ds;
+
+/**
+ * Replaces `.loading-overlay`, `.success-modal`, `.sync-modal`,
+ * `.modal-overlay`, `.step-loading-overlay` and `.bottom-sheet`.
+ *
+ * No positioning, no z-index: a modal dialog is in the top layer, which sits
+ * above every stacking context on the page.
+ */
+.overlay {
+  max-width: min(90vw, 480px);
+  padding: var(--spacing-lg);
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+
+  @include ds.scale-in;
+
+  &::backdrop {
+    background: rgb(26 26 26 / 80%);
+
+    @include ds.fade-in;
+  }
+}

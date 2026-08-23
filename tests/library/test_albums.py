@@ -19,7 +19,9 @@ class TestCandidates:
         assert len(album_cache.candidates(TrackFilter(exclude_live=False))) == 2
 
     def test_tracks_are_counted_per_album(self, sample_library):
-        assert by_key(album_cache.candidates(TrackFilter(exclude_live=False)))["100"].track_count == 3
+        assert (
+            by_key(album_cache.candidates(TrackFilter(exclude_live=False)))["100"].track_count == 3
+        )
 
     def test_track_keys_are_collected(self, sample_library):
         candidate = by_key(album_cache.candidates(TrackFilter(exclude_live=False)))["100"]
@@ -32,13 +34,26 @@ class TestCandidates:
         assert by_key(album_cache.candidates(TrackFilter()))["100"].decade == "1990s"
 
     def test_an_album_without_a_year_has_no_decade(self, seed_tracks):
-        seed_tracks({"rating_key": "1", "title": "T", "artist": "A", "album": "B",
-                     "parent_rating_key": "100"})
+        seed_tracks(
+            {
+                "rating_key": "1",
+                "title": "T",
+                "artist": "A",
+                "album": "B",
+                "parent_rating_key": "100",
+            }
+        )
         assert album_cache.candidates(TrackFilter())[0].decade == ""
 
     def test_tracks_with_no_album_key_are_excluded(self, seed_tracks):
         seed_tracks(
-            {"rating_key": "1", "title": "T", "artist": "A", "album": "B", "parent_rating_key": None},
+            {
+                "rating_key": "1",
+                "title": "T",
+                "artist": "A",
+                "album": "B",
+                "parent_rating_key": None,
+            },
             {"rating_key": "2", "title": "T", "artist": "A", "album": "B", "parent_rating_key": ""},
         )
         assert album_cache.candidates(TrackFilter()) == []
@@ -52,10 +67,22 @@ class TestCandidateGenres:
 
     def test_genres_are_unioned(self, seed_tracks):
         seed_tracks(
-            {"rating_key": "1", "title": "T", "artist": "A", "album": "B",
-             "parent_rating_key": "100", "genres": ["Rock"]},
-            {"rating_key": "2", "title": "T", "artist": "A", "album": "B",
-             "parent_rating_key": "100", "genres": ["Blues"]},
+            {
+                "rating_key": "1",
+                "title": "T",
+                "artist": "A",
+                "album": "B",
+                "parent_rating_key": "100",
+                "genres": ["Rock"],
+            },
+            {
+                "rating_key": "2",
+                "title": "T",
+                "artist": "A",
+                "album": "B",
+                "parent_rating_key": "100",
+                "genres": ["Blues"],
+            },
         )
         assert album_cache.candidates(TrackFilter())[0].genres == ["Rock", "Blues"]
 
@@ -71,10 +98,22 @@ class TestCandidateFiltering:
 
     def test_a_qualifying_album_keeps_its_other_tracks(self, seed_tracks):
         seed_tracks(
-            {"rating_key": "1", "title": "T", "artist": "A", "album": "B",
-             "parent_rating_key": "100", "genres": ["Rock"]},
-            {"rating_key": "2", "title": "T", "artist": "A", "album": "B",
-             "parent_rating_key": "100", "genres": []},
+            {
+                "rating_key": "1",
+                "title": "T",
+                "artist": "A",
+                "album": "B",
+                "parent_rating_key": "100",
+                "genres": ["Rock"],
+            },
+            {
+                "rating_key": "2",
+                "title": "T",
+                "artist": "A",
+                "album": "B",
+                "parent_rating_key": "100",
+                "genres": [],
+            },
         )
         assert album_cache.candidates(TrackFilter(genres=["Rock"]))[0].track_count == 2
 
@@ -99,7 +138,10 @@ class TestFamiliarity:
         assert album_cache.familiarity()["100"].level == "well-loved"
 
     def test_the_last_play_is_the_most_recent_across_tracks(self, sample_library, library_settings):
-        assert album_cache.familiarity()["100"].last_viewed_at == datetime(2026, 1, 1, tzinfo=UTC).isoformat()
+        assert (
+            album_cache.familiarity()["100"].last_viewed_at
+            == datetime(2026, 1, 1, tzinfo=UTC).isoformat()
+        )
 
     def test_specific_albums_can_be_requested(self, sample_library, library_settings):
         assert list(album_cache.familiarity(["200"])) == ["200"]

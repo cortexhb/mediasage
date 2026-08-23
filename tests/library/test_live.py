@@ -14,7 +14,9 @@ def default_rule() -> LiveVersionRule:
 class TestDefaults:
     """Out of the box, keywords and dated titles both mark a track live."""
 
-    @pytest.mark.parametrize("title", ["Song (Live)", "Song - LIVE", "Concert Version", "Bootleg Take"])
+    @pytest.mark.parametrize(
+        "title", ["Song (Live)", "Song - LIVE", "Concert Version", "Bootleg Take"]
+    )
     def test_a_keyword_in_the_title_matches(self, default_rule, title):
         assert default_rule.matches(title, "Album") is True
 
@@ -56,8 +58,6 @@ class TestConfiguration:
         assert rule.matches("Song", "Album") is False
 
     def test_keywords_with_regex_characters_are_taken_literally(self):
-        rule = LiveVersionRule.of(
-            LibraryConfig(live_keywords=["a.b"], dated_titles_are_live=False)
-        )
+        rule = LiveVersionRule.of(LibraryConfig(live_keywords=["a.b"], dated_titles_are_live=False))
         assert rule.matches("axb", "Album") is False
         assert rule.matches("a.b", "Album") is True

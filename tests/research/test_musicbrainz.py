@@ -49,7 +49,10 @@ class TestSearch:
             response(groups(entry("mbid-2", "Nevermind"))),
         )
 
-        assert await client.search(AlbumRef(artist="Nirvana", album="Nevermind (Deluxe Edition)")) == "mbid-2"
+        assert (
+            await client.search(AlbumRef(artist="Nirvana", album="Nevermind (Deluxe Edition)"))
+            == "mbid-2"
+        )
         assert 'releasegroup:"Nevermind"' in http.calls[1][1]["params"]["query"]
 
     async def test_it_falls_back_to_the_album_alone(self):
@@ -65,10 +68,12 @@ class TestSearch:
     async def test_it_picks_the_best_scoring_fallback(self):
         client, _ = build(
             response(groups()),
-            response(groups(
-                entry("wrong", "Ten Live", artist="Somebody"),
-                entry("right", "Ten", artist="Pearl Jam", **{"primary-type": "Album"}),
-            )),
+            response(
+                groups(
+                    entry("wrong", "Ten Live", artist="Somebody"),
+                    entry("right", "Ten", artist="Pearl Jam", **{"primary-type": "Album"}),
+                )
+            ),
         )
 
         assert await client.search(AlbumRef(artist="Pearl Jam", album="Ten")) == "right"
@@ -89,24 +94,35 @@ class TestSearch:
     async def test_the_year_disambiguates_a_common_title(self):
         client, _ = build(
             response(groups()),
-            response(groups(
-                entry("later", "Greatest Hits", **{"first-release-date": "2005-01-01"}),
-                entry("wanted", "Greatest Hits", **{"first-release-date": "1991-01-01"}),
-            )),
+            response(
+                groups(
+                    entry("later", "Greatest Hits", **{"first-release-date": "2005-01-01"}),
+                    entry("wanted", "Greatest Hits", **{"first-release-date": "1991-01-01"}),
+                )
+            ),
         )
 
-        assert await client.search(AlbumRef(artist="Nirvana", album="Greatest Hits"), year=1991) == "wanted"
+        assert (
+            await client.search(AlbumRef(artist="Nirvana", album="Greatest Hits"), year=1991)
+            == "wanted"
+        )
 
 
 class TestLookups:
     async def test_release_group_parses_its_relations(self):
-        client, http = build(response({
-            "relations": [{
-                "type": "wikipedia",
-                "url": {"resource": "https://en.wikipedia.org/wiki/Nevermind"},
-            }],
-            "releases": [{"id": "rel-1", "date": "1991-09-24"}],
-        }))
+        client, http = build(
+            response(
+                {
+                    "relations": [
+                        {
+                            "type": "wikipedia",
+                            "url": {"resource": "https://en.wikipedia.org/wiki/Nevermind"},
+                        }
+                    ],
+                    "releases": [{"id": "rel-1", "date": "1991-09-24"}],
+                }
+            )
+        )
 
         group = await client.release_group("mbid-1")
 

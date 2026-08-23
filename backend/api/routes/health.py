@@ -27,5 +27,9 @@ async def _health(
 
 def register_health_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/health", _health, methods=["GET"], response_model=HealthResponse
+        "/api/health",
+        _health,
+        methods=["GET"],
+        response_model=HealthResponse,
+        operation_id="getHealth",
     )

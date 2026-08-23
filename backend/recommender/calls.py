@@ -44,8 +44,13 @@ class MeteredClient(BaseModel):
         cost = response.cost(config_store.get().llm)
         logger.info(
             "recommend.cost | call=%s model=%s input=%d output=%d cost=%.5f albums=%d session=%s",
-            label, response.model, response.input_tokens, response.output_tokens,
-            cost, albums, self.session_id,
+            label,
+            response.model,
+            response.input_tokens,
+            response.output_tokens,
+            cost,
+            albums,
+            self.session_id,
         )
         self.sessions.add_spend(
             self.session_id, response.input_tokens + response.output_tokens, cost

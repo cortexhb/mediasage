@@ -29,5 +29,9 @@ async def _play_queue(
 
 def register_queue_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/play-queue", _play_queue, methods=["POST"], response_model=PlayQueueResult
+        "/api/play-queue",
+        _play_queue,
+        methods=["POST"],
+        response_model=PlayQueueResult,
+        operation_id="createPlayQueue",
     )

@@ -29,6 +29,9 @@ async def _status(
 
 def register_status_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/library/status", _status, methods=["GET"],
+        "/api/library/status",
+        _status,
+        methods=["GET"],
         response_model=LibraryCacheStatusResponse,
+        operation_id="getLibraryStatus",
     )

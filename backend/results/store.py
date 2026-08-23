@@ -13,7 +13,7 @@ from sqlalchemy import delete, func, insert, select
 from sqlalchemy.exc import IntegrityError
 
 from backend.db import db
-from backend.results.models import ResultDetail, ResultListItem, ResultListResponse
+from backend.results.models import ResultListItem, ResultListResponse, SavedResult
 from backend.results.tables import Result
 
 logger = logging.getLogger(__name__)
@@ -61,11 +61,11 @@ class ResultStore:
 
         raise RuntimeError(f"Failed to generate unique result ID after {ID_ATTEMPTS} attempts")
 
-    def get(self, result_id: str) -> ResultDetail | None:
+    def get(self, result_id: str) -> SavedResult | None:
         """One saved result with its snapshot, or None if it is gone."""
         with db.session() as session:
             row = session.get(Result, result_id)
-            return ResultDetail.of(row) if row else None
+            return SavedResult.of(row) if row else None
 
     def page(
         self,
@@ -96,9 +96,7 @@ class ResultStore:
         with db.session() as session:
             total = session.execute(counter).scalar_one()
             rows = session.scalars(statement).all()
-            return ResultListResponse(
-                results=[ResultListItem.of(row) for row in rows], total=total
-            )
+            return ResultListResponse(results=[ResultListItem.of(row) for row in rows], total=total)
 
     def remove(self, result_id: str) -> bool:
         """Delete a saved result, reporting whether there was one."""

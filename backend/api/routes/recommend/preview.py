@@ -35,6 +35,9 @@ async def _preview(
 
 def register_preview_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/recommend/albums/preview", _preview, methods=["GET"],
+        "/api/recommend/albums/preview",
+        _preview,
+        methods=["GET"],
         response_model=AlbumPreviewResponse,
+        operation_id="previewRecommendAlbums",
     )

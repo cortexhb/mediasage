@@ -78,11 +78,9 @@ def register_static_routes(app: FastAPI) -> None:
         """``GET /`` -- the single page, with cache-busted assets."""
         html = frontend.index_html() if frontend else None
         if html is None:
-            return JSONResponse(
-                {"message": "MediaSage API is running. Frontend not found."}
-            )
+            return JSONResponse({"message": "MediaSage API is running. Frontend not found."})
         # `no-cache` on the index alone: it is what carries the versioned asset
         # URLs, so a cached copy would keep pointing at the old ones.
         return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
-    app.add_api_route("/", _index, methods=["GET"], response_model=None)
+    app.add_api_route("/", _index, methods=["GET"], response_model=None, operation_id="getIndex")

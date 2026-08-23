@@ -18,8 +18,7 @@ def listing(*names: str) -> ollama.ListResponse:
     """A `/api/tags` response naming the given models."""
     return ollama.ListResponse(
         models=[
-            ollama.ListResponse.Model(model=name, size=1024, modified_at=None)
-            for name in names
+            ollama.ListResponse.Model(model=name, size=1024, modified_at=None) for name in names
         ]
     )
 
@@ -43,9 +42,7 @@ class TestListModels:
 
     def test_reports_an_unreachable_server(self, client, mocker):
         """A connection refused is an expected answer, not a fault."""
-        mocker.patch.object(
-            ollama.Client, "list", side_effect=httpx.ConnectError("refused")
-        )
+        mocker.patch.object(ollama.Client, "list", side_effect=httpx.ConnectError("refused"))
 
         result = client.list_models()
 
@@ -54,9 +51,7 @@ class TestListModels:
 
     def test_reports_a_timeout_distinctly(self, client, mocker):
         """A slow server and a missing one need different messages."""
-        mocker.patch.object(
-            ollama.Client, "list", side_effect=httpx.TimeoutException("slow")
-        )
+        mocker.patch.object(ollama.Client, "list", side_effect=httpx.TimeoutException("slow"))
 
         assert "Timeout" in (client.list_models().error or "")
 
@@ -137,9 +132,7 @@ class TestStatus:
         assert "ollama pull" in (result.error or "")
 
     def test_unreachable_is_not_connected(self, client, mocker):
-        mocker.patch.object(
-            ollama.Client, "list", side_effect=httpx.ConnectError("refused")
-        )
+        mocker.patch.object(ollama.Client, "list", side_effect=httpx.ConnectError("refused"))
 
         assert client.status().connected is False
 

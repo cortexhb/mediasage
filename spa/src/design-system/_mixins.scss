@@ -1,0 +1,128 @@
+/**
+ * What a component module includes: breakpoints, touch targets, animation.
+ *
+ * ```scss
+ * @use "mixins" as ds;
+ *
+ * .button {
+ *   @include ds.on-mobile {
+ *     @include ds.touch-target;
+ *   }
+ * }
+ * ```
+ *
+ * Resolved through `css.preprocessorOptions.scss.loadPaths` in
+ * `vite.config.ts`, so the name is the same from any depth.
+ *
+ * Mixins and variables are kebab-case. Class names are camelCase only because
+ * CSS Modules exposes them as JavaScript properties, which these are not.
+ */
+
+@use 'sizes';
+
+/* Compact phones: `frontend/style.css:2441`. */
+@mixin on-compact {
+  @media (width <= #{sizes.$compact}) {
+    @content;
+  }
+}
+
+/* Touch widths: `frontend/style.css:2362`. */
+@mixin on-mobile {
+  @media (width <= #{sizes.$mobile}) {
+    @content;
+  }
+}
+
+/* Touch input at any width: `frontend/style.css:2431`. */
+@mixin on-coarse-pointer {
+  @media (pointer: coarse) {
+    @content;
+  }
+}
+
+/**
+ * A control large enough to hit with a thumb.
+ *
+ * Replaces the global sweep at `frontend/style.css:2362`, which listed
+ * fifteen selectors because a global stylesheet had no other way to say it.
+ * That sweep set `min-width` on only the narrow controls; this sets both,
+ * which is what the guideline means and what the narrow cases needed anyway.
+ */
+@mixin touch-target {
+  min-width: sizes.$touch-target;
+  min-height: sizes.$touch-target;
+}
+
+/**
+ * Keyframes are mixins, not global names.
+ *
+ * CSS Modules hashes a keyframe name per file, so a shared `@keyframes` would
+ * have to be reached with `animation-name: :global(spin)` -- an escape hatch
+ * the module system cannot check. Including the mixin gives the module its
+ * own hashed copy, at the cost of a duplicated block in the bundle.
+ *
+ * Only the three animations with more than one caller in
+ * `frontend/style.css` are here. The single-use ones belong to their
+ * component.
+ */
+
+/* Panel and overlay entrance: `frontend/style.css:467`. */
+@mixin fade-in {
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  animation: fade-in var(--transition-normal);
+
+  /* The element still arrives; only the travel is decoration. */
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/* Modal card entrance: `frontend/style.css:1544`. */
+@mixin scale-in {
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  animation: scale-in var(--transition-normal);
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/**
+ * Indefinite loading: `frontend/style.css:1479`. 1s on the standalone
+ * spinner, 0.8s inline.
+ *
+ * No reduced-motion guard: rotation is the only signal that work is still
+ * happening, so stopping it reports a hang that is not there.
+ */
+@mixin spin($duration: 1s) {
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  animation: spin $duration linear infinite;
+}

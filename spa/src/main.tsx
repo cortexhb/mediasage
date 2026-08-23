@@ -2,8 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router'
 
+import './design-system/global.scss'
 import { routes } from './routes.ts'
-import './style.css'
 
 const container = document.getElementById('root')
 // Thrown rather than asserted away: a missing root is a broken index.html,

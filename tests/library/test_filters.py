@@ -96,11 +96,17 @@ class TestDialectPortability:
     def test_the_live_predicate_avoids_a_boolean_comparison(self):
         """`== False` would need a noqa; `.is_(False)` renders per dialect."""
         clause = TrackFilter().clauses()[0]
-        assert "IS 0" in str(clause.compile(dialect=sqlite.dialect(), compile_kwargs={"literal_binds": True}))
-        assert "IS false" in str(clause.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+        assert "IS 0" in str(
+            clause.compile(dialect=sqlite.dialect(), compile_kwargs={"literal_binds": True})
+        )
+        assert "IS false" in str(
+            clause.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})
+        )
 
     def test_the_genre_clause_correlates_instead_of_joining(self):
-        rendered = str(TrackFilter(genres=["Rock"]).genre_clause().compile(dialect=sqlite.dialect()))
+        rendered = str(
+            TrackFilter(genres=["Rock"]).genre_clause().compile(dialect=sqlite.dialect())
+        )
         assert "EXISTS" in rendered
         assert "track_genres.rating_key = tracks.rating_key" in rendered
 

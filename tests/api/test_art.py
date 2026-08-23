@@ -61,9 +61,13 @@ class TestArtCacheHeaders:
 
     def test_the_cache_age_follows_the_configuration(self, client, plex_art, monkeypatch):
         installed = config_store.get()
-        monkeypatch.setattr(config_store, "config", installed.model_copy(update={
-            "art": installed.art.model_copy(update={"cache_max_age": 60})
-        }))
+        monkeypatch.setattr(
+            config_store,
+            "config",
+            installed.model_copy(
+                update={"art": installed.art.model_copy(update={"cache_max_age": 60})}
+            ),
+        )
 
         assert "max-age=60" in client.get("/api/art/1").headers["cache-control"]
 
@@ -163,34 +167,44 @@ class TestExternalArt:
         assert response.headers["cache-control"] == f"public, max-age={expected}"
 
     def test_refuses_http(self, client, external_art):
-        assert client.get(
-            "/api/external-art", params={"url": "http://archive.org/x.jpg"}
-        ).status_code == 400
+        assert (
+            client.get("/api/external-art", params={"url": "http://archive.org/x.jpg"}).status_code
+            == 400
+        )
 
     def test_refuses_a_host_off_the_allowlist(self, client, external_art):
-        assert client.get(
-            "/api/external-art", params={"url": "https://evil.test/x.jpg"}
-        ).status_code == 400
+        assert (
+            client.get("/api/external-art", params={"url": "https://evil.test/x.jpg"}).status_code
+            == 400
+        )
 
     def test_the_allowlist_is_configurable(self, client, external_art, monkeypatch):
         """A deployment mirroring cover art needs its own host allowed."""
         installed = config_store.get()
-        monkeypatch.setattr(config_store, "config", installed.model_copy(update={
-            "art": installed.art.model_copy(update={"external_domains": ["art.lan"]})
-        }))
+        monkeypatch.setattr(
+            config_store,
+            "config",
+            installed.model_copy(
+                update={"art": installed.art.model_copy(update={"external_domains": ["art.lan"]})}
+            ),
+        )
 
-        assert client.get(
-            "/api/external-art", params={"url": "https://art.lan/x.jpg"}
-        ).status_code == 200
+        assert (
+            client.get("/api/external-art", params={"url": "https://art.lan/x.jpg"}).status_code
+            == 200
+        )
         assert client.get("/api/external-art", params={"url": CDN}).status_code == 400
 
     def test_it_follows_a_redirect_inside_the_allowlist(self, client, external_art):
         http, image = external_art
         http.get = AsyncMock(side_effect=[moved(CDN), image])
 
-        assert client.get(
-            "/api/external-art", params={"url": "https://coverartarchive.org/release/1/front"}
-        ).status_code == 200
+        assert (
+            client.get(
+                "/api/external-art", params={"url": "https://coverartarchive.org/release/1/front"}
+            ).status_code
+            == 200
+        )
 
     def test_it_refuses_a_redirect_off_the_allowlist(self, client, external_art):
         """An open redirect would otherwise make this a proxy for anything."""
@@ -201,9 +215,13 @@ class TestExternalArt:
 
     def test_it_gives_up_past_the_hop_limit(self, client, external_art, monkeypatch):
         installed = config_store.get()
-        monkeypatch.setattr(config_store, "config", installed.model_copy(update={
-            "art": installed.art.model_copy(update={"max_redirects": 2})
-        }))
+        monkeypatch.setattr(
+            config_store,
+            "config",
+            installed.model_copy(
+                update={"art": installed.art.model_copy(update={"max_redirects": 2})}
+            ),
+        )
         http, _ = external_art
         http.get = AsyncMock(return_value=moved(CDN))
 
@@ -233,23 +251,29 @@ class TestExternalArtAllowlist:
 
     source = ExternalArt(domains=["coverartarchive.org", "archive.org"], max_redirects=5)
 
-    @pytest.mark.parametrize("url", [
-        "https://archive.org/x.jpg",
-        "https://coverartarchive.org/release/1/front",
-        "https://ia800123.us.archive.org/x.jpg",
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://archive.org/x.jpg",
+            "https://coverartarchive.org/release/1/front",
+            "https://ia800123.us.archive.org/x.jpg",
+        ],
+    )
     def test_it_allows_the_listed_hosts_and_their_subdomains(self, url):
         assert self.source.allows(url)
 
-    @pytest.mark.parametrize("url", [
-        "http://archive.org/x.jpg",
-        "https://evil.test/x.jpg",
-        "https://notarchive.org/x.jpg",
-        "https://evilarchive.org/x.jpg",
-        "https://archive.org.evil.test/x.jpg",
-        "https://127.0.0.1/x.jpg",
-        "",
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://archive.org/x.jpg",
+            "https://evil.test/x.jpg",
+            "https://notarchive.org/x.jpg",
+            "https://evilarchive.org/x.jpg",
+            "https://archive.org.evil.test/x.jpg",
+            "https://127.0.0.1/x.jpg",
+            "",
+        ],
+    )
     def test_it_refuses_everything_else(self, url):
         assert not self.source.allows(url)
 

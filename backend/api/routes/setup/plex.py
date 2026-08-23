@@ -41,6 +41,9 @@ async def _validate_plex(request: ValidatePlexRequest) -> ValidatePlexResponse:
 
 def register_validate_plex_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/setup/validate-plex", _validate_plex, methods=["POST"],
+        "/api/setup/validate-plex",
+        _validate_plex,
+        methods=["POST"],
         response_model=ValidatePlexResponse,
+        operation_id="validatePlex",
     )

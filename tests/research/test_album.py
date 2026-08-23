@@ -83,19 +83,21 @@ class TestOfAlbum:
         group = ReleaseGroup(earliest_release_mbid="rel-1")
         release = ReleaseDetail(track_listing=["In Bloom"], label="DGC")
 
-        found = await build(
-            musicbrainz=musicbrainz(group=group, release=release)
-        ).of_album(ref())
+        found = await build(musicbrainz=musicbrainz(group=group, release=release)).of_album(ref())
 
         assert found.track_listing == ["In Bloom"]
         assert found.label == "DGC"
 
     async def test_light_research_skips_the_article_and_reviews(self):
         """A secondary pick is shown as one line, so the long sources are waste."""
-        research = build(musicbrainz=musicbrainz(group=ReleaseGroup(
-            wikipedia_url="https://en.wikipedia.org/wiki/Nevermind",
-            review_urls=["https://pitchfork.com/1"],
-        )))
+        research = build(
+            musicbrainz=musicbrainz(
+                group=ReleaseGroup(
+                    wikipedia_url="https://en.wikipedia.org/wiki/Nevermind",
+                    review_urls=["https://pitchfork.com/1"],
+                )
+            )
+        )
         research.wikipedia.summary = AsyncMock(return_value=None)
         research.reviews.text = AsyncMock(return_value=None)
 
@@ -105,9 +107,13 @@ class TestOfAlbum:
         research.reviews.text.assert_not_called()
 
     async def test_full_research_reads_the_article(self):
-        research = build(musicbrainz=musicbrainz(group=ReleaseGroup(
-            wikipedia_url="https://en.wikipedia.org/wiki/Nevermind",
-        )))
+        research = build(
+            musicbrainz=musicbrainz(
+                group=ReleaseGroup(
+                    wikipedia_url="https://en.wikipedia.org/wiki/Nevermind",
+                )
+            )
+        )
         research.wikipedia.summary = AsyncMock(return_value="It is an album.")
 
         found = await research.of_album(ref())
@@ -116,9 +122,13 @@ class TestOfAlbum:
 
     async def test_it_resolves_an_article_through_wikidata(self):
         """Some release groups carry only a Wikidata relation."""
-        research = build(musicbrainz=musicbrainz(group=ReleaseGroup(
-            wikidata_url="https://www.wikidata.org/wiki/Q207289",
-        )))
+        research = build(
+            musicbrainz=musicbrainz(
+                group=ReleaseGroup(
+                    wikidata_url="https://www.wikidata.org/wiki/Q207289",
+                )
+            )
+        )
         research.wikipedia.article_for = AsyncMock(
             return_value="https://en.wikipedia.org/wiki/Nevermind"
         )
@@ -139,9 +149,13 @@ class TestOfAlbum:
         research.wikipedia.summary.assert_not_called()
 
     async def test_it_keeps_only_the_reviews_it_could_read(self):
-        research = build(musicbrainz=musicbrainz(group=ReleaseGroup(
-            review_urls=["https://a.test/1", "https://b.test/2"],
-        )))
+        research = build(
+            musicbrainz=musicbrainz(
+                group=ReleaseGroup(
+                    review_urls=["https://a.test/1", "https://b.test/2"],
+                )
+            )
+        )
         research.reviews.text = AsyncMock(side_effect=["first review", None])
 
         found = await research.of_album(ref())

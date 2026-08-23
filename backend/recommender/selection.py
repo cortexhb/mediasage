@@ -64,8 +64,12 @@ class Selection(Stage):
 
         available_genres = set(genres)
         available_decades = set(decades)
-        chosen_genres = [name for name in self.as_list(raw.get("genres")) if name in available_genres]
-        chosen_decades = [name for name in self.as_list(raw.get("decades")) if name in available_decades]
+        chosen_genres = [
+            name for name in self.as_list(raw.get("genres")) if name in available_genres
+        ]
+        chosen_decades = [
+            name for name in self.as_list(raw.get("decades")) if name in available_decades
+        ]
 
         return FilterSuggestion(
             genres=chosen_genres or list(genres),
@@ -73,9 +77,7 @@ class Selection(Stage):
             reasoning=str(raw.get("reasoning", "") or ""),
         )
 
-    def generate_questions(
-        self, prompt: str, dimension_ids: list[str]
-    ) -> list[ClarifyingQuestion]:
+    def generate_questions(self, prompt: str, dimension_ids: list[str]) -> list[ClarifyingQuestion]:
         """Write one question per dimension, in the user's own terms."""
         lines = []
         for dimension_id in dimension_ids:
@@ -90,11 +92,13 @@ class Selection(Stage):
         questions = []
         for item in self.as_list(raw)[: config_store.get().recommend.question_count]:
             fields = self.as_dict(item)
-            questions.append(ClarifyingQuestion(
-                question_text=str(fields.get("question_text", "") or ""),
-                options=[str(option) for option in self.as_list(fields.get("options"))[:4]],
-                dimension=str(fields.get("dimension", "") or ""),
-            ))
+            questions.append(
+                ClarifyingQuestion(
+                    question_text=str(fields.get("question_text", "") or ""),
+                    options=[str(option) for option in self.as_list(fields.get("options"))[:4]],
+                    dimension=str(fields.get("dimension", "") or ""),
+                )
+            )
         return questions
 
     def select_albums(
@@ -204,12 +208,14 @@ class Selection(Stage):
                 logger.info("Discovery post-filter: skipping owned album %s", ref)
                 continue
 
-            picked.append(AlbumRecommendation(
-                rank=self._rank_of(fields),
-                album=ref.album,
-                artist=ref.artist,
-                year=fields.get("year") if isinstance(fields.get("year"), int) else None,
-            ))
+            picked.append(
+                AlbumRecommendation(
+                    rank=self._rank_of(fields),
+                    album=ref.album,
+                    artist=ref.artist,
+                    year=fields.get("year") if isinstance(fields.get("year"), int) else None,
+                )
+            )
 
         return self._with_a_primary(picked)
 
@@ -238,7 +244,9 @@ class Selection(Stage):
     ) -> str:
         """One album as the selection prompt lists it."""
         genres = ", ".join(candidate.genres[:genres_per_line]) if candidate.genres else "Unknown"
-        line = f"- {candidate.album_artist} — {candidate.album} ({candidate.year or '?'}) [{genres}]"
+        line = (
+            f"- {candidate.album_artist} — {candidate.album} ({candidate.year or '?'}) [{genres}]"
+        )
 
         if familiarity_pref != "any" and familiarity:
             played = familiarity.get(candidate.parent_rating_key or "")

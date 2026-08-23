@@ -13,14 +13,14 @@ from backend.llm import OllamaClient, OllamaModelInfo, OllamaModelsResponse, Oll
 
 
 async def _ollama_status(
-    url: str = Query("", description="Ollama URL (defaults to config)")
+    url: str = Query("", description="Ollama URL (defaults to config)"),
 ) -> OllamaStatus:
     """``GET /api/ollama/status`` -- whether a local server answers."""
     return await asyncio.to_thread(OllamaClient.configured(url).status)
 
 
 async def _ollama_models(
-    url: str = Query("", description="Ollama URL (defaults to config)")
+    url: str = Query("", description="Ollama URL (defaults to config)"),
 ) -> OllamaModelsResponse:
     """``GET /api/ollama/models`` -- what the server has pulled."""
     return await asyncio.to_thread(OllamaClient.configured(url).list_models)
@@ -42,13 +42,23 @@ async def _ollama_model_info(
 
 def register_ollama_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/ollama/status", _ollama_status, methods=["GET"], response_model=OllamaStatus
+        "/api/ollama/status",
+        _ollama_status,
+        methods=["GET"],
+        response_model=OllamaStatus,
+        operation_id="getOllamaStatus",
     )
     app.add_api_route(
-        "/api/ollama/models", _ollama_models, methods=["GET"],
+        "/api/ollama/models",
+        _ollama_models,
+        methods=["GET"],
         response_model=OllamaModelsResponse,
+        operation_id="listOllamaModels",
     )
     app.add_api_route(
-        "/api/ollama/model-info", _ollama_model_info, methods=["GET"],
+        "/api/ollama/model-info",
+        _ollama_model_info,
+        methods=["GET"],
         response_model=OllamaModelInfo | None,
+        operation_id="getOllamaModelInfo",
     )

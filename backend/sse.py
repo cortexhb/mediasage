@@ -30,6 +30,29 @@ HEADERS: Final = {
 }
 
 
+class EventStreamResponse(StreamingResponse):
+    """A stream that names its media type as a class attribute.
+
+    FastAPI reads `media_type` off the response class when it builds the
+    schema; without it a streaming route is documented as `application/json`.
+    """
+
+    media_type = MEDIA_TYPE
+
+
+class ProgressFrame(BaseModel):
+    """A step the user is shown while they wait."""
+
+    step: str
+    message: str
+
+
+class ErrorFrame(BaseModel):
+    """A failure the user is shown instead of a result."""
+
+    message: str
+
+
 class SSE(BaseModel):
     """The event-stream protocol: how one frame is written, and how many are served."""
 
@@ -41,9 +64,14 @@ class SSE(BaseModel):
         return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
     @classmethod
+    def of(cls, event: str, payload: BaseModel) -> str:
+        """One frame carrying a model, so the wire cannot drift from the schema."""
+        return cls.frame(event, payload.model_dump(mode="json"))
+
+    @classmethod
     def progress(cls, step: str, message: str) -> str:
         """A step the user is shown while they wait."""
-        return cls.frame("progress", {"step": step, "message": message})
+        return cls.of("progress", ProgressFrame(step=step, message=message))
 
     @classmethod
     def result(cls, payload: dict[str, Any]) -> str:
@@ -53,9 +81,9 @@ class SSE(BaseModel):
     @classmethod
     def error(cls, message: str) -> str:
         """A failure the user is shown instead of a result."""
-        return cls.frame("error", {"message": message})
+        return cls.of("error", ErrorFrame(message=message))
 
     @staticmethod
-    def serve(events: Iterator[str] | AsyncIterator[str]) -> StreamingResponse:
+    def serve(events: Iterator[str] | AsyncIterator[str]) -> EventStreamResponse:
         """Serve an iterator of frames as an event stream."""
-        return StreamingResponse(events, media_type=MEDIA_TYPE, headers=HEADERS)
+        return EventStreamResponse(events, headers=HEADERS)

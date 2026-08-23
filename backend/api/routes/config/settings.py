@@ -54,7 +54,17 @@ async def _update_config(request: ConfigUpdate) -> ConfigResponse:
 
 
 def register_settings_routes(app: FastAPI) -> None:
-    app.add_api_route("/api/config", _get_config, methods=["GET"], response_model=ConfigResponse)
     app.add_api_route(
-        "/api/config", _update_config, methods=["POST"], response_model=ConfigResponse
+        "/api/config",
+        _get_config,
+        methods=["GET"],
+        response_model=ConfigResponse,
+        operation_id="getConfig",
+    )
+    app.add_api_route(
+        "/api/config",
+        _update_config,
+        methods=["POST"],
+        response_model=ConfigResponse,
+        operation_id="updateConfig",
     )

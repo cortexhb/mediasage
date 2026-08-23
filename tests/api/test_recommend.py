@@ -46,9 +46,9 @@ class TestQuestions:
         assert data["questions"][0]["question_text"] == "How loud?"
 
     def test_the_session_holds_the_questions(self, client, pipeline):
-        session_id = client.post(
-            "/api/recommend/questions", json={"prompt": "test"}
-        ).json()["session_id"]
+        session_id = client.post("/api/recommend/questions", json={"prompt": "test"}).json()[
+            "session_id"
+        ]
 
         assert pipeline.sessions.get(session_id).questions[0].dimension == "energy"
 

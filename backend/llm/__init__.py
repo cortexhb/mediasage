@@ -2,8 +2,9 @@
 
 `models` holds the data, `chat` turns configuration into chat models, `client`
 owns the single conversation with a provider, `json_parse` recovers structure
-from prose, `errors` holds the failure both halves raise, `ollama` covers the
-one admin API LangChain does not, and `constants` holds the fixed literals.
+from prose, `errors` holds the failure both halves raise, `listing` asks a
+provider which models it serves without spending one, `ollama` covers the one
+admin API LangChain does not, and `constants` holds the fixed literals.
 `client_store` holds the process-level client.
 """
 
@@ -12,6 +13,7 @@ from backend.llm.client import LLMClient, LLMClientStore, client_store
 from backend.llm.constants import PROVIDER_IDS
 from backend.llm.errors import LLMError, LLMNotConfigured
 from backend.llm.json_parse import JSONParseError, ModelReply
+from backend.llm.listing import ModelListing
 from backend.llm.models import (
     LLMResponse,
     OllamaModel,
@@ -31,6 +33,7 @@ __all__ = [
     "LLMError",
     "LLMNotConfigured",
     "LLMResponse",
+    "ModelListing",
     "ModelReply",
     "OllamaClient",
     "OllamaModel",

@@ -47,13 +47,16 @@ class Wikipedia:
 
         client = await self.http.client()
         try:
-            response = await client.get(self.config.wikipedia_api_url, params={
-                "action": "query",
-                "titles": title,
-                "prop": "extracts",
-                "explaintext": "true",
-                "format": "json",
-            })
+            response = await client.get(
+                self.config.wikipedia_api_url,
+                params={
+                    "action": "query",
+                    "titles": title,
+                    "prop": "extracts",
+                    "explaintext": "true",
+                    "format": "json",
+                },
+            )
             response.raise_for_status()
             pages = response.json().get("query", {}).get("pages", {})
         except (httpx.HTTPError, ValueError) as err:
@@ -98,8 +101,7 @@ class Wikipedia:
             title = HEADER_TITLE.match(part.strip())
             if title:
                 dropping = any(
-                    word in title.group(1).lower()
-                    for word in self.config.wikipedia_drop_sections
+                    word in title.group(1).lower() for word in self.config.wikipedia_drop_sections
                 )
             if not dropping:
                 kept.append(part)

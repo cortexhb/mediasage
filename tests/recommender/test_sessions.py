@@ -124,7 +124,17 @@ class TestEdits:
 
     def test_start_round_replaces_the_candidate_pool(self, sessions):
         session_id = sessions.create(RecommendSession())
-        sessions.start_round(session_id, "library", {}, "any", [AlbumCandidate(artist="Band", album_artist="Band", album="Album", parent_rating_key="1")])
+        sessions.start_round(
+            session_id,
+            "library",
+            {},
+            "any",
+            [
+                AlbumCandidate(
+                    artist="Band", album_artist="Band", album="Album", parent_rating_key="1"
+                )
+            ],
+        )
 
         sessions.start_round(session_id, "library", {}, "any", [])
 

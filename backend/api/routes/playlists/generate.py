@@ -13,9 +13,9 @@ from starlette.responses import StreamingResponse
 
 from backend.generator import PlaylistGeneration
 from backend.llm import LLMClient, client_store
-from backend.models import GenerateRequest
+from backend.models import GenerateRequest, PlaylistStreamFrame
 from backend.plex import PlexClient, plex_store
-from backend.sse import SSE
+from backend.sse import SSE, EventStreamResponse
 
 
 async def _generate(
@@ -31,7 +31,9 @@ async def _generate(
     seed_track = None
     selected_dimensions = []
     if request.seed_track:
-        seed_track = await asyncio.to_thread(plex.library.track_by_key, request.seed_track.rating_key)
+        seed_track = await asyncio.to_thread(
+            plex.library.track_by_key, request.seed_track.rating_key
+        )
         if not seed_track:
             raise HTTPException(status_code=404, detail="Seed track not found")
         selected_dimensions = request.seed_track.selected_dimensions
@@ -54,5 +56,21 @@ async def _generate(
 
 def register_generate_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/generate/stream", _generate, methods=["POST"], response_model=None
+        "/api/generate/stream",
+        _generate,
+        methods=["POST"],
+        # The body is a stream of frames, which no `response_model` can
+        # describe; `responses` puts the frames themselves in the schema.
+        response_model=None,
+        response_class=EventStreamResponse,
+        responses={
+            200: {
+                "model": PlaylistStreamFrame,
+                "description": (
+                    "`progress` frames, then `narrative`, `tracks` batches and "
+                    "`complete`, or `error`."
+                ),
+            }
+        },
+        operation_id="generatePlaylist",
     )

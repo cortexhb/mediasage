@@ -34,8 +34,8 @@ class TestSmartQuotes:
     @pytest.mark.parametrize(
         "content",
         [
-            '{“a”: 1}',
-            '[{“title”: “Song”}]',
+            "{“a”: 1}",
+            "[{“title”: “Song”}]",
         ],
     )
     def test_curly_double_quotes_are_normalised(self, content):

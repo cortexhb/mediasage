@@ -10,9 +10,7 @@ from backend.plex import PlexClient, plex_store
 
 # iOS auto-correction turns a typed quote into a curly one, which matches
 # nothing in the library.
-SMART_QUOTES: Final = str.maketrans(
-    {"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'}
-)
+SMART_QUOTES: Final = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"'})
 
 
 async def _search(
@@ -25,5 +23,9 @@ async def _search(
 
 def register_search_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/library/search", _search, methods=["GET"], response_model=list[Track]
+        "/api/library/search",
+        _search,
+        methods=["GET"],
+        response_model=list[Track],
+        operation_id="searchLibrary",
     )

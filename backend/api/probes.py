@@ -1,27 +1,26 @@
 """Whether settings that have not been saved yet actually work.
 
 A probe is built against a candidate configuration: it connects to Plex, or
-spends one real completion, and reports what happened without raising. Both
-the wizard and the settings page run one before writing, so a wrong credential
-is a form error rather than something the user discovers on their next
-generation.
+asks a provider which models it serves, and reports what happened without
+raising. Both the wizard and the settings page run one before writing, so a
+wrong credential is a form error rather than something the user discovers on
+their next generation.
+
+Every probe is metadata-only. Saving settings must not spend a completion: it
+would bill the user for configuring, and block for `llm.request_timeout`.
 
 Nothing here writes or publishes anything -- a probe answers, the caller
 decides whether to commit.
 """
 
 import asyncio
-from typing import Final, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict
 
 from backend.config import ConfigUpdate, LLMSection, MediasageConfig, PlexConfig
-from backend.llm import LLMClient
+from backend.llm import ModelListing
 from backend.plex import PlexClient
-
-# Two words: every probe is billed, and every provider can manage it.
-PROBE_PROMPT: Final = "hi"
-PROBE_SYSTEM: Final = "Reply with one word."
 
 
 class Probe(BaseModel):
@@ -86,21 +85,29 @@ class PlexProbe(Probe):
 
 
 class LLMProbe(Probe):
-    """What a provider said when asked for one completion.
+    """What a provider said when asked which models it serves.
 
-    A real call rather than a reachability check: a key can be valid and the
-    model name wrong, and only the provider knows which.
+    A metadata call, never a completion: configuring inference must not spend
+    inference. Listing still proves the three things a save can get wrong --
+    the endpoint answers, the credential is accepted, and the configured model
+    names exist.
+
+    A provider that publishes no listing saves unvalidated. That is the price
+    of the check being free, and it is paid by the provider, not the user's
+    account.
     """
 
     @classmethod
     async def of(cls, section: LLMSection) -> Self:
-        """Spend one completion against `section` and report the outcome."""
-        try:
-            await asyncio.to_thread(
-                LLMClient.of(section).complete, PROBE_PROMPT, PROBE_SYSTEM, "analysis"
-            )
-        except Exception as err:
-            return cls(error=cls.friendly(str(err), section.label))
+        """List `section`'s models and report what that says about it."""
+        listing = await ModelListing.of(section)
+        if listing.error:
+            return cls(error=cls.friendly(listing.error, section.label))
+
+        absent = listing.missing(section.configured_models)
+        if absent:
+            return cls(error=f"{section.label} does not serve {', '.join(absent)}")
+
         return cls()
 
     @staticmethod
@@ -111,4 +118,3 @@ class LLMProbe(Probe):
         if "Could not resolve" in message or "connection" in message.lower():
             return f"Cannot connect to {provider_name}"
         return message
-

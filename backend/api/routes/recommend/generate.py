@@ -16,7 +16,11 @@ from starlette.responses import StreamingResponse
 from backend import library
 from backend.api.clients import shared
 from backend.library import AlbumCandidate, TrackFilter
-from backend.models import RecommendGenerateRequest
+from backend.models import (
+    RecommendGenerateRequest,
+    RecommendResultFrame,
+    RecommendStreamFrame,
+)
 from backend.recommender import (
     AnswerSet,
     RecommendationPipeline,
@@ -24,7 +28,7 @@ from backend.recommender import (
     pipeline_store,
 )
 from backend.recommender.round import RecommendationRound, RoundInputs, Step
-from backend.sse import SSE
+from backend.sse import SSE, EventStreamResponse
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +93,8 @@ async def _load_candidates(
 
 
 async def _generate(
-    request: RecommendGenerateRequest, raw_request: Request,
+    request: RecommendGenerateRequest,
+    raw_request: Request,
     pipeline: Annotated[RecommendationPipeline, Depends(pipeline_store.require)],
 ) -> StreamingResponse:
     """``POST /api/recommend/generate`` -- one round, streamed.
@@ -148,12 +153,10 @@ async def _generate(
                     yield SSE.progress(update.step, update.message)
                     continue
 
-                payload = update.model_dump(mode="json")
                 result_id = await asyncio.to_thread(round_.save, update)
-                if result_id:
-                    payload["result_id"] = result_id
+                frame = RecommendResultFrame(**update.model_dump(), result_id=result_id)
 
-                yield SSE.result(payload)
+                yield SSE.of("result", frame)
                 pipeline.sessions.remember(
                     request.session_id, [rec.ref for rec in update.recommendations]
                 )
@@ -162,14 +165,25 @@ async def _generate(
             yield SSE.error(str(err))
         except Exception:
             logger.exception("Recommendation generation failed")
-            yield SSE.error(
-                "An error occurred during recommendation generation. Please try again."
-            )
+            yield SSE.error("An error occurred during recommendation generation. Please try again.")
 
     return SSE.serve(events())
 
 
 def register_recommend_generate_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/recommend/generate", _generate, methods=["POST"], response_model=None
+        "/api/recommend/generate",
+        _generate,
+        methods=["POST"],
+        # The body is a stream of frames, which no `response_model` can
+        # describe; `responses` puts the frames themselves in the schema.
+        response_model=None,
+        response_class=EventStreamResponse,
+        responses={
+            200: {
+                "model": RecommendStreamFrame,
+                "description": "One `progress` frame per step, then `result`, or `error`.",
+            }
+        },
+        operation_id="generateRecommendations",
     )

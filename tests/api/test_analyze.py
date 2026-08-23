@@ -11,8 +11,13 @@ from backend.plex import PlexQueryError
 from tests.api.conftest import connected_plex_mock, mediasage_config, serve_plex
 
 TRACK = Track(
-    rating_key="1", title="Fake Plastic Trees", artist="Radiohead",
-    album="The Bends", duration_ms=290000, year=1995, genres=["Alternative"],
+    rating_key="1",
+    title="Fake Plastic Trees",
+    artist="Radiohead",
+    album="The Bends",
+    duration_ms=290000,
+    year=1995,
+    genres=["Alternative"],
 )
 
 
@@ -41,7 +46,8 @@ def analyzer(method: str, return_value: object = None, side_effect: Exception | 
 class TestAnalyzePrompt:
     def test_returns_the_analysis(self, client, analysable):
         answer = AnalyzePromptResponse(
-            suggested_genres=["Rock"], suggested_decades=["1990s"],
+            suggested_genres=["Rock"],
+            suggested_decades=["1990s"],
             available_genres=[GenreCount(name="Rock", count=100)],
             available_decades=[DecadeCount(name="1990s", count=100)],
             reasoning="why",
@@ -62,9 +68,7 @@ class TestAnalyzePrompt:
 
     def test_anything_else_is_500(self, client, analysable):
         with analyzer("analyze_prompt", side_effect=RuntimeError("connection reset")):
-            assert client.post(
-                "/api/analyze/prompt", json={"prompt": "test"}
-            ).status_code == 500
+            assert client.post("/api/analyze/prompt", json={"prompt": "test"}).status_code == 500
 
 
 class TestAnalyzeTrack:
@@ -78,9 +82,7 @@ class TestAnalyzeTrack:
     def test_a_missing_track_is_404(self, client, analysable):
         analysable.library.track_by_key.return_value = None
 
-        assert client.post(
-            "/api/analyze/track", json={"rating_key": "999"}
-        ).status_code == 404
+        assert client.post("/api/analyze/track", json={"rating_key": "999"}).status_code == 404
 
 
 class TestFilterPreview:

@@ -11,8 +11,11 @@ def library(
     """What Plex reports the library holds."""
     return LibraryStatsResponse(
         total_tracks=300,
-        genres=genres if genres is not None else [
-            GenreCount(name="Alternative", count=100), GenreCount(name="Rock", count=200),
+        genres=genres
+        if genres is not None
+        else [
+            GenreCount(name="Alternative", count=100),
+            GenreCount(name="Rock", count=200),
         ],
         decades=decades if decades is not None else [DecadeCount(name="1990s", count=150)],
     )
@@ -59,11 +62,17 @@ class TestFilters:
 
 class TestTrack:
     def test_every_field_reaches_the_prompt(self):
-        sent = prompts.track(Track(
-            rating_key="1", title="Fake Plastic Trees", artist="Radiohead",
-            album="The Bends", duration_ms=290000, year=1995,
-            genres=["Alternative", "Rock"],
-        ))
+        sent = prompts.track(
+            Track(
+                rating_key="1",
+                title="Fake Plastic Trees",
+                artist="Radiohead",
+                album="The Bends",
+                duration_ms=290000,
+                year=1995,
+                genres=["Alternative", "Rock"],
+            )
+        )
 
         assert "Fake Plastic Trees" in sent
         assert "Radiohead" in sent

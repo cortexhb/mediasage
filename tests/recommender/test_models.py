@@ -47,11 +47,14 @@ class TestAlbumRef:
 class TestWithoutEdition:
     """A library files "Nevermind (Deluxe Edition)"; MusicBrainz files "Nevermind"."""
 
-    @pytest.mark.parametrize("album,stripped", (
-        ("Nevermind (Deluxe Edition)", "Nevermind"),
-        ("Ten (Super Deluxe)", "Ten"),
-        ("Ágætis byrjun (Anniversary Edition)", "Ágætis byrjun"),
-    ))
+    @pytest.mark.parametrize(
+        "album,stripped",
+        (
+            ("Nevermind (Deluxe Edition)", "Nevermind"),
+            ("Ten (Super Deluxe)", "Ten"),
+            ("Ágætis byrjun (Anniversary Edition)", "Ágætis byrjun"),
+        ),
+    )
     def test_strips_an_edition_suffix(self, album, stripped):
         bare = AlbumRef(artist="A", album=album).without_edition()
         assert bare is not None
@@ -177,8 +180,8 @@ class TestPitchValidation:
             ],
         )
         corrections = result.corrections()
-        assert "WRONG: \"touring stint with David Berman\"" in corrections
-        assert "RIGHT: \"Jenkins rehearsed" in corrections
+        assert 'WRONG: "touring stint with David Berman"' in corrections
+        assert 'RIGHT: "Jenkins rehearsed' in corrections
 
 
 class TestResearchData:
@@ -195,11 +198,13 @@ class TestResearchData:
 
 class TestTasteProfile:
     def test_of_counts_genres_decades_and_artists(self):
-        profile = TasteProfile.of([
-            candidate("A", "One", genres=["Rock"], decade="1990s"),
-            candidate("A", "Two", genres=["Rock", "Jazz"], decade="1990s"),
-            candidate("B", "Three", genres=["Jazz"], decade="2000s"),
-        ])
+        profile = TasteProfile.of(
+            [
+                candidate("A", "One", genres=["Rock"], decade="1990s"),
+                candidate("A", "Two", genres=["Rock", "Jazz"], decade="1990s"),
+                candidate("B", "Three", genres=["Jazz"], decade="2000s"),
+            ]
+        )
         assert profile.genre_distribution == {"Rock": 2, "Jazz": 2}
         assert profile.decade_distribution == {"1990s": 2, "2000s": 1}
         assert profile.top_artists == ["A", "B"]

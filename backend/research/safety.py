@@ -31,7 +31,7 @@ class SafeFetcher(BaseModel):
         """Whether `url` is HTTP(S) and resolves only to public addresses."""
         try:
             parsed = httpx.URL(url)
-        except (httpx.InvalidURL, ValueError):
+        except httpx.InvalidURL, ValueError:
             return False
 
         if parsed.scheme not in ("http", "https"):
@@ -42,7 +42,7 @@ class SafeFetcher(BaseModel):
 
         try:
             resolved = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC)
-        except (socket.gaierror, UnicodeError, ValueError):
+        except socket.gaierror, UnicodeError, ValueError:
             return False
 
         for info in resolved:

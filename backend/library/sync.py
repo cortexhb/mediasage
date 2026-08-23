@@ -42,6 +42,7 @@ from backend.library.tables import SyncState, Track, TrackGenre
 
 logger = logging.getLogger(__name__)
 
+
 class LibrarySync(BaseModel):
     """The cache, the sync that fills it, and the progress that sync reports.
 
@@ -101,7 +102,7 @@ class LibrarySync(BaseModel):
 
         try:
             stamp = datetime.fromisoformat(synced_at.replace("Z", "+00:00"))
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return True
         return (datetime.now(UTC) - stamp).total_seconds() / 3600 > limit
 
@@ -149,8 +150,13 @@ class LibrarySync(BaseModel):
                 self._run.is_syncing = False
                 self._run.progress = SyncProgress()
 
-    def _advance(self, *, current: int | None = None, total: int | None = None,
-                 phase: SyncPhase | None = None) -> None:
+    def _advance(
+        self,
+        *,
+        current: int | None = None,
+        total: int | None = None,
+        phase: SyncPhase | None = None,
+    ) -> None:
         """Update whichever progress fields were supplied."""
         with self._lock:
             if current is not None:
@@ -303,9 +309,11 @@ class LibrarySync(BaseModel):
 
         with db.session() as session:
             # Through the connection: only a cursor result is typed to count rows.
-            removed = session.connection().execute(
-                delete(Track).where(Track.sync_token.is_distinct_from(token))
-            ).rowcount
+            removed = (
+                session.connection()
+                .execute(delete(Track).where(Track.sync_token.is_distinct_from(token)))
+                .rowcount
+            )
             if removed:
                 logger.info("Removed %d tracks no longer in the Plex library", removed)
 
@@ -320,9 +328,7 @@ class LibrarySync(BaseModel):
             session.add(state)
 
         logger.info("Sync complete: %d tracks in %dms", final_count, duration_ms)
-        return SyncResult(
-            success=True, track_count=final_count, duration_ms=duration_ms
-        )
+        return SyncResult(success=True, track_count=final_count, duration_ms=duration_ms)
 
 
 # The single sync this process runs.

@@ -117,7 +117,9 @@ class TestGenerateStream:
             "backend.generator.PlaylistGeneration.stream",
             return_value=iter(["event: progress\ndata: {}\n\n"]),
         ):
-            response = client.post("/api/generate/stream", json={"prompt": "test", "genres": [], "decades": []})
+            response = client.post(
+                "/api/generate/stream", json={"prompt": "test", "genres": [], "decades": []}
+            )
 
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/event-stream")

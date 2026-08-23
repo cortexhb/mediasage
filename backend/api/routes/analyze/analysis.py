@@ -60,7 +60,8 @@ class Analysis:
 
 
 async def _analyze_prompt(
-    request: AnalyzePromptRequest, plex: Annotated[PlexClient, Depends(plex_store.require)],
+    request: AnalyzePromptRequest,
+    plex: Annotated[PlexClient, Depends(plex_store.require)],
     llm: Annotated[LLMClient, Depends(client_store.require)],
 ) -> AnalyzePromptResponse:
     """``POST /api/analyze/prompt`` -- which filters a sentence implies."""
@@ -68,7 +69,8 @@ async def _analyze_prompt(
 
 
 async def _analyze_track(
-    request: AnalyzeTrackRequest, plex: Annotated[PlexClient, Depends(plex_store.require)],
+    request: AnalyzeTrackRequest,
+    plex: Annotated[PlexClient, Depends(plex_store.require)],
     llm: Annotated[LLMClient, Depends(client_store.require)],
 ) -> AnalyzeTrackResponse:
     """``POST /api/analyze/track`` -- the dimensions of a seed track."""
@@ -81,10 +83,16 @@ async def _analyze_track(
 
 def register_analysis_routes(app: FastAPI) -> None:
     app.add_api_route(
-        "/api/analyze/prompt", _analyze_prompt, methods=["POST"],
+        "/api/analyze/prompt",
+        _analyze_prompt,
+        methods=["POST"],
         response_model=AnalyzePromptResponse,
+        operation_id="analyzePrompt",
     )
     app.add_api_route(
-        "/api/analyze/track", _analyze_track, methods=["POST"],
+        "/api/analyze/track",
+        _analyze_track,
+        methods=["POST"],
         response_model=AnalyzeTrackResponse,
+        operation_id="analyzeTrack",
     )

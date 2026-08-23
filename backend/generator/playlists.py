@@ -15,7 +15,13 @@ from backend.config import config_store
 from backend.generator import prompts
 from backend.generator.models import Narrative, TrackMatcher, TrackPool
 from backend.llm import client_store
-from backend.models import GenerateResponse, Track
+from backend.models import (
+    GenerateResponse,
+    NarrativeFrame,
+    PlaylistCompleteFrame,
+    Track,
+    TracksFrame,
+)
 from backend.plex import PlexQueryError, plex_store
 from backend.results import Result, results_store
 from backend.sse import SSE
@@ -67,7 +73,9 @@ class PlaylistGeneration(BaseModel):
             return f"{self.prompt} · {len(matched)} tracks"
         return f"{len(matched)} tracks"
 
-    def matched(self, selections: list[dict], candidates: list[Track]) -> tuple[list[Track], dict[str, str]]:
+    def matched(
+        self, selections: list[dict], candidates: list[Track]
+    ) -> tuple[list[Track], dict[str, str]]:
         """The library tracks a model's selections name, and why each was picked.
 
         The seed track is excluded up front: a playlist that opens with the
@@ -160,8 +168,13 @@ class PlaylistGeneration(BaseModel):
             else:
                 yield SSE.progress("fetching", "Fetching tracks from library...")
 
-            logger.info("Fetching tracks: genres=%s, decades=%s, min_rating=%s, using_cache=%s",
-                        self.genres, self.decades, self.min_rating, using_cache)
+            logger.info(
+                "Fetching tracks: genres=%s, decades=%s, min_rating=%s, using_cache=%s",
+                self.genres,
+                self.decades,
+                self.min_rating,
+                using_cache,
+            )
             try:
                 candidates = pool.tracks(plex_client)
             except PlexQueryError as e:
@@ -194,8 +207,11 @@ class PlaylistGeneration(BaseModel):
 
             logger.info("Calling LLM with prompt length: %d chars", len(generation_prompt))
             response = llm_client.generate(generation_prompt, prompts.GENERATION_SYSTEM)
-            logger.info("LLM response received: %d input, %d output tokens",
-                        response.input_tokens, response.output_tokens)
+            logger.info(
+                "LLM response received: %d input, %d output tokens",
+                response.input_tokens,
+                response.output_tokens,
+            )
 
             yield SSE.progress("parsing", "Parsing AI selections...")
 
@@ -204,23 +220,27 @@ class PlaylistGeneration(BaseModel):
                 yield SSE.error("LLM returned invalid track selection format")
                 return
 
-            yield SSE.progress(
-                "matching", f"Matching {len(selections)} selections to library..."
-            )
+            yield SSE.progress("matching", f"Matching {len(selections)} selections to library...")
             matched, reasons = self.matched(selections, candidates)
 
             yield SSE.progress("narrative", "Writing playlist narrative...")
 
             written = Narrative.of(selections, llm_client, self.prompt)
-            logger.info("Generated narrative: title='%s', narrative_len=%d",
-                        written.title, len(written.text))
+            logger.info(
+                "Generated narrative: title='%s', narrative_len=%d",
+                written.title,
+                len(written.text),
+            )
 
-            yield SSE.frame("narrative", {
-                "playlist_title": written.title,
-                "narrative": written.text,
-                "track_reasons": reasons,
-                "user_request": self.prompt,
-            })
+            yield SSE.of(
+                "narrative",
+                NarrativeFrame(
+                    playlist_title=written.title,
+                    narrative=written.text,
+                    track_reasons=reasons,
+                    user_request=self.prompt,
+                ),
+            )
 
             logger.info("Track matching complete. Matched %d tracks", len(matched))
             yield SSE.progress("complete", "Playlist ready!")
@@ -244,26 +264,25 @@ class PlaylistGeneration(BaseModel):
                 yield SSE.error(f"Failed to build response: {e}")
                 return
 
-            tracks_data = [t.model_dump(mode="json") for t in result.tracks]
-            for i in range(0, len(tracks_data), TRACK_BATCH_SIZE):
-                batch = tracks_data[i:i + TRACK_BATCH_SIZE]
+            for i in range(0, len(result.tracks), TRACK_BATCH_SIZE):
+                batch = result.tracks[i : i + TRACK_BATCH_SIZE]
                 logger.info("Emitting track batch %d-%d", i, i + len(batch))
-                yield SSE.frame("tracks", {"batch": batch, "index": i})
+                yield SSE.of("tracks", TracksFrame(batch=batch, index=i))
 
             result_id = self.save(result, matched)
 
-            # The tracks already went out in batches, so this is metadata only.
-            complete_data = {
-                "track_count": len(result.tracks),
-                "token_count": result.token_count,
-                "estimated_cost": result.estimated_cost,
-                "playlist_title": result.playlist_title,
-                "narrative": result.narrative,
-                "track_reasons": result.track_reasons,
-            }
-            if result_id:
-                complete_data["result_id"] = result_id
-            yield SSE.frame("complete", complete_data)
+            yield SSE.of(
+                "complete",
+                PlaylistCompleteFrame(
+                    track_count=len(result.tracks),
+                    token_count=result.token_count,
+                    estimated_cost=result.estimated_cost,
+                    playlist_title=result.playlist_title,
+                    narrative=result.narrative,
+                    track_reasons=result.track_reasons,
+                    result_id=result_id,
+                ),
+            )
             logger.info("Complete event emitted successfully")
 
             # An ignored comment frame, sent to flush iOS Safari's buffer.
