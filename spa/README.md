@@ -141,6 +141,11 @@ Class names are camelCase blocks with BEM parts — `trackRow`, `trackRow__title
 Modules exposes them as JavaScript properties, and `styles.trackRow__title` resolves where a kebab-case name needs
 bracket access. Mixins and Sass variables are kebab-case: nothing reads those from JavaScript, so they follow Sass.
 
+**Every `className` is one static lookup.** A component never joins class strings, and no helper exists to do it.
+Where a style depends on state, the stylesheet selects on the attribute that state is already in —
+`.nav__trigger[aria-expanded='true']`, `.nav__item[aria-current]` — rather than the component picking a modifier. A
+variant with no attribute to hang on is usually a missing one; declarations shared between two blocks go in a `%placeholder`.
+
 Shared animations are mixins rather than global keyframes. CSS Modules hashes a keyframe name per file, so sharing one
 would mean `animation-name: :global(spin)` — an escape hatch the module system cannot check. Including the mixin gives
 each module its own hashed copy instead.

@@ -1,0 +1,36 @@
+/**
+ * The frame every page renders inside, from `frontend/style.css:102-127`.
+ *
+ * `.app--wide` is not ported: only the results grid widened the frame, so it
+ * arrives with that page.
+ */
+
+.shell {
+  max-width: 960px;
+  padding: var(--spacing-md);
+  margin: 0 auto;
+}
+
+.shell__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md) 0;
+  margin-bottom: var(--spacing-lg);
+  border-bottom: 1px solid var(--border);
+}
+
+.shell__logo {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.shell__logoLink {
+  color: inherit;
+  text-decoration: none;
+
+  &:hover {
+    opacity: 0.85;
+  }
+}

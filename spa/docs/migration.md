@@ -50,17 +50,23 @@ because the first page would drag the entire API layer in behind it, un-reviewab
 Components are born in `organisms/`. The second consumer moves one down a layer, as
 `spa/README.md` already requires. Nothing is promoted speculatively.
 
-| Phase | Scope                                                               | Why here                                       |
-| ----- | ------------------------------------------------------------------- | ---------------------------------------------- |
-| 0     | Design-system core, API boundary, SSE reader, spikes                | Nothing can be built without it. Mostly done   |
-| 1     | App shell, nav, `Overlay`, route table with stubs, legacy-hash shim | Proves routing and tokens                      |
-| 2     | Settings                                                            | Only configuration surface; the broken screen  |
-| 3     | Home, history feed, library sync                                    | Read-mostly; exercises loaders                 |
-| 4     | Prompt flow, filters, generation, `/result/:id`                     | Proves the step mechanism and the stream       |
-| 5     | Seed flow                                                           | Validates the shared filters route             |
-| 6     | Recommend Album                                                     | Largest screen; server-held session            |
-| 7     | Parity sweep                                                        | Checklist written in Phase 1                   |
-| 8     | Cutover                                                             | SPA fallback, Docker stage, delete `frontend/` |
+A route is declared when its page is built, not ahead of it. `src/routes.ts` holds the shell, the
+scaffold screen at `/`, and a catch-all; the navigation links to `/playlist`, `/recommend` and
+`/settings`, and each answers `NotFound` until its phase lands. Stub routes were rejected for the
+same reason as a speculative component library: a stub is a shape guessed before its loader exists,
+and a route table full of them reads as coverage the app does not have.
+
+| Phase | Scope                                                | Why here                                       |
+| ----- | ---------------------------------------------------- | ---------------------------------------------- |
+| 0     | Design-system core, API boundary, SSE reader, spikes | Nothing can be built without it. Mostly done   |
+| 1     | App shell, nav, `NotFound`                           | Proves routing and tokens                      |
+| 2     | Settings                                             | Only configuration surface; the broken screen  |
+| 3     | Home, history feed, library sync                     | Read-mostly; exercises loaders                 |
+| 4     | Prompt flow, filters, generation, `/result/:id`      | Proves the step mechanism and the stream       |
+| 5     | Seed flow                                            | Validates the shared filters route             |
+| 6     | Recommend Album                                      | Largest screen; server-held session            |
+| 7     | Parity sweep                                         | Each slice adds its own checklist rows         |
+| 8     | Cutover                                              | SPA fallback, Docker stage, delete `frontend/` |
 
 ### Settings Leads the Page Slices
 
@@ -355,8 +361,9 @@ Vite content-hashes its assets, so the version-stamping in that module is delete
 `no-cache` on the index and immutable caching on the asset directory.
 
 Old hash bookmarks break, because paths replace `#playlist-prompt`. A pure mapper translates the
-seven legacy hashes and rewrites the URL before the router is created, in Phase 1. Delete it one
-release after cutover, not at cutover.
+seven legacy hashes and rewrites the URL before the router is created. It lands here rather than in
+Phase 1, because every path it maps to has to exist first. Delete it one release after cutover, not
+at cutover.
 
 `Dockerfile` gains a Node build stage producing the SPA bundle, copied into the runtime image, which
 currently ships no frontend at all.

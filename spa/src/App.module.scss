@@ -1,30 +1,7 @@
 /**
- * The scaffold screen's frame, and the first consumer of the design system.
- *
- * Phase 1 replaces all of this with the app shell, at which point `.app`,
- * `.header` and `.logo` move to the layout that owns them.
+ * What the scaffold screen colours for itself. Its frame moved to
+ * `organisms/Shell` in Phase 1, and the file goes when Home replaces it.
  */
-
-.app {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: var(--spacing-md);
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-md) 0;
-  margin-bottom: var(--spacing-lg);
-  border-bottom: 1px solid var(--border);
-}
-
-.logo {
-  font-size: var(--font-size-xl);
-  font-weight: 700;
-  color: var(--accent);
-}
 
 .unreachable {
   color: var(--error);
