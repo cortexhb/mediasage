@@ -1,0 +1,11 @@
+dist
+node_modules
+package-lock.json
+
+# Tool state, not source. Regenerated, and not ours to rewrite.
+.omc
+
+# Ported verbatim from frontend/style.css and diffed against it for the whole
+# React port. Reformatting now would destroy that comparison; drop this line
+# once the old frontend is gone.
+src/style.css
