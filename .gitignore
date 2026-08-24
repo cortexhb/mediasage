@@ -62,6 +62,10 @@ Thumbs.db
 config.yaml
 config.yml
 config.user.yaml
+# A suffixed copy is the same secrets: config.user.yaml.bak was committed once.
+config.yaml.*
+config.user.yaml.*
+*.bak
 !config.example.yaml
 !config.example.yml
 
