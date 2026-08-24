@@ -19,6 +19,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': { target: API, changeOrigin: true },
+      // Not under `/api`, but the settings form reads it: see `libs/patchFields`.
+      '/openapi.json': { target: API, changeOrigin: true },
     },
   },
 })

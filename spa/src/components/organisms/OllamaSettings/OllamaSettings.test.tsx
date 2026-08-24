@@ -240,7 +240,7 @@ describe('OllamaSettings', () => {
       // The hidden field carrying it: no label, so found by its value.
       expect(screen.getByDisplayValue('40960')).toHaveAttribute(
         'name',
-        'context_window',
+        'llm.context_window',
       )
     })
 

@@ -92,7 +92,7 @@ export function OllamaSettings({
     <>
       <Field
         label="Ollama URL"
-        name="endpoint_url"
+        name="llm.endpoint_url"
         type="url"
         value={url}
         onChange={(event) => {
@@ -110,7 +110,7 @@ export function OllamaSettings({
       </Status>
       <SelectField
         label="Analysis Model"
-        name="model_analysis"
+        name="llm.model_analysis"
         value={chosen.analysis}
         onChange={(event) => {
           const model = event.target.value
@@ -124,7 +124,7 @@ export function OllamaSettings({
       />
       <SelectField
         label="Generation Model"
-        name="model_generation"
+        name="llm.model_generation"
         value={chosen.generation}
         onChange={(event) => {
           setPicked((was) => ({ ...was, generation: event.target.value }))
@@ -134,7 +134,7 @@ export function OllamaSettings({
         disabled={options.length === 0}
       />
       {found !== undefined && (
-        <Input type="hidden" name="context_window" value={found} readOnly />
+        <Input type="hidden" name="llm.context_window" value={found} readOnly />
       )}
       <Text tone="muted">
         Context window: {shown.toLocaleString()} tokens

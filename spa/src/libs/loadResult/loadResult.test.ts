@@ -10,7 +10,9 @@ import { loadResult } from './loadResult.ts'
  * Takes the whole `params`, not an id: a default parameter would swallow the
  * one case worth testing, since `args(undefined)` falls back to the default.
  */
-function args(params: Record<string, string | undefined> = { resultId: 'r-1' }) {
+function args(
+  params: Record<string, string | undefined> = { resultId: 'r-1' },
+) {
   return {
     request: new Request('http://localhost/result/r-1'),
     params,
@@ -68,7 +70,10 @@ describe('loadResult', () => {
   it('lets a server failure say what it was, rather than calling it missing', async () => {
     server.use(
       http.get('/api/results/r-1', () =>
-        HttpResponse.json({ detail: 'the database is on fire' }, { status: 500 }),
+        HttpResponse.json(
+          { detail: 'the database is on fire' },
+          { status: 500 },
+        ),
       ),
     )
 

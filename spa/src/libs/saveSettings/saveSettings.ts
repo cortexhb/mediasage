@@ -22,6 +22,7 @@ import type {
   SetupStatusResponse,
 } from '../../api/generated/types.gen.ts'
 import { ApiError } from '../../api/request/request.ts'
+import type { PatchKind } from '../patchFields/patchFields.ts'
 import { settingsUpdate } from '../settingsUpdate/settingsUpdate.ts'
 
 /** Anything that is not the API refusing: no answer came back at all. */
@@ -49,10 +50,11 @@ async function refreshedSetup(
 
 export async function saveSettings(
   form: FormData,
+  kinds: ReadonlyMap<string, PatchKind>,
   signal: AbortSignal,
 ): Promise<SaveOutcome> {
   try {
-    const config = await saveConfig(settingsUpdate(form), signal)
+    const config = await saveConfig(settingsUpdate(form, kinds), signal)
     return {
       saved: true,
       message: 'Settings saved',

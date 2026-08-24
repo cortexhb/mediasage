@@ -9,6 +9,7 @@
  * the navigation can answer `NotFound` until its phase lands.
  */
 import type { RouteObject } from 'react-router'
+import { redirect } from 'react-router'
 
 import { Shell } from './components/organisms/Shell/Shell.tsx'
 import { actOnRecommendation } from './libs/actOnRecommendation/actOnRecommendation.ts'
@@ -36,6 +37,7 @@ import {
   ALBUM_PREVIEW,
   previewAlbums,
 } from './libs/previewAlbums/previewAlbums.ts'
+import { SETTINGS_GROUPS } from './libs/settingsGroups/settingsGroups.ts'
 import {
   PREVIEW,
   previewSelection,
@@ -59,6 +61,10 @@ import { RefineStep } from './pages/RefineStep/RefineStep.tsx'
 import { Result } from './pages/Result/Result.tsx'
 import { SeedStep } from './pages/SeedStep/SeedStep.tsx'
 import { Settings } from './pages/Settings/Settings.tsx'
+import { SettingsGroup } from './pages/SettingsGroup/SettingsGroup.tsx'
+
+/** Where bare `/settings` lands: the rail's first entry. */
+const FIRST_GROUP = SETTINGS_GROUPS[0]?.slug ?? 'plex'
 
 export const routes: RouteObject[] = [
   {
@@ -156,6 +162,11 @@ export const routes: RouteObject[] = [
             path: 'settings',
             Component: Settings,
             loader: loadSettings,
+            children: [
+              // Bare `/settings` names no group, so it opens on the first.
+              { index: true, loader: () => redirect(FIRST_GROUP) },
+              { path: ':group', Component: SettingsGroup },
+            ],
           },
           {
             // No component: the settings form loads this through a fetcher,

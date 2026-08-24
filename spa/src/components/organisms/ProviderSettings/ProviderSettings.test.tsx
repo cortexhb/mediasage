@@ -4,30 +4,13 @@ import { http, HttpResponse } from 'msw'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { server } from '@test'
+import { CONFIG, configWith, server } from '@test'
 import type { ConfigResponse } from '../../../api/generated/types.gen.ts'
 import { probeOllama } from '../../../libs/probeOllama/probeOllama.ts'
 import { ProviderSettings } from './ProviderSettings.tsx'
 
-/** A configured Anthropic deployment, which is the common case. */
-const CONFIG: ConfigResponse = {
-  version: '1.0.0',
-  plex_connected: true,
-  plex_linked: true,
-  plex_server_name: 'Living Room',
-  plex_server_id: 'abc123',
-  music_library: 'Music',
-  llm_provider: 'anthropic',
-  llm_configured: true,
-  llm_api_key_set: true,
-  model_analysis: 'claude-opus',
-  model_generation: 'claude-haiku',
-  max_tracks_to_ai: 500,
-  max_albums_to_ai: 100,
-  defaults: { track_count: 25 },
-  context_window: 200000,
-  stream_idle_timeout: 600,
-}
+/** The `llm` section a case wants, over the configured Anthropic default. */
+type Llm = ConfigResponse['sections']['llm']
 
 /**
  * The component under test, with the provider overridden per case.
@@ -35,15 +18,34 @@ const CONFIG: ConfigResponse = {
  * Inside a router: the Ollama branch probes its endpoint through a fetcher,
  * so the resource route has to exist even for the cases that never show it.
  */
-function renderWith(config: Partial<ConfigResponse> = {}) {
+function renderWith(llm?: Llm, rest: Partial<ConfigResponse> = {}) {
+  const config = llm ? configWith({ llm }, rest) : { ...CONFIG, ...rest }
   const router = createMemoryRouter([
-    {
-      path: '/',
-      Component: () => <ProviderSettings config={{ ...CONFIG, ...config }} />,
-    },
+    { path: '/', Component: () => <ProviderSettings config={config} /> },
     { path: '/settings/ollama', loader: probeOllama },
   ])
   return render(<RouterProvider router={router} />)
+}
+
+/** A hosted provider, which is the shape the cloud branch draws. */
+function cloud(provider: 'anthropic' | 'openai' | 'gemini'): Llm {
+  return {
+    provider,
+    model_analysis: 'claude-opus',
+    model_generation: 'claude-haiku',
+    context_window: 200000,
+  }
+}
+
+/** A local one, which is the only shape carrying an endpoint. */
+function local(provider: 'ollama' | 'custom'): Llm {
+  return {
+    provider,
+    endpoint_url: 'http://localhost:11434',
+    model_analysis: 'qwen3:8b',
+    model_generation: 'qwen3:8b',
+    context_window: 32768,
+  }
 }
 
 describe('ProviderSettings', () => {
@@ -66,7 +68,7 @@ describe('ProviderSettings', () => {
     [true, 'Configured'],
     [false, 'Not configured'],
   ])('reports llm_configured=%s as "%s"', (configured, reported) => {
-    renderWith({ llm_configured: configured })
+    renderWith(undefined, { llm_configured: configured })
 
     expect(screen.getByRole('status')).toHaveTextContent(reported)
   })
@@ -90,8 +92,8 @@ describe('ProviderSettings', () => {
   describe('a cloud provider', () => {
     it.each(['anthropic', 'openai', 'gemini'])(
       'asks %s for a key and nothing else',
-      (llm_provider) => {
-        renderWith({ llm_provider })
+      (provider) => {
+        renderWith(cloud(provider as 'anthropic' | 'openai' | 'gemini'))
 
         expect(screen.getByLabelText('API Key')).toBeInTheDocument()
         expect(
@@ -114,7 +116,7 @@ describe('ProviderSettings', () => {
 
   describe('a local provider', () => {
     it('shows the Ollama fields and no API key', () => {
-      renderWith({ llm_provider: 'ollama' })
+      renderWith(local('ollama'))
 
       expect(
         screen.getByRole('textbox', { name: 'Ollama URL' }),
@@ -123,7 +125,7 @@ describe('ProviderSettings', () => {
     })
 
     it('shows the custom fields, key included, since some servers want one', () => {
-      renderWith({ llm_provider: 'custom' })
+      renderWith(local('custom'))
 
       expect(
         screen.getByRole('textbox', { name: 'API Base URL' }),
@@ -135,7 +137,7 @@ describe('ProviderSettings', () => {
   describe('choosing a different provider', () => {
     it('swaps the fields under it before anything is saved', async () => {
       const user = userEvent.setup()
-      renderWith({ llm_provider: 'anthropic' })
+      renderWith(cloud('anthropic'))
 
       await user.selectOptions(
         screen.getByRole('combobox', { name: 'Provider' }),
@@ -151,22 +153,22 @@ describe('ProviderSettings', () => {
 
   describe('when the deployment sets the provider', () => {
     it('refuses the change and says where it comes from', () => {
-      renderWith({ provider_from_env: true })
+      renderWith(undefined, { from_env: ['llm.provider'] })
 
       const select = screen.getByRole('combobox', { name: 'Provider' })
       expect(select).toBeDisabled()
       expect(select).toHaveAccessibleDescription(
-        'Set by LLM_PROVIDER. Edit .env to change it.',
+        'Set by MEDIASAGE_LLM__PROVIDER. Edit .env to change it.',
       )
     })
 
     it('still submits it, since a disabled control is left out', () => {
       // Without it the save cannot tell a custom provider from any other.
-      renderWith({ provider_from_env: true, llm_provider: 'custom' })
+      renderWith(local('custom'), { from_env: ['llm.provider'] })
 
       expect(screen.getByDisplayValue('custom')).toHaveAttribute(
         'name',
-        'llm_provider',
+        'llm.provider',
       )
     })
   })

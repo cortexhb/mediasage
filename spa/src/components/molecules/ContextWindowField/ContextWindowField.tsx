@@ -37,7 +37,7 @@ export function ContextWindowField({
   return (
     <Field
       label="Context Window"
-      name="context_window"
+      name="llm.context_window"
       type="number"
       // Constraints, not decoration: they are what blocks an invalid submit.
       min={SMALLEST}

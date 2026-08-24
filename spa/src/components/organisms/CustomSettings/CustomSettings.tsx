@@ -40,7 +40,7 @@ export function CustomSettings({
     <>
       <Field
         label="API Base URL"
-        name="endpoint_url"
+        name="llm.endpoint_url"
         type="url"
         value={url}
         onChange={(event) => {
@@ -55,7 +55,7 @@ export function CustomSettings({
       />
       <Field
         label="API Key"
-        name="llm_api_key"
+        name="llm.api_key"
         type="password"
         autoComplete="off"
         optional
@@ -63,7 +63,7 @@ export function CustomSettings({
       />
       <Field
         label="Model Name"
-        name="model_analysis"
+        name="llm.model_analysis"
         defaultValue={model}
         placeholder="model-name"
         hint="Used for analysis and for generation both."

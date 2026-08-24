@@ -41,6 +41,10 @@ PROVIDER_LABELS: Final[dict[str, str]] = {
     "custom": "Custom (OpenAI-compatible)",
 }
 
+# Restated on all three declarations: a subclass narrowing the literal
+# redeclares the field, and a redeclared field inherits no description.
+PROVIDER_HINT: Final = "Who serves the model. Changing it clears the model names and the key."
+
 # Which configured model a call spends, and so which price applies.
 Role = Literal["analysis", "generation"]
 
@@ -125,39 +129,60 @@ class PlexConfig(ConfigSection):
         {"url", "token", "account_token", "server_id", "client_id", "server_name"}
     )
 
-    # A cache, not a setting: addresses move, and `server_id` re-resolves them.
-    url: str = ""
-
-    # The chosen server's own token; diverges from `account_token` when shared.
-    token: SecretStr = SecretStr("")
-
-    # Lists the servers. Kept so a sign-in survives a server being swapped.
-    account_token: SecretStr = SecretStr("")
-
-    # `clientIdentifier`, stable while the address is not.
-    server_id: str = ""
-    server_name: str = ""
-
-    # Ours, sent as X-Plex-Client-Identifier; a new one orphans a Plex device.
-    client_id: str = ""
-
-    music_library: str = "Music"
-
-    # Rows per bulk request; PLEXAPI_PLEXAPI_CONTAINER_SIZE is set to match.
-    page_size: int = Field(default=1000, gt=0)
-
-    # Seconds one Plex request may take before it is abandoned.
-    connect_timeout: float = Field(default=30.0, gt=0)
-
-    # Seconds before a disconnected client retries the server.
-    reconnect_cooldown: float = Field(default=30.0, ge=0)
-
-    # Seconds between retries of a transient failure; empty disables retrying.
-    retry_backoff: list[float] = [1.0, 3.0, 8.0, 20.0]
-
-    # Concurrent genre queries during a sync; 1 keeps that stage serial.
-    # 8: one request per genre, and a big library has hundreds.
-    genre_workers: int = Field(default=8, gt=0, le=64)
+    url: str = Field(
+        default="",
+        description="A cache, not a setting: addresses move, and the server id re-resolves them.",
+    )
+    token: SecretStr = Field(
+        default=SecretStr(""),
+        description="The chosen server's own token; diverges from the account token when shared.",
+    )
+    account_token: SecretStr = Field(
+        default=SecretStr(""),
+        description="Lists the servers. Kept so a sign-in survives a server being swapped.",
+    )
+    server_id: str = Field(
+        default="",
+        description="Plex's `clientIdentifier` for the server, stable while the address is not.",
+    )
+    server_name: str = Field(
+        default="", description="The signed-in server's name, as Plex reports it."
+    )
+    client_id: str = Field(
+        default="",
+        description="Ours, sent as X-Plex-Client-Identifier; a new one orphans a Plex device.",
+    )
+    music_library: str = Field(
+        default="Music", description="Which Plex library section holds the music."
+    )
+    page_size: int = Field(
+        default=1000,
+        gt=0,
+        description="Rows per bulk request; PLEXAPI_PLEXAPI_CONTAINER_SIZE is set to match.",
+    )
+    connect_timeout: float = Field(
+        default=30.0,
+        gt=0,
+        description="Seconds one Plex request may take before it is abandoned.",
+    )
+    reconnect_cooldown: float = Field(
+        default=30.0,
+        ge=0,
+        description="Seconds before a disconnected client retries the server.",
+    )
+    retry_backoff: list[float] = Field(
+        default=[1.0, 3.0, 8.0, 20.0],
+        description="Seconds between retries of a transient failure; empty disables retrying.",
+    )
+    genre_workers: int = Field(
+        default=8,
+        gt=0,
+        le=64,
+        description=(
+            "Concurrent genre queries during a sync; 1 keeps that stage serial. "
+            "8 because it is one request per genre, and a big library has hundreds."
+        ),
+    )
 
     @field_validator("url")
     @classmethod
@@ -177,46 +202,113 @@ class LLMConfig(ConfigSection):
     """What every provider needs, whoever serves the model."""
 
     # Declared here because `label` reads it; subclasses narrow the literal.
-    provider: Provider
+    provider: Provider = Field(description=PROVIDER_HINT)
 
-    api_key: SecretStr = SecretStr("")
-    model_analysis: str = ""
-    model_generation: str = ""
-    smart_generation: bool = False
-
-    # Required: a per-model limits table goes stale, a guessed one overflows.
-    context_window: int
-
-    # Seconds before an outbound call is abandoned; slow hardware needs minutes.
-    request_timeout: float = Field(default=600.0, gt=0)
-
-    # Seconds of silence on a generate stream before the browser gives up.
-    # Per frame: a model may think for minutes between them.
-    stream_idle_timeout: float = Field(default=600.0, gt=0)
-
-    # Ceiling on one completion; raise it for models that answer at length.
-    max_output_tokens: int = Field(default=8192, gt=0)
-
-    # Attempts per call, retried with exponential backoff.
-    max_retries: int = Field(default=3, ge=1, le=10)
+    api_key: SecretStr = Field(
+        default=SecretStr(""),
+        description="Credential for a hosted provider. A local server usually needs none.",
+    )
+    model_analysis: str = Field(
+        default="",
+        description="Reads the prompt and picks the tracks. The stronger model belongs here.",
+    )
+    model_generation: str = Field(
+        default="",
+        description="Writes the playlist from the filtered list. A cheaper model does.",
+    )
+    smart_generation: bool = Field(
+        default=False,
+        description="Spend the analysis model on generation too: better results, higher cost.",
+    )
+    context_window: int = Field(
+        description="Required: a per-model limits table goes stale, and a guessed one overflows.",
+    )
+    request_timeout: float = Field(
+        default=600.0,
+        gt=0,
+        description="Seconds before an outbound call is abandoned; slow hardware needs minutes.",
+    )
+    stream_idle_timeout: float = Field(
+        default=600.0,
+        gt=0,
+        description=(
+            "Seconds of silence on a generate stream before the browser gives up. "
+            "Measured per frame: a model may think for minutes between them."
+        ),
+    )
+    max_output_tokens: int = Field(
+        default=8192,
+        gt=0,
+        description="Ceiling on one completion; raise it for models that answer at length.",
+    )
+    max_retries: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Attempts per call, retried with exponential backoff.",
+    )
 
     # Sampling: unset is not sent, leaving the server's own default.
-    # Right values come from the model card, and differ per mode.
-    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
-    top_p: float | None = Field(default=None, gt=0.0, le=1.0)
-    top_k: int | None = Field(default=None, ge=0)
-    min_p: float | None = Field(default=None, ge=0.0, le=1.0)
-    presence_penalty: float | None = Field(default=None, ge=-2.0, le=2.0)
-    repetition_penalty: float | None = Field(default=None, gt=0.0, le=2.0)
-
-    # Seconds for a metadata-only liveness probe; slow here means server down.
-    probe_timeout: float = Field(default=5.0, gt=0)
-
-    # Per million tokens; split by role, the two models rarely cost alike.
-    cost_analysis_input: float = Field(default=0.0, ge=0.0)
-    cost_analysis_output: float = Field(default=0.0, ge=0.0)
-    cost_generation_input: float = Field(default=0.0, ge=0.0)
-    cost_generation_output: float = Field(default=0.0, ge=0.0)
+    temperature: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=2.0,
+        description="Randomness. Unset sends nothing, leaving the server's own default.",
+    )
+    top_p: float | None = Field(
+        default=None,
+        gt=0.0,
+        le=1.0,
+        description="Nucleus sampling mass. Unset sends nothing; the model card names a value.",
+    )
+    top_k: int | None = Field(
+        default=None,
+        ge=0,
+        description="Candidate tokens considered per step. Unset sends nothing.",
+    )
+    min_p: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Floor on a token's probability, relative to the best one. Unset sends nothing.",
+    )
+    presence_penalty: float | None = Field(
+        default=None,
+        ge=-2.0,
+        le=2.0,
+        description="Pushes the model off tokens it has already used. Unset sends nothing.",
+    )
+    repetition_penalty: float | None = Field(
+        default=None,
+        gt=0.0,
+        le=2.0,
+        description="Divides the score of repeated tokens. Unset sends nothing.",
+    )
+    probe_timeout: float = Field(
+        default=5.0,
+        gt=0,
+        description="Seconds for a metadata-only liveness probe; slow here means server down.",
+    )
+    cost_analysis_input: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="USD per million input tokens on the analysis model. 0 reports no cost.",
+    )
+    cost_analysis_output: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="USD per million output tokens on the analysis model. 0 reports no cost.",
+    )
+    cost_generation_input: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="USD per million input tokens on the generation model. 0 reports no cost.",
+    )
+    cost_generation_output: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="USD per million output tokens on the generation model. 0 reports no cost.",
+    )
 
     # Whether inference runs locally, meaning no per-token cost.
     is_local: ClassVar[bool] = False
@@ -290,17 +382,19 @@ class LLMConfig(ConfigSection):
 class CloudLLMConfig(LLMConfig):
     """A hosted provider, reached with an API key."""
 
-    provider: Literal["anthropic", "openai", "gemini"]
+    provider: Literal["anthropic", "openai", "gemini"] = Field(description=PROVIDER_HINT)
 
 
 class LocalLLMConfig(LLMConfig):
     """A provider on the user's own hardware, reached by URL."""
 
-    provider: Literal["ollama", "custom"]
+    provider: Literal["ollama", "custom"] = Field(description=PROVIDER_HINT)
 
     is_local: ClassVar[bool] = True
 
-    endpoint_url: str
+    endpoint_url: str = Field(
+        description="Where the local server listens, including any /v1 suffix it expects.",
+    )
 
     @property
     def is_configured(self) -> bool:
@@ -333,14 +427,27 @@ class BudgetConfig(ConfigSection):
     the user's to tune.
     """
 
-    tokens_per_track: int = Field(default=40, gt=0)
-    tokens_per_album: int = Field(default=25, gt=0)
-
-    # Room for tokenizer drift between the model and our estimate.
-    context_buffer_fraction: float = Field(default=0.10, ge=0.0, lt=1.0)
-
-    # Room for the system prompt and the model's own answer.
-    reserved_prompt_tokens: int = Field(default=1000, ge=0)
+    tokens_per_track: int = Field(
+        default=40,
+        gt=0,
+        description="Measured average for one track line. Longer titles need more.",
+    )
+    tokens_per_album: int = Field(
+        default=25,
+        gt=0,
+        description="Measured average for one album line. Longer titles need more.",
+    )
+    context_buffer_fraction: float = Field(
+        default=0.10,
+        ge=0.0,
+        lt=1.0,
+        description="Room for tokenizer drift between the model and our estimate.",
+    )
+    reserved_prompt_tokens: int = Field(
+        default=1000,
+        ge=0,
+        description="Room for the system prompt and the model's own answer.",
+    )
 
 
 class LibraryConfig(ConfigSection):
@@ -351,24 +458,37 @@ class LibraryConfig(ConfigSection):
     them are structural, so none are baked into the code.
     """
 
-    # Rows per transaction; also how often progress and the resume checkpoint move.
-    sync_batch_size: int = Field(default=500, gt=0)
-
-    # Hours before the cache is treated as stale and worth re-syncing.
-    stale_after_hours: int = Field(default=24, gt=0)
-
-    # Seconds a live stats read is reused; 0 disables it.
-    # Plex takes 8.75s aggregating track genres over an 80k library.
-    stats_cache_seconds: float = Field(default=600.0, ge=0)
-
-    # Average plays per track at which an album counts as well-loved.
-    well_loved_avg_plays: float = Field(default=3.0, gt=0)
-
-    # Words in a title or album that mark a recording as a live performance.
-    live_keywords: list[str] = ["live", "concert", "sbd", "bootleg"]
-
-    # Whether a date in the title also marks it live; false for dated studio work.
-    dated_titles_are_live: bool = True
+    sync_batch_size: int = Field(
+        default=500,
+        gt=0,
+        description="Rows per transaction, and how often progress and the resume point move.",
+    )
+    stale_after_hours: int = Field(
+        default=24,
+        gt=0,
+        description="Hours before the cache is treated as stale and worth re-syncing.",
+    )
+    stats_cache_seconds: float = Field(
+        default=600.0,
+        ge=0,
+        description=(
+            "Seconds a live stats read is reused; 0 disables it. "
+            "Plex takes 8.75s aggregating track genres over an 80k library."
+        ),
+    )
+    well_loved_avg_plays: float = Field(
+        default=3.0,
+        gt=0,
+        description="Average plays per track at which an album counts as well-loved.",
+    )
+    live_keywords: list[str] = Field(
+        default=["live", "concert", "sbd", "bootleg"],
+        description="Words in a title or album that mark a recording as a live performance.",
+    )
+    dated_titles_are_live: bool = Field(
+        default=True,
+        description="Whether a date in the title also marks it live. Off for dated studio work.",
+    )
 
 
 class ResearchConfig(ConfigSection):
@@ -380,55 +500,80 @@ class ResearchConfig(ConfigSection):
     moves with the context window the user configured.
     """
 
-    # Seconds one research call may take; research must not block a pitch.
-    request_timeout: float = Field(default=10.0, gt=0)
-
-    # Source endpoints; point these at a local mirror if one is running.
-    musicbrainz_url: str = "https://musicbrainz.org/ws/2"
-    cover_art_url: str = "https://coverartarchive.org"
-    wikipedia_api_url: str = "https://en.wikipedia.org/w/api.php"
-
-    # Seconds between MusicBrainz calls; their published limit is one a second.
-    musicbrainz_interval: float = Field(default=1.0, ge=0)
-
-    # Characters kept from one article, after the sections below are dropped.
-    wikipedia_max_chars: int = Field(default=8000, gt=0)
-
-    # Section titles containing any of these are tables rendered as prose.
-    wikipedia_drop_sections: list[str] = [
-        "track listing",
-        "chart",
-        "certification",
-        "personnel",
-        "credits",
-        "reference",
-        "external link",
-        "see also",
-        "note",
-        "footnote",
-        "accolade",
-        "award",
-        "release history",
-        "singles",
-        "bibliography",
-        "further reading",
-        "citation",
-        "reissue",
-        "remaster",
-    ]
-
-    # Reviews read per album, and the characters kept from each.
-    max_reviews: int = Field(default=2, ge=0)
-    review_max_chars: int = Field(default=2000, gt=0)
-
-    # Earliest character a sentence break is accepted at when trimming a review.
-    review_min_chars: int = Field(default=1500, ge=0)
-
-    # Never fetched; AllMusic's terms prohibit automated access.
-    blocked_review_hosts: list[str] = ["allmusic.com"]
-
-    # Redirect hops followed before giving up; each hop is re-checked as safe.
-    max_redirects: int = Field(default=5, ge=0)
+    request_timeout: float = Field(
+        default=10.0,
+        gt=0,
+        description="Seconds one research call may take; research must not block a pitch.",
+    )
+    musicbrainz_url: str = Field(
+        default="https://musicbrainz.org/ws/2",
+        description="Point this at a local MusicBrainz mirror if one is running.",
+    )
+    cover_art_url: str = Field(
+        default="https://coverartarchive.org",
+        description="Point this at a local Cover Art Archive mirror if one is running.",
+    )
+    wikipedia_api_url: str = Field(
+        default="https://en.wikipedia.org/w/api.php",
+        description="A different language edition changes which articles are read.",
+    )
+    musicbrainz_interval: float = Field(
+        default=1.0,
+        ge=0,
+        description=(
+            "Seconds between MusicBrainz calls; their published limit is one a second. "
+            "Drop it to 0 against your own mirror."
+        ),
+    )
+    wikipedia_max_chars: int = Field(
+        default=8000,
+        gt=0,
+        description="Characters kept from one article, after the dropped sections go.",
+    )
+    wikipedia_drop_sections: list[str] = Field(
+        default=[
+            "track listing",
+            "chart",
+            "certification",
+            "personnel",
+            "credits",
+            "reference",
+            "external link",
+            "see also",
+            "note",
+            "footnote",
+            "accolade",
+            "award",
+            "release history",
+            "singles",
+            "bibliography",
+            "further reading",
+            "citation",
+            "reissue",
+            "remaster",
+        ],
+        description="A section whose title contains any of these is a table rendered as prose.",
+    )
+    max_reviews: int = Field(
+        default=2, ge=0, description="Reviews read per album. 0 skips reviews entirely."
+    )
+    review_max_chars: int = Field(
+        default=2000, gt=0, description="Characters kept from one review."
+    )
+    review_min_chars: int = Field(
+        default=1500,
+        ge=0,
+        description="Earliest character a sentence break is accepted at when trimming a review.",
+    )
+    blocked_review_hosts: list[str] = Field(
+        default=["allmusic.com"],
+        description="Never fetched; AllMusic's terms prohibit automated access.",
+    )
+    max_redirects: int = Field(
+        default=5,
+        ge=0,
+        description="Redirect hops followed before giving up; each hop is re-checked as safe.",
+    )
 
     @model_validator(mode="after")
     def check_review_bounds(self) -> Self:
@@ -447,16 +592,33 @@ class MatchingConfig(ConfigSection):
     lower one. Too low plays the wrong record; too high drops good matches.
     """
 
-    # Floor for matching a track the model named against the library.
-    track_threshold: int = Field(default=60, ge=0, le=100)
-
-    # Picking a library album: a wrong match here plays the wrong record.
-    album_artist_min: int = Field(default=70, ge=0, le=100)
-    album_combined_min: int = Field(default=70, ge=0, le=100)
-
-    # Attaching a pitch; the prompt named the album, so the artist is sure.
-    pitch_artist_min: int = Field(default=80, ge=0, le=100)
-    pitch_album_min: int = Field(default=60, ge=0, le=100)
+    track_threshold: int = Field(
+        default=60,
+        ge=0,
+        le=100,
+        description="Floor for matching a track the model named against the library.",
+    )
+    album_artist_min: int = Field(
+        default=70,
+        ge=0,
+        le=100,
+        description="Artist floor when picking a library album. Too low plays the wrong record.",
+    )
+    album_combined_min: int = Field(
+        default=70,
+        ge=0,
+        le=100,
+        description="Artist and title scored together when picking a library album.",
+    )
+    pitch_artist_min: int = Field(
+        default=80,
+        ge=0,
+        le=100,
+        description="Artist floor when attaching a pitch. High: the prompt named the album.",
+    )
+    pitch_album_min: int = Field(
+        default=60, ge=0, le=100, description="Album-title floor when attaching a pitch."
+    )
 
 
 class RecommendConfig(ConfigSection):
@@ -466,30 +628,41 @@ class RecommendConfig(ConfigSection):
     policy; the pick counts are how much a user wants to read at once.
     """
 
-    # Seconds an untouched session survives, and how many are held at once.
-    session_expiry: int = Field(default=1800, gt=0)
-    max_sessions: int = Field(default=100, gt=0)
-
-    # Albums remembered per session, so "Show me another" stops repeating.
-    recent_limit: int = Field(default=30, ge=0)
-
-    # Dimensions one round asks the user about before picking.
-    question_count: int = Field(default=2, ge=0)
-
-    # Albums one round shows: one primary and the rest secondary.
-    pick_count: int = Field(default=3, gt=0)
-
-    # Discovery asks for more than it shows; owned albums are filtered after.
-    discovery_request: int = Field(default=7, gt=0)
-
-    # Below this many candidates the model is told the pool is thin.
-    small_pool: int = Field(default=10, ge=0)
-
-    # Owned albums listed in the discovery prompt; the rest are filtered after.
-    max_exclusion_albums: int = Field(default=2500, gt=0)
-
-    # Genres per album line; more is noise the model ignores.
-    genres_per_line: int = Field(default=3, ge=0)
+    session_expiry: int = Field(
+        default=1800, gt=0, description="Seconds an untouched recommendation session survives."
+    )
+    max_sessions: int = Field(
+        default=100, gt=0, description="Sessions held in memory at once, across all users."
+    )
+    recent_limit: int = Field(
+        default=30,
+        ge=0,
+        description='Albums remembered per session, so "Show me another" stops repeating.',
+    )
+    question_count: int = Field(
+        default=2, ge=0, description="Dimensions one round asks the user about before picking."
+    )
+    pick_count: int = Field(
+        default=3, gt=0, description="Albums one round shows: one primary and the rest secondary."
+    )
+    discovery_request: int = Field(
+        default=7,
+        gt=0,
+        description="Discovery asks for more than it shows; owned albums are filtered after.",
+    )
+    small_pool: int = Field(
+        default=10,
+        ge=0,
+        description="Below this many candidates the model is told the pool is thin.",
+    )
+    max_exclusion_albums: int = Field(
+        default=2500,
+        gt=0,
+        description="Owned albums listed in the discovery prompt; the rest are filtered after.",
+    )
+    genres_per_line: int = Field(
+        default=3, ge=0, description="Genres per album line; more is noise the model ignores."
+    )
 
 
 class ArtConfig(ConfigSection):
@@ -499,24 +672,41 @@ class ArtConfig(ConfigSection):
     addressed and can be cached hard; external art is not, and gets less.
     """
 
-    # Seconds an art fetch may take; art must never block a page.
-    timeout: float = Field(default=10.0, gt=0)
-
-    # Seconds a browser may reuse a cached image.
-    cache_max_age: int = Field(default=604800, ge=0)
-    external_cache_max_age: int = Field(default=86400, ge=0)
-
-    # Hosts external art may be fetched from, subdomains included.
-    external_domains: list[str] = ["coverartarchive.org", "archive.org"]
-
-    # Redirect hops followed; the Cover Art Archive's chain is two.
-    max_redirects: int = Field(default=5, ge=0)
+    timeout: float = Field(
+        default=10.0,
+        gt=0,
+        description="Seconds an art fetch may take; art must never block a page.",
+    )
+    cache_max_age: int = Field(
+        default=604800,
+        ge=0,
+        description="Seconds a browser may reuse Plex art. Long: its thumb paths are content-addressed.",
+    )
+    external_cache_max_age: int = Field(
+        default=86400,
+        ge=0,
+        description="Seconds a browser may reuse external art, which carries no content address.",
+    )
+    external_domains: list[str] = Field(
+        default=["coverartarchive.org", "archive.org"],
+        description="Hosts external art may be fetched from, subdomains included.",
+    )
+    max_redirects: int = Field(
+        default=5,
+        ge=0,
+        description="Redirect hops followed; the Cover Art Archive's chain is two.",
+    )
 
 
 class DefaultsConfig(ConfigSection):
     """Default values presented in the UI."""
 
-    track_count: int = Field(default=25, ge=1, le=1000)
+    track_count: int = Field(
+        default=25,
+        ge=1,
+        le=1000,
+        description="Playlist length the create forms open on.",
+    )
 
 
 class LangfuseConfig(ConfigSection):
@@ -530,17 +720,23 @@ class LangfuseConfig(ConfigSection):
     `MEDIASAGE_LANGFUSE__*`; see `LangfuseEnv` in `backend.config.settings`.
     """
 
-    # A Langfuse cloud region, or a self-hosted URL. Empty means no tracing.
-    base_url: str = ""
+    base_url: str = Field(
+        default="",
+        description="A Langfuse cloud region, or a self-hosted URL. Empty means no tracing.",
+    )
 
-    # Not a SecretStr: Langfuse publishes this key to browsers by design, and
-    # masking it would hide which project a deployment writes to.
-    public_key: str = ""
-
-    secret_key: SecretStr = SecretStr("")
-
-    # Which Langfuse environment traces land in. Empty leaves the SDK's own.
-    environment: str = ""
+    # Not a SecretStr: Langfuse publishes this key to browsers by design.
+    public_key: str = Field(
+        default="", description="The project's public key. Langfuse publishes it to browsers."
+    )
+    secret_key: SecretStr = Field(
+        default=SecretStr(""),
+        description="The project's secret key. Paired with the public key, it authenticates ingestion.",
+    )
+    environment: str = Field(
+        default="",
+        description="Which Langfuse environment traces land in. Empty leaves the SDK's own.",
+    )
 
     @property
     def is_configured(self) -> bool:

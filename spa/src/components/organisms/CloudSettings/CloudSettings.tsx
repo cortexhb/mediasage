@@ -46,7 +46,7 @@ export function CloudSettings({
     <>
       <Field
         label="API Key"
-        name="llm_api_key"
+        name="llm.api_key"
         type="password"
         autoComplete="off"
         placeholder={keySet ? stored : 'Your API key'}
@@ -54,14 +54,14 @@ export function CloudSettings({
       />
       <Field
         label="Analysis Model"
-        name="model_analysis"
+        name="llm.model_analysis"
         defaultValue={analysis}
         placeholder="model-name"
         hint="Picks the tracks. The stronger model belongs here."
       />
       <Field
         label="Generation Model"
-        name="model_generation"
+        name="llm.model_generation"
         defaultValue={generation}
         placeholder="model-name"
         // Read-only, not disabled: a disabled field is absent from FormData.
@@ -70,7 +70,7 @@ export function CloudSettings({
       />
       <CheckboxField
         label="Use the analysis model for generation"
-        name="smart_generation"
+        name="llm.smart_generation"
         checked={smartOn}
         onChange={(event) => {
           setSmartOn(event.target.checked)

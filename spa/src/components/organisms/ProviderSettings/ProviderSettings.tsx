@@ -31,12 +31,20 @@ const CLOUD = new Set(['anthropic', 'openai', 'gemini'])
 /** Shown where a credential is already stored, in place of its value. */
 const STORED = '••••••••••••••••  (configured)'
 
+/** The `section.field` path `from_env` names when the environment pins it. */
+const PINNED = 'llm.provider'
+
 export interface ProviderSettingsProps {
   readonly config: ConfigResponse
 }
 
 export function ProviderSettings({ config }: ProviderSettingsProps) {
-  const [provider, setProvider] = useState(config.llm_provider)
+  const llm = config.sections.llm
+  const [provider, setProvider] = useState<string>(llm.provider)
+
+  // Only the local shape declares one; a cloud provider takes a key.
+  const endpoint = 'endpoint_url' in llm ? llm.endpoint_url : undefined
+  const pinned = config.from_env?.includes(PINNED) ?? false
 
   return (
     <Section title="LLM Provider">
@@ -46,28 +54,28 @@ export function ProviderSettings({ config }: ProviderSettingsProps) {
 
       <SelectField
         label="Provider"
-        name="llm_provider"
+        name="llm.provider"
         options={PROVIDERS}
         value={provider}
-        disabled={config.provider_from_env}
+        disabled={pinned}
         onChange={(event) => {
           setProvider(event.target.value)
         }}
-        {...(config.provider_from_env && {
-          hint: 'Set by LLM_PROVIDER. Edit .env to change it.',
+        {...(pinned && {
+          hint: 'Set by MEDIASAGE_LLM__PROVIDER. Edit .env to change it.',
         })}
       />
-      {config.provider_from_env && (
+      {pinned && (
         // A disabled control is absent from FormData; the save needs it.
-        <Input type="hidden" name="llm_provider" value={provider} readOnly />
+        <Input type="hidden" name="llm.provider" value={provider} readOnly />
       )}
 
       {CLOUD.has(provider) && (
         <CloudSettings
-          analysis={config.model_analysis}
-          generation={config.model_generation}
-          smart={config.smart_generation ?? false}
-          contextWindow={config.context_window}
+          analysis={llm.model_analysis ?? ''}
+          generation={llm.model_generation ?? ''}
+          smart={llm.smart_generation ?? false}
+          contextWindow={llm.context_window}
           keySet={config.llm_api_key_set}
           stored={STORED}
         />
@@ -75,18 +83,18 @@ export function ProviderSettings({ config }: ProviderSettingsProps) {
 
       {provider === 'ollama' && (
         <OllamaSettings
-          endpoint={config.endpoint_url}
-          analysis={config.model_analysis}
-          generation={config.model_generation}
-          contextWindow={config.context_window}
+          endpoint={endpoint}
+          analysis={llm.model_analysis ?? ''}
+          generation={llm.model_generation ?? ''}
+          contextWindow={llm.context_window}
         />
       )}
 
       {provider === 'custom' && (
         <CustomSettings
-          endpoint={config.endpoint_url}
-          model={config.model_analysis}
-          contextWindow={config.context_window}
+          endpoint={endpoint}
+          model={llm.model_analysis ?? ''}
+          contextWindow={llm.context_window}
           keySet={config.llm_api_key_set}
           stored={STORED}
         />

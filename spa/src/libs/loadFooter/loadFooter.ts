@@ -28,11 +28,16 @@ export interface FooterFacts {
 function modelOf(config: ConfigResponse): string {
   if (!config.llm_configured) return 'llm not configured'
 
-  const { model_analysis: analysis, model_generation: generation } = config
+  const { model_analysis: analysis, model_generation: generation } =
+    config.sections.llm
   if (analysis && generation && analysis !== generation) {
     return `${analysis} / ${generation}`
   }
-  return generation || analysis || config.llm_provider
+  // An unset model name is the empty string, and must fall through.
+  const named = [generation, analysis].find(
+    (name) => name !== undefined && name !== '',
+  )
+  return named ?? config.sections.llm.provider
 }
 
 /**

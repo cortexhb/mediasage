@@ -1,30 +1,31 @@
 /**
- * The Settings form, and what it looks like mid-save.
+ * The Settings screen: a rail of groups beside the pane it switches.
  *
- * Everything above the save row dims and stops taking input while a save is in
- * flight: the save reaches Plex and the provider before it writes, so there is
- * a wait, and an editable field during it would submit nothing.
+ * The rail is a fixed column so the pane's width does not jump between groups
+ * of different lengths. Below the breakpoint both stack, and `SettingsRail`
+ * turns itself into a scrolling row.
  */
 
-.settings__save {
+.settings {
   display: flex;
-  gap: var(--spacing-md);
-  align-items: center;
-  margin-top: var(--spacing-lg);
+  flex-direction: column;
+  gap: var(--spacing-lg);
 }
 
-/* Child selector: the sections are their own modules and unreachable by name. */
-.settings > *:not(.settings__save) {
-  transition: opacity var(--transition-fast);
+.settings__panes {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: var(--spacing-xl);
+  align-items: start;
 }
 
-.settings[data-saving] > *:not(.settings__save) {
-  pointer-events: none;
-  opacity: 0.6;
+.settings__pane {
+  min-width: 0;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .settings > *:not(.settings__save) {
-    transition: none;
+@media (width <= 768px) {
+  .settings__panes {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--spacing-lg);
   }
 }

@@ -16,7 +16,8 @@ const DEFAULT_SECONDS = 600
 export async function streamDeadline(signal: AbortSignal): Promise<number> {
   try {
     const config = await readConfig(signal)
-    return (config.stream_idle_timeout || DEFAULT_SECONDS) * 1000
+    // The field is `gt=0`, so zero is not a value it holds.
+    return (config.sections.llm.stream_idle_timeout ?? DEFAULT_SECONDS) * 1000
   } catch {
     return DEFAULT_SECONDS * 1000
   }

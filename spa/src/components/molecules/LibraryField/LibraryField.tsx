@@ -20,7 +20,7 @@ export function LibraryField({ value, libraries }: LibraryFieldProps) {
     return (
       <Field
         label="Music Library"
-        name="music_library"
+        name="plex.music_library"
         defaultValue={value}
         placeholder="Music"
         hint="Connect to Plex to choose from the libraries it offers."
@@ -31,7 +31,7 @@ export function LibraryField({ value, libraries }: LibraryFieldProps) {
   return (
     <SelectField
       label="Music Library"
-      name="music_library"
+      name="plex.music_library"
       defaultValue={value}
       options={libraries.map((name) => ({ value: name, label: name }))}
     />

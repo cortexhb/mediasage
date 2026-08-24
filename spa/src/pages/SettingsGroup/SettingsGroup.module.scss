@@ -1,0 +1,43 @@
+/**
+ * One group's form, and what it looks like mid-save.
+ *
+ * Everything above the save row dims and stops taking input while a save is in
+ * flight: the save may reach Plex or the provider before it writes, so there is
+ * a wait, and an editable field during it would submit nothing.
+ */
+
+.settingsGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.settingsGroup__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.settingsGroup__save {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border);
+}
+
+/* Child selector: the sections are their own modules and unreachable by name. */
+.settingsGroup > *:not(.settingsGroup__save) {
+  transition: opacity var(--transition-fast);
+}
+
+.settingsGroup[data-saving] > *:not(.settingsGroup__save) {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settingsGroup > *:not(.settingsGroup__save) {
+    transition: none;
+  }
+}

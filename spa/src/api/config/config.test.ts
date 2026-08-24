@@ -41,9 +41,12 @@ describe('saveConfig', () => {
       }),
     )
 
-    await saveConfig({ llm_provider: 'ollama', context_window: 32768 }, live())
+    await saveConfig(
+      { llm: { provider: 'ollama', context_window: 32768 } },
+      live(),
+    )
 
-    expect(sent).toEqual({ llm_provider: 'ollama', context_window: 32768 })
+    expect(sent).toEqual({ llm: { provider: 'ollama', context_window: 32768 } })
   })
 
   it('sends a zero rather than dropping it', async () => {
@@ -56,9 +59,9 @@ describe('saveConfig', () => {
       }),
     )
 
-    await saveConfig({ cost_analysis_input: 0 }, live())
+    await saveConfig({ llm: { cost_analysis_input: 0 } }, live())
 
-    expect(sent).toEqual({ cost_analysis_input: 0 })
+    expect(sent).toEqual({ llm: { cost_analysis_input: 0 } })
   })
 
   it('raises the refusal a probe reported', async () => {
@@ -71,9 +74,10 @@ describe('saveConfig', () => {
       ),
     )
 
-    const failure = await saveConfig({ model_analysis: 'nope' }, live()).catch(
-      (error: unknown) => error,
-    )
+    const failure = await saveConfig(
+      { llm: { model_analysis: 'nope' } },
+      live(),
+    ).catch((error: unknown) => error)
 
     expect(failure).toBeInstanceOf(ApiError)
     expect(failure).toHaveProperty('status', 422)

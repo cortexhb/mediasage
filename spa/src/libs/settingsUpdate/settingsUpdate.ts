@@ -1,22 +1,33 @@
 /**
  * The submitted settings form, as a partial configuration update.
  *
+ * Every field is named `section.field`, and that name is the whole mapping:
+ * `ConfigUpdate` is shaped like `MediasageConfig`, so a name says which patch
+ * its value belongs in. What each one coerces to comes from the API's schema
+ * by way of `libs/patchFields`, so no table of field names here can fall out
+ * of step with the backend.
+ *
  * Pure, so the rules are testable without a form: what is left out, what is
- * coerced to a number, and which field fills two.
+ * coerced, and which field fills two.
  */
 import type { ConfigUpdateWritable } from '../../api/generated/types.gen.ts'
+import type { PatchKind } from '../patchFields/patchFields.ts'
 
-/** The fields the API types as a boolean; a form carries only strings. */
-const BOOLEAN = new Set(['smart_generation'])
+/** One section's changes, before the API's type is claimed for them. */
+type Patch = Record<string, unknown>
 
-/** The fields the API types as a number rather than a string. */
-const NUMERIC = new Set([
-  'context_window',
-  'cost_analysis_input',
-  'cost_analysis_output',
-  'cost_generation_input',
-  'cost_generation_output',
-])
+/** One value in the type its field declares; a list keeps its items as text. */
+function coerced(value: string, kind: PatchKind | undefined): unknown {
+  if (kind === 'boolean') return value === 'true'
+  if (kind === 'number') return Number(value)
+  if (kind === 'list') {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter((item) => item !== '')
+  }
+  return value
+}
 
 /**
  * An empty field is left out entirely.
@@ -26,24 +37,29 @@ const NUMERIC = new Set([
  * present is kept even at zero: `ConfigUpdate.changes()` filters on presence,
  * not truthiness, so a zero cost survives.
  */
-export function settingsUpdate(form: FormData): ConfigUpdateWritable {
-  const update: Record<string, string | number | boolean> = {}
+export function settingsUpdate(
+  form: FormData,
+  kinds: ReadonlyMap<string, PatchKind>,
+): ConfigUpdateWritable {
+  const update: Record<string, Patch> = {}
 
   for (const [name, value] of form.entries()) {
     if (typeof value !== 'string') continue
     const trimmed = value.trim()
     if (trimmed === '') continue
-    if (BOOLEAN.has(name)) {
-      update[name] = trimmed === 'true'
-      continue
-    }
-    update[name] = NUMERIC.has(name) ? Number(trimmed) : trimmed
+
+    const [section, field] = name.split('.')
+    // An unqualified name names no section to put it in.
+    if (section === undefined || field === undefined) continue
+
+    const patch = (update[section] ??= {})
+    patch[field] = coerced(trimmed, kinds.get(name))
   }
 
   // A custom server exposes one model, which fills both roles.
-  const model = update.model_analysis
-  if (update.llm_provider === 'custom' && model !== undefined) {
-    update.model_generation = model
+  const llm = update.llm
+  if (llm?.provider === 'custom' && llm.model_analysis !== undefined) {
+    llm.model_generation = llm.model_analysis
   }
 
   return update

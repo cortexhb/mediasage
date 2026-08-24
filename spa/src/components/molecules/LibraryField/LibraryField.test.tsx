@@ -18,7 +18,7 @@ describe('LibraryField', () => {
 
       expect(screen.getByRole('combobox')).toHaveAttribute(
         'name',
-        'music_library',
+        'plex.music_library',
       )
     })
   })
