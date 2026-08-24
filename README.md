@@ -401,6 +401,15 @@ defaults:
   track_count: 25
 ```
 
+### LLM Tracing (Optional)
+
+MediaSage can send every LLM call to [Langfuse](https://langfuse.com) so you can inspect prompts,
+replies, token counts and cost. It is off unless you supply keys. See the
+[Langfuse tracing guide](docs/langfuse_tracing.md).
+
+Token counts and cost are reported by the provider after a run, never predicted before one. See
+[token accounting](docs/token_accounting.md).
+
 ### Model Selection
 
 MediaSage uses a two-model strategy by default:

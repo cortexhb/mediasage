@@ -24,10 +24,18 @@ export interface OverlayProps {
   readonly onClose: () => void
   /** Names the dialog for assistive technology. */
   readonly label: string
+  /** `compact` is the 400px card the two save dialogs use. */
+  readonly size?: 'compact' | undefined
   readonly children: ReactNode
 }
 
-export function Overlay({ open, onClose, label, children }: OverlayProps) {
+export function Overlay({
+  open,
+  onClose,
+  label,
+  size,
+  children,
+}: OverlayProps) {
   const ref = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
@@ -44,6 +52,7 @@ export function Overlay({ open, onClose, label, children }: OverlayProps) {
       onClose={onClose}
       aria-label={label}
       className={styles.overlay}
+      data-size={size}
     >
       {/* Unmounted while closed: a closed dialog is hidden by the UA sheet,
           which jsdom does not apply, so its content stayed queryable. */}

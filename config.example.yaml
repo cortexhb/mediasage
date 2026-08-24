@@ -28,3 +28,11 @@ llm:
 defaults:
   # Default number of tracks in generated playlists (15, 25, or 40)
   track_count: 25
+
+langfuse:
+  # Optional LLM tracing; all three blank means off. docs/langfuse_tracing.md
+  base_url: ""
+  public_key: ""
+  # Prefer LANGFUSE_SECRET_KEY over writing this into a config file
+  secret_key: ""
+  environment: ""

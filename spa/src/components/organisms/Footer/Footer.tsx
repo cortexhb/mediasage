@@ -10,19 +10,25 @@
  * Here the dialog is a view of the sync rather than a stage of it: dismissing
  * it never ends the sync, and the progress text reopens it at any point.
  *
- * `frontend/index.html:890` also showed the app version and the configured
- * model here. Both come from `GET /api/config`, which no route above this one
- * loads, and a loader on the shell would make every navigation wait on it.
- * They arrive when something else already needs that read.
+ * The version and model on the left come from `GET /api/config` through a
+ * fetcher, not a loader: every navigation would otherwise wait on a read that
+ * fills one line of text. `libs/loadFooter` holds it.
  */
 import { useEffect, useRef, useState } from 'react'
+import { useFetcher, useLocation } from 'react-router'
 
 import { Button } from '../../atoms/Button/Button.tsx'
 import { Overlay } from '../../atoms/Overlay/Overlay.tsx'
 import { ProgressBar } from '../../atoms/ProgressBar/ProgressBar.tsx'
 import { Text } from '../../atoms/Text/Text.tsx'
+import { readPlaylistFlow } from '../../../libs/flowStore/flowStore.ts'
+import { generateBody } from '../../../libs/generateBody/generateBody.ts'
+import type { FooterFacts } from '../../../libs/loadFooter/loadFooter.ts'
+import { forgetRun, startRun } from '../../../libs/playlistRun/playlistRun.ts'
+import { streamDeadline } from '../../../libs/streamDeadline/streamDeadline.ts'
 import { syncProgress } from '../../../libs/syncProgress/syncProgress.ts'
 import { timeAgo } from '../../../libs/timeAgo/timeAgo.ts'
+import { useGeneratedPlaylist } from '../../../libs/useGeneratedPlaylist/useGeneratedPlaylist.ts'
 import { useSharedLibrarySync } from '../../../libs/useLibrarySync/useLibrarySync.ts'
 import styles from './Footer.module.scss'
 
@@ -46,8 +52,43 @@ function syncing(percent: number | null): string {
     : `Syncing ${String(Math.round(percent))}%`
 }
 
+/** What a finished run cost, as `frontend/app.js:1701` worded it. */
+function spent(tokens: number, cost: number, local: boolean): string {
+  const counted = `${tokens.toLocaleString()} tokens`
+  return local ? counted : `${counted} ($${cost.toFixed(4)})`
+}
+
+/**
+ * Generate the same request again, with the filters it already carries.
+ *
+ * A click, and the only other place a generation begins: the flow record has
+ * everything the request needs, so nothing about the page is involved.
+ */
+function regenerate(): void {
+  const flow = readPlaylistFlow()
+  if (!flow?.filters) return
+  const body = generateBody(
+    flow.id,
+    flow.prompt,
+    flow.refinementAnswers,
+    flow.filters,
+  )
+
+  forgetRun()
+  const aborter = new AbortController()
+  streamDeadline(aborter.signal)
+    .then((deadline) => {
+      startRun(body, deadline)
+    })
+    .catch(() => undefined)
+}
+
 export function Footer() {
   const sync = useSharedLibrarySync()
+  const facts = useFetcher<FooterFacts | null>()
+  const run = useGeneratedPlaylist()
+  // `.footer-results-only`: the totals belong to the page that produced them.
+  const onResults = useLocation().pathname === '/playlist/prompt/playlist'
   const [open, setOpen] = useState(false)
   const status = sync.status
   const running = status?.is_syncing ?? false
@@ -55,6 +96,13 @@ export function Footer() {
 
   // The last poll, so the effect sees edges rather than levels.
   const before = useRef({ running: false, blocking: false })
+
+  useEffect(() => {
+    // Once: the version cannot change under a running page.
+    if (facts.state === 'idle' && !facts.data) {
+      Promise.resolve(facts.load('/footer')).catch(() => undefined)
+    }
+  }, [facts])
 
   useEffect(() => {
     const was = before.current
@@ -72,14 +120,25 @@ export function Footer() {
 
   return (
     <footer className={styles.footer}>
-      <a
-        className={styles.footer__brand}
-        href="https://github.com/ecwilsonaz/mediasage"
-        target="_blank"
-        rel="noopener"
-      >
-        MediaSage on GitHub
-      </a>
+      <div className={styles.footer__identity}>
+        <a
+          className={styles.footer__brand}
+          href="https://github.com/ecwilsonaz/mediasage"
+          target="_blank"
+          rel="noopener"
+        >
+          MediaSage {facts.data && `v${facts.data.version}`}
+        </a>
+        {facts.data && (
+          <>
+            <span className={styles.footer__separator}>·</span>
+            {/* Titled because a long model name is truncated. */}
+            <span className={styles.footer__model} title={facts.data.model}>
+              {facts.data.model}
+            </span>
+          </>
+        )}
+      </div>
 
       {worth && (
         <div className={styles.footer__library}>
@@ -104,10 +163,39 @@ export function Footer() {
             </>
           )}
           <span className={styles.footer__separator}>·</span>
-          <Button variant="link" onClick={sync.start} disabled={running}>
+          {/* Not a `Button`: `.footer-refresh` is accent-coloured. */}
+          <button
+            type="button"
+            className={styles.footer__refresh}
+            onClick={sync.start}
+            disabled={running}
+          >
             {sync.unsynced ? 'Sync now' : 'Refresh'}
-          </Button>
+          </button>
         </div>
+      )}
+
+      {onResults && (
+        <button
+          type="button"
+          className={styles.footer__regenerate}
+          disabled={run.running}
+          onClick={() => {
+            regenerate()
+          }}
+        >
+          ↻ Regenerate Playlist
+        </button>
+      )}
+
+      {onResults && run.totals && (
+        <span className={styles.footer__cost}>
+          {spent(
+            run.totals.token_count,
+            run.totals.estimated_cost,
+            facts.data?.local ?? false,
+          )}
+        </span>
       )}
 
       {sync.error && (

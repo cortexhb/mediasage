@@ -6,7 +6,9 @@ import pytest
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage
 
+from backend.cancellation import Abandoned, Cancellation
 from backend.llm import LLMClient, LLMClientStore, LLMError
+from backend.tracing import SESSION_KEY, Tracing
 
 
 def reply(text: str = '{"ok": true}', **usage) -> AIMessage:
@@ -68,6 +70,68 @@ class TestComplete:
 
         with pytest.raises(LLMError):
             client.analyze("p", "s")
+
+    def test_nothing_is_sent_once_the_client_has_left(self, cloud_config, mocker):
+        """A completion cannot be recalled, so the saving is not starting one."""
+        client, model = self._client(cloud_config, reply(), mocker)
+        Cancellation.watch().set()
+
+        with pytest.raises(Abandoned):
+            client.generate("p", "s")
+
+        model.invoke.assert_not_called()
+
+    def test_a_watched_run_still_completes(self, cloud_config, mocker):
+        """Watching must cost the run nothing while its reader is there."""
+        client, _ = self._client(cloud_config, reply(), mocker)
+        Cancellation.watch()
+
+        assert client.generate("p", "s").content
+
+
+class TestTracing:
+    """Tests for what the one place a prompt is sent hands to Langfuse."""
+
+    def _client(self, config, mocker) -> tuple[LLMClient, Mock]:
+        model = mocker.Mock(spec=BaseChatModel)
+        model.invoke.return_value = reply()
+        mocker.patch("backend.llm.chat.init_chat_model", return_value=model)
+        return LLMClient.of(config), model
+
+    def _config(self, model: Mock) -> dict:
+        return model.invoke.call_args.kwargs["config"]
+
+    def test_no_handler_while_tracing_is_off(self, cloud_config, mocker):
+        """The suite runs untraced, and so does an unconfigured deployment."""
+        client, model = self._client(cloud_config, mocker)
+
+        client.analyze("p", "s")
+
+        assert self._config(model)["callbacks"] == []
+
+    def test_the_call_is_named_for_its_role(self, cloud_config, mocker):
+        client, model = self._client(cloud_config, mocker)
+
+        client.generate("p", "s")
+
+        assert self._config(model)["run_name"] == "mediasage:generation-completion"
+
+    def test_the_handler_is_attached_while_tracing_is_on(self, cloud_config, mocker, monkeypatch):
+        monkeypatch.setattr(Tracing, "_enabled", True)
+        client, model = self._client(cloud_config, mocker)
+
+        client.analyze("p", "s")
+
+        assert self._config(model)["callbacks"]
+
+    def test_the_session_reaches_the_call(self, cloud_config, mocker, monkeypatch):
+        """One flow's calls group into one Langfuse session."""
+        monkeypatch.setattr(Tracing, "_enabled", True)
+        client, model = self._client(cloud_config, mocker)
+
+        client.analyze("p", "s", "flow-1")
+
+        assert self._config(model)["metadata"] == {SESSION_KEY: "flow-1"}
 
 
 class TestConfiguration:

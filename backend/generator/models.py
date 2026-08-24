@@ -14,6 +14,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict
 
 from backend import library
+from backend.cancellation import Abandoned
 from backend.config import config_store
 from backend.generator import prompts
 from backend.library import TrackFilter
@@ -143,7 +144,11 @@ class Narrative(BaseModel):
 
     @classmethod
     def of(
-        cls, track_selections: list[dict], llm_client: LLMClient, user_request: str = ""
+        cls,
+        track_selections: list[dict],
+        llm_client: LLMClient,
+        user_request: str = "",
+        session: str = "",
     ) -> Self:
         """Write one, falling back to a dated title when the model will not.
 
@@ -163,9 +168,14 @@ class Narrative(BaseModel):
 
         try:
             response = llm_client.analyze(
-                prompts.narrative(track_selections, user_request), prompts.NARRATIVE_SYSTEM
+                prompts.narrative(track_selections, user_request),
+                prompts.NARRATIVE_SYSTEM,
+                session,
             )
             result = response.parsed()
+        except Abandoned:
+            # A dated title is not a better answer than stopping here.
+            raise
         except Exception as e:
             logger.warning("Narrative generation failed: %s", e)
             return fallback
@@ -178,17 +188,24 @@ class Narrative(BaseModel):
             logger.warning("Narrative response not a dict: %s", type(result).__name__)
             return fallback
 
-        title = str(result.get("title", "")).strip()
-        # Models pick a different key for the prose about half the time.
-        text = str(
-            result.get("narrative")
-            or result.get("description")
-            or result.get("text")
-            or result.get("content")
-            or ""
-        ).strip()
+        # Models pick a different key for each half about half the time.
+        title = cls._first(result, "title", "playlist_title", "name")
+        text = cls._first(result, "narrative", "description", "text", "content")
 
-        if title and not text:
+        if not title:
+            logger.warning("Narrative title missing. Keys: %s", list(result.keys()))
+            # The prose is kept: a dated title is better than losing both.
+            return cls(title=fallback.title, text=text)
+        if not text:
             logger.warning("Narrative missing from response. Keys: %s", list(result.keys()))
 
-        return cls(title=f"{title} - {date_suffix}", text=text) if title else fallback
+        return cls(title=f"{title} - {date_suffix}", text=text)
+
+    @staticmethod
+    def _first(result: dict, *keys: str) -> str:
+        """The first of `keys` the model actually filled in, stripped."""
+        for key in keys:
+            value = str(result.get(key) or "").strip()
+            if value:
+                return value
+        return ""

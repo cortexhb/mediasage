@@ -1,0 +1,75 @@
+/**
+ * Ports `.split-button-group` and `.save-mode-dropdown`
+ * (`frontend/style.css:2017`). The arrow sits over the button's right edge
+ * rather than beside it, so the pair reads as one control.
+ */
+
+.savePlaylist {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+}
+
+.savePlaylist button {
+  flex: 1;
+}
+
+.savePlaylist .savePlaylist__arrow {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  min-width: 36px;
+  padding: var(--spacing-sm);
+  font-family: var(--font-family);
+  color: var(--bg-primary);
+  cursor: pointer;
+  background: var(--accent);
+  border: none;
+  border-left: 1px solid rgb(0 0 0 / 20%);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.savePlaylist .savePlaylist__arrow:hover {
+  background: var(--accent-hover);
+}
+
+.savePlaylist__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  z-index: 100;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 30%);
+}
+
+.savePlaylist__option {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+  transition: background var(--transition-fast);
+}
+
+.savePlaylist__option:hover {
+  background: var(--bg-hover);
+}
+
+/* Reserved either way, so choosing a mode does not shift the labels. */
+.savePlaylist__check {
+  width: 16px;
+  font-size: var(--font-size-sm);
+  color: var(--accent);
+}

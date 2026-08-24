@@ -22,6 +22,12 @@
 
   @include ds.scale-in;
 
+  /* `frontend/style.css:1522` and `:1595`: both save cards are this size. */
+  &[data-size='compact'] {
+    max-width: min(90vw, 400px);
+    padding: var(--spacing-xl);
+  }
+
   &::backdrop {
     background: rgb(26 26 26 / 80%);
 

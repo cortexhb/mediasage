@@ -12,9 +12,9 @@
   gap: var(--spacing-sm);
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-md) 0;
+  padding: var(--spacing-xl) 0;
   margin-top: var(--spacing-xl);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   color: var(--text-muted);
   border-top: 1px solid var(--border);
 
@@ -25,23 +25,53 @@
 }
 
 .footer__brand {
+  font-weight: 500;
   color: var(--text-muted);
   text-decoration: none;
+  transition: color var(--transition-fast);
 }
 
 .footer__brand:hover {
-  color: var(--text-secondary);
+  color: var(--accent);
 }
 
 .footer__library {
   display: flex;
   gap: var(--spacing-sm);
   align-items: center;
+  color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
 .footer__separator {
-  color: var(--border);
+  opacity: 0.5;
+}
+
+/* Ports `.cost-display`. */
+.footer__cost {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+/* Ports `.btn-link.regenerate-link`: accent, and shown only on results. */
+.footer__regenerate {
+  padding: 0;
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  color: var(--accent);
+  cursor: pointer;
+  background: none;
+  border: none;
+  transition: color var(--transition-fast);
+}
+
+.footer__regenerate:hover:not(:disabled) {
+  color: var(--accent-hover);
+}
+
+.footer__regenerate:disabled {
+  color: var(--text-muted);
+  cursor: default;
 }
 
 /* The blocking sync dialog's own stack. */
@@ -50,4 +80,50 @@
   flex-direction: column;
   gap: var(--spacing-md);
   min-width: min(420px, 80vw);
+}
+
+/* Ports `.footer-left`. */
+.footer__identity {
+  display: flex;
+  flex: 1;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+/* Ports `.footer-model`: monospace, truncated rather than wrapped. */
+.footer__model {
+  max-width: 350px;
+  overflow: hidden;
+  font-family: ui-monospace, sfmono-regular, 'SF Mono', menlo, monospace;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  @include ds.on-compact {
+    max-width: 250px;
+    font-size: 0.75rem;
+  }
+}
+
+/* Ports `.footer-refresh`, which is the bar's one accent-coloured control. */
+.footer__refresh {
+  padding: 0;
+  font-family: var(--font-family);
+  font-size: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  background: none;
+  border: none;
+  transition: color var(--transition-fast);
+
+  &:hover:not(:disabled) {
+    color: var(--accent-hover);
+    text-decoration: underline;
+  }
+
+  &:disabled {
+    color: var(--text-muted);
+    cursor: default;
+  }
 }

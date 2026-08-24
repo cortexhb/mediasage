@@ -203,6 +203,32 @@ class AlbumRecommendation(BaseModel):
         )
 
 
+class AlbumPreviewResponse(BaseModel):
+    """How many albums one filter selection reaches.
+
+    Counts only. What a round will cost is not predicted: the tokens it spends
+    are reported by the provider once the calls have been made.
+    """
+
+    matching_albums: int
+    albums_to_send: int
+
+    @classmethod
+    def of(cls, matching_albums: int, max_albums: int) -> Self:
+        """What `matching_albums` of the library means for this selection."""
+        return cls(
+            matching_albums=matching_albums,
+            albums_to_send=cls.capped(matching_albums, max_albums),
+        )
+
+    @staticmethod
+    def capped(available: int, limit: int) -> int:
+        """How many rows are actually sent; a limit of zero means all of them."""
+        if available <= 0:
+            return 0
+        return min(available, limit) if limit > 0 else available
+
+
 class RecommendGenerateResponse(BaseModel):
     """What one generation round produced, and what it cost.
 
@@ -214,6 +240,18 @@ class RecommendGenerateResponse(BaseModel):
     token_count: int = 0
     estimated_cost: float = 0.0
     research_warning: str | None = None
+
+    @property
+    def answered(self) -> dict[str, Any]:
+        """The round as a trace shows it: which albums, and what they cost."""
+        return {
+            "recommendations": [
+                f"{rec.rank}: {rec.album} by {rec.artist}" for rec in self.recommendations
+            ],
+            "token_count": self.token_count,
+            "estimated_cost": self.estimated_cost,
+            "research_warning": self.research_warning,
+        }
 
 
 class ResearchData(BaseModel):

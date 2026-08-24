@@ -1,19 +1,32 @@
 import { render as mount, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
+import { createMemoryRouter, RouterProvider } from 'react-router'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { server } from '@test'
 import { LibrarySyncProvider } from '../LibrarySyncProvider/LibrarySyncProvider.tsx'
 import { Footer } from './Footer.tsx'
 
-/** The bar reads the shell's poller, so it needs one above it. */
+/**
+ * The bar reads the shell's poller, so it needs one above it.
+ *
+ * A data router too: the version and model come through a fetcher, which
+ * answers nothing here — this file is about the library half of the bar.
+ */
 function render() {
-  return mount(
-    <LibrarySyncProvider>
-      <Footer />
-    </LibrarySyncProvider>,
-  )
+  const router = createMemoryRouter([
+    {
+      index: true,
+      Component: () => (
+        <LibrarySyncProvider>
+          <Footer />
+        </LibrarySyncProvider>
+      ),
+    },
+    { path: 'footer', loader: () => null },
+  ])
+  return mount(<RouterProvider router={router} />)
 }
 
 /** A library that has been synced and is sitting idle. */

@@ -26,13 +26,18 @@
   background: var(--bg-hover);
 }
 
+/* Colour only: a heavier weight would resize the pill on every click. */
 .chip[aria-pressed='true'] {
-  font-weight: 600;
   color: var(--bg-primary);
   background: var(--accent);
 }
 
 .chip__count {
   font-size: var(--font-size-xs);
-  opacity: 0.7;
+  color: var(--text-muted);
+}
+
+.chip[aria-pressed='true'] .chip__count {
+  color: var(--bg-primary);
+  opacity: 0.8;
 }

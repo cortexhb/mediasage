@@ -12,6 +12,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException
 
 from backend.analyzer import Analyzer
+from backend.api.watching import watch_client
 from backend.llm import LLMClient, client_store
 from backend.models import (
     AnalyzePromptRequest,
@@ -34,15 +35,15 @@ class Analysis:
     def __init__(self, analyzer: Analyzer) -> None:
         self.analyzer = analyzer
 
-    async def of_prompt(self, prompt: str) -> AnalyzePromptResponse:
+    async def of_prompt(self, prompt: str, flow: str = "") -> AnalyzePromptResponse:
         """The filters a sentence implies."""
         with self._mapped():
-            return await asyncio.to_thread(self.analyzer.analyze_prompt, prompt)
+            return await asyncio.to_thread(self.analyzer.analyze_prompt, prompt, flow)
 
-    async def of_track(self, track: Track) -> AnalyzeTrackResponse:
+    async def of_track(self, track: Track, flow: str = "") -> AnalyzeTrackResponse:
         """The dimensions a seed track can be explored along."""
         with self._mapped():
-            return await asyncio.to_thread(self.analyzer.analyze_track, track)
+            return await asyncio.to_thread(self.analyzer.analyze_track, track, flow)
 
     @contextmanager
     def _mapped(self) -> Generator[None]:
@@ -65,7 +66,7 @@ async def _analyze_prompt(
     llm: Annotated[LLMClient, Depends(client_store.require)],
 ) -> AnalyzePromptResponse:
     """``POST /api/analyze/prompt`` -- which filters a sentence implies."""
-    return await Analysis(Analyzer(llm=llm, plex=plex)).of_prompt(request.prompt)
+    return await Analysis(Analyzer(llm=llm, plex=plex)).of_prompt(request.prompt, request.flow_id)
 
 
 async def _analyze_track(
@@ -78,7 +79,7 @@ async def _analyze_track(
     if not track:
         raise HTTPException(status_code=404, detail="Track not found")
 
-    return await Analysis(Analyzer(llm=llm, plex=plex)).of_track(track)
+    return await Analysis(Analyzer(llm=llm, plex=plex)).of_track(track, request.flow_id)
 
 
 def register_analysis_routes(app: FastAPI) -> None:
@@ -87,6 +88,8 @@ def register_analysis_routes(app: FastAPI) -> None:
         _analyze_prompt,
         methods=["POST"],
         response_model=AnalyzePromptResponse,
+        # Watched: a reader who left is billed for no further call.
+        dependencies=[Depends(watch_client)],
         operation_id="analyzePrompt",
     )
     app.add_api_route(
@@ -94,5 +97,6 @@ def register_analysis_routes(app: FastAPI) -> None:
         _analyze_track,
         methods=["POST"],
         response_model=AnalyzeTrackResponse,
+        dependencies=[Depends(watch_client)],
         operation_id="analyzeTrack",
     )

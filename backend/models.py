@@ -125,6 +125,7 @@ class AnalyzePromptRequest(BaseModel):
     """Request to analyze a natural language prompt."""
 
     prompt: str = Field(..., min_length=1, max_length=2000)
+    flow_id: str = ""
 
 
 class AnalyzePromptResponse(BaseModel):
@@ -143,6 +144,7 @@ class AnalyzeTrackRequest(BaseModel):
     """Request to analyze a seed track for dimensions."""
 
     rating_key: str
+    flow_id: str = ""
 
 
 class AnalyzeTrackResponse(BaseModel):
@@ -163,6 +165,33 @@ class FilterPreviewRequest(BaseModel):
     max_tracks_to_ai: int = 500  # 0 = no limit
     min_rating: int = 0  # 0 = any, 2/4/6/8/10 = minimum rating (Plex uses 0-10)
     exclude_live: bool = True
+
+
+class FilterPreviewResponse(BaseModel):
+    """How much of the library one filter selection reaches.
+
+    Counts only. What a run will cost is not predicted: the tokens it spends
+    are reported by the provider once the calls have been made.
+    """
+
+    # -1 where the count is unknown: an unsynced cache reports that.
+    matching_tracks: int
+    tracks_to_send: int
+
+    @classmethod
+    def of(cls, request: FilterPreviewRequest, matching_tracks: int) -> Self:
+        """What `matching_tracks` of the library means for this selection."""
+        return cls(
+            matching_tracks=matching_tracks,
+            tracks_to_send=cls.capped(matching_tracks, request.max_tracks_to_ai),
+        )
+
+    @staticmethod
+    def capped(available: int, limit: int) -> int:
+        """How many rows are actually sent; a limit of zero means all of them."""
+        if available <= 0:
+            return 0
+        return min(available, limit) if limit > 0 else available
 
 
 class SeedTrackInput(BaseModel):
@@ -191,6 +220,8 @@ class GenerateRequest(BaseModel):
     exclude_live: bool = True
     min_rating: int = 0  # 0 = any, 2/4/6/8/10 = minimum rating
     max_tracks_to_ai: int = 500  # 0 = no limit
+    # The client's id for this flow; groups its traces into one session.
+    flow_id: str = ""
 
     @field_validator("prompt", "additional_notes", mode="before")
     @classmethod
@@ -221,6 +252,17 @@ class GenerateResponse(BaseModel):
     playlist_title: str = ""
     narrative: str = ""
     track_reasons: dict[str, str] = {}
+
+    @property
+    def answered(self) -> dict[str, Any]:
+        """The playlist as a trace shows it: what was picked, not every field."""
+        return {
+            "playlist_title": self.playlist_title,
+            "narrative": self.narrative,
+            "tracks": [f"{track.artist} - {track.title}" for track in self.tracks],
+            "token_count": self.token_count,
+            "estimated_cost": self.estimated_cost,
+        }
 
 
 # =============================================================================
@@ -417,6 +459,8 @@ class ConfigResponse(BaseModel):
     context_window: int
     is_local_provider: bool = False
     provider_from_env: bool = False  # True if LLM_PROVIDER env var is overriding UI
+    # Seconds a reader waits between stream frames before giving up.
+    stream_idle_timeout: float
 
     @classmethod
     def of(cls, config: MediasageConfig, plex_connected: bool) -> Self:
@@ -451,6 +495,7 @@ class ConfigResponse(BaseModel):
             endpoint_url=config.llm.local_endpoint,
             context_window=config.llm.context_window,
             is_local_provider=config.llm.is_local,
+            stream_idle_timeout=config.llm.stream_idle_timeout,
             # The form disables the provider field when the environment sets it:
             # a saved value would be overridden on the next boot.
             provider_from_env=os.environ.get("MEDIASAGE_LLM__PROVIDER") is not None,
@@ -520,6 +565,8 @@ class RecommendQuestionsRequest(BaseModel):
     """Request to generate clarifying questions."""
 
     prompt: str = Field(..., min_length=1, max_length=2000)
+    # Set by the playlist flow; groups these traces with its own.
+    flow_id: str = ""
 
 
 class RecommendQuestionsResponse(BaseModel):

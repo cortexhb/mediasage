@@ -10,7 +10,8 @@ import styles from './Chip.module.scss'
 
 export interface ChipProps {
   readonly selected: boolean
-  readonly count: number
+  /** Absent where there is no count to give: decades carry none. */
+  readonly count?: number | null | undefined
   readonly onChoose: () => void
   readonly children: string
 }
@@ -23,7 +24,13 @@ export function Chip({ selected, count, onChoose, children }: ChipProps) {
       aria-pressed={selected}
       onClick={onChoose}
     >
-      {children} <span className={styles.chip__count}>{count}</span>
+      {children}
+      {count != null && (
+        <>
+          {' '}
+          <span className={styles.chip__count}>{count}</span>
+        </>
+      )}
     </button>
   )
 }

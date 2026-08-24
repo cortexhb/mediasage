@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -21,6 +21,8 @@ function renderShell() {
       Component: Shell,
       children: [{ index: true, Component: () => <h2>A page</h2> }],
     },
+    // The footer fetches version and model from here.
+    { path: 'footer', loader: () => null },
   ])
   return render(<RouterProvider router={router} />)
 }
@@ -47,7 +49,10 @@ describe('Shell', () => {
   it('points the logo home', () => {
     renderShell()
 
-    expect(screen.getByRole('link', { name: 'MediaSage' })).toHaveAttribute(
+    // Scoped: the status bar carries a "MediaSage" link of its own.
+    const header = within(screen.getByRole('banner'))
+
+    expect(header.getByRole('link', { name: 'MediaSage' })).toHaveAttribute(
       'href',
       '/',
     )

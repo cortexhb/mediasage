@@ -129,11 +129,24 @@ class LLMConfig(ConfigSection):
     # Seconds before an outbound call is abandoned; slow hardware needs minutes.
     request_timeout: float = Field(default=600.0, gt=0)
 
+    # Seconds of silence on a generate stream before the browser gives up.
+    # Per frame: a model may think for minutes between them.
+    stream_idle_timeout: float = Field(default=600.0, gt=0)
+
     # Ceiling on one completion; raise it for models that answer at length.
     max_output_tokens: int = Field(default=8192, gt=0)
 
     # Attempts per call, retried with exponential backoff.
     max_retries: int = Field(default=3, ge=1, le=10)
+
+    # Sampling: unset is not sent, leaving the server's own default.
+    # Right values come from the model card, and differ per mode.
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    top_p: float | None = Field(default=None, gt=0.0, le=1.0)
+    top_k: int | None = Field(default=None, ge=0)
+    min_p: float | None = Field(default=None, ge=0.0, le=1.0)
+    presence_penalty: float | None = Field(default=None, ge=-2.0, le=2.0)
+    repetition_penalty: float | None = Field(default=None, gt=0.0, le=2.0)
 
     # Seconds for a metadata-only liveness probe; slow here means server down.
     probe_timeout: float = Field(default=5.0, gt=0)
@@ -443,6 +456,35 @@ class DefaultsConfig(ConfigSection):
     """Default values presented in the UI."""
 
     track_count: int = Field(default=25, ge=1, le=1000)
+
+
+class LangfuseConfig(ConfigSection):
+    """Where LLM traces are sent, and the keys that sign them.
+
+    Tracing stays off until all three are set. No default endpoint: pointing an
+    unconfigured deployment at a cloud it never chose would send prompts
+    somewhere the operator did not ask for.
+
+    Reachable under Langfuse's own variable names as well as
+    `MEDIASAGE_LANGFUSE__*`; see `LangfuseEnv` in `backend.config.settings`.
+    """
+
+    # A Langfuse cloud region, or a self-hosted URL. Empty means no tracing.
+    base_url: str = ""
+
+    # Not a SecretStr: Langfuse publishes this key to browsers by design, and
+    # masking it would hide which project a deployment writes to.
+    public_key: str = ""
+
+    secret_key: SecretStr = SecretStr("")
+
+    # Which Langfuse environment traces land in. Empty leaves the SDK's own.
+    environment: str = ""
+
+    @property
+    def is_configured(self) -> bool:
+        """Whether a trace has somewhere to go and something to sign it."""
+        return bool(self.base_url and self.public_key and self.secret_key.get_secret_value())
 
 
 # Fields whose value decides whether a dependency answers at all. Everything

@@ -1,15 +1,22 @@
 services:
   mediasage:
     image: ecwilson/mediasage:latest
-    build: .
+    build:
+      context: .
+      dockerfile: dev/Dockerfile
     container_name: mediasage
     # Optional: Run as specific user for NAS/Synology (use your PUID:PGID)
     # user: "1000:1000"
     ports:
       - "5765:5765"
+    env_file:
+      - .env.langfuse
     environment:
       # Performance tuning
       - UVICORN_WORKERS=${UVICORN_WORKERS:-1}
+#      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-)
+#      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-)
+#      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-)
     volumes:
       # Persist library cache across restarts
       # Ensure directory is writable: either set 'user' above, or run:

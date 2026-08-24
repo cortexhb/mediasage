@@ -14,10 +14,14 @@ and how a stream of them is served.
 
 import json
 from collections.abc import AsyncIterator, Iterator
+from functools import partial
 from typing import Any, Final
 
+import anyio.to_thread
 from pydantic import BaseModel, ConfigDict
 from starlette.responses import StreamingResponse
+
+from backend.cancellation import Cancellation
 
 MEDIA_TYPE: Final = "text/event-stream"
 
@@ -85,5 +89,37 @@ class SSE(BaseModel):
 
     @staticmethod
     def serve(events: Iterator[str] | AsyncIterator[str]) -> EventStreamResponse:
-        """Serve an iterator of frames as an event stream."""
-        return EventStreamResponse(events, headers=HEADERS)
+        """Serve an iterator of frames as an event stream.
+
+        Every stream is pumped here rather than by Starlette, so the run learns
+        that its reader has gone: `StreamingResponse` cancels this pump on
+        `http.disconnect`, and `Cancellation` carries that into the worker
+        threads the pipelines run in.
+        """
+        return EventStreamResponse(SSE._watched(events), headers=HEADERS)
+
+    @staticmethod
+    async def _watched(events: Iterator[str] | AsyncIterator[str]) -> AsyncIterator[str]:
+        """Serve a stream under a flag that says whether anyone is reading.
+
+        A worker thread cannot be interrupted, so the step in flight finishes
+        and the pipeline suspends at its next `yield`. The flag is what stops
+        the step after that from spending a call nobody will read.
+
+        Reused rather than installed: `watch_stream` puts it in the request's
+        context, which is the one a traced pipeline's steps run in.
+        """
+        gone = Cancellation.flag()
+        try:
+            if isinstance(events, AsyncIterator):
+                async for frame in events:
+                    yield frame
+                return
+            # One frame per thread hop, as `iterate_in_threadpool` does it.
+            while True:
+                frame = await anyio.to_thread.run_sync(partial(next, events, None))
+                if frame is None:
+                    return
+                yield frame
+        finally:
+            gone.set()

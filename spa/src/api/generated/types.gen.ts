@@ -7,7 +7,10 @@ export type ClientOptions = {
 /**
  * AlbumPreviewResponse
  *
- * What one recommendation round will send, and what it will cost.
+ * How many albums one filter selection reaches.
+ *
+ * Counts only. What a round will cost is not predicted: the tokens it spends
+ * are reported by the provider once the calls have been made.
  */
 export type AlbumPreviewResponse = {
   /**
@@ -18,14 +21,6 @@ export type AlbumPreviewResponse = {
    * Albums To Send
    */
   albums_to_send: number
-  /**
-   * Estimated Input Tokens
-   */
-  estimated_input_tokens?: number
-  /**
-   * Estimated Cost
-   */
-  estimated_cost?: number
 }
 
 /**
@@ -147,6 +142,10 @@ export type AnalyzePromptRequest = {
    * Prompt
    */
   prompt: string
+  /**
+   * Flow Id
+   */
+  flow_id?: string
 }
 
 /**
@@ -195,6 +194,10 @@ export type AnalyzeTrackRequest = {
    * Rating Key
    */
   rating_key: string
+  /**
+   * Flow Id
+   */
+  flow_id?: string
 }
 
 /**
@@ -337,6 +340,10 @@ export type ConfigResponse = {
    * Provider From Env
    */
   provider_from_env?: boolean
+  /**
+   * Stream Idle Timeout
+   */
+  stream_idle_timeout: number
 }
 
 /**
@@ -497,7 +504,10 @@ export type FilterPreviewRequest = {
 /**
  * FilterPreviewResponse
  *
- * What one playlist generation will send, and what it will cost.
+ * How much of the library one filter selection reaches.
+ *
+ * Counts only. What a run will cost is not predicted: the tokens it spends
+ * are reported by the provider once the calls have been made.
  */
 export type FilterPreviewResponse = {
   /**
@@ -508,18 +518,6 @@ export type FilterPreviewResponse = {
    * Tracks To Send
    */
   tracks_to_send: number
-  /**
-   * Estimated Input Tokens
-   */
-  estimated_input_tokens: number
-  /**
-   * Estimated Output Tokens
-   */
-  estimated_output_tokens: number
-  /**
-   * Estimated Cost
-   */
-  estimated_cost: number
 }
 
 /**
@@ -589,6 +587,10 @@ export type GenerateRequest = {
    * Max Tracks To Ai
    */
   max_tracks_to_ai?: number
+  /**
+   * Flow Id
+   */
+  flow_id?: string
 }
 
 /**
@@ -1291,6 +1293,10 @@ export type RecommendQuestionsRequest = {
    * Prompt
    */
   prompt: string
+  /**
+   * Flow Id
+   */
+  flow_id?: string
 }
 
 /**

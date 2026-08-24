@@ -1,0 +1,114 @@
+/**
+ * Ports `.modal-card--success` and the ring hero
+ * (`frontend/style.css:1594-1682`).
+ *
+ * The keyframes are local: CSS Modules hashes them per file, and neither has
+ * a second caller.
+ */
+
+.playlistUpdatedDialog__hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  align-items: center;
+  margin-bottom: var(--spacing-lg);
+}
+
+.playlistUpdatedDialog__title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.playlistUpdatedDialog__ring {
+  position: relative;
+  width: 56px;
+  height: 56px;
+}
+
+/* Rotated so the stroke starts at twelve o'clock. */
+.playlistUpdatedDialog__ringSvg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.playlistUpdatedDialog__ringTrack {
+  fill: none;
+  stroke: var(--bg-hover);
+}
+
+@keyframes ring-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* 138.23 is the circumference of r=22, so the stroke starts hidden. */
+.playlistUpdatedDialog__ringDrawn {
+  fill: none;
+  stroke: var(--accent);
+  stroke-dasharray: 138.23;
+  stroke-dashoffset: 138.23;
+  stroke-linecap: round;
+  animation: ring-draw 0.6s 0.15s ease-out forwards;
+
+  /* Drawn, not animated: the ring is the state, not the decoration. */
+  @media (prefers-reduced-motion: reduce) {
+    stroke-dashoffset: 0;
+    animation: none;
+  }
+}
+
+@keyframes icon-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.playlistUpdatedDialog__tick {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  color: var(--accent);
+  opacity: 0;
+  animation: icon-appear 0.3s 0.5s ease-out forwards;
+
+  @media (prefers-reduced-motion: reduce) {
+    opacity: 1;
+    animation: none;
+  }
+}
+
+.playlistUpdatedDialog__details {
+  margin-bottom: var(--spacing-lg);
+}
+
+.playlistUpdatedDialog__line {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* Side by side, unlike the stacked actions of a fresh save. */
+.playlistUpdatedDialog__actions {
+  display: flex;
+  gap: var(--spacing-sm);
+
+  > * {
+    flex: 1;
+    padding: 10px var(--spacing-md);
+    font-size: var(--font-size-sm);
+  }
+}

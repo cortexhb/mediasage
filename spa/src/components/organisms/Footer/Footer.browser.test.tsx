@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { createMemoryRouter, RouterProvider } from 'react-router'
 import { userEvent } from 'vitest/browser'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -38,11 +39,20 @@ function showing(status: LibraryCacheStatusResponse, blocking = false) {
     start: vi.fn(),
   }
 
-  return render(
-    <LibrarySyncContext value={sync}>
-      <Footer />
-    </LibrarySyncContext>,
-  )
+  // A data router: the bar fetches its version and model.
+  const router = createMemoryRouter([
+    {
+      index: true,
+      Component: () => (
+        <LibrarySyncContext value={sync}>
+          <Footer />
+        </LibrarySyncContext>
+      ),
+    },
+    { path: 'footer', loader: () => null },
+  ])
+
+  return render(<RouterProvider router={router} />)
 }
 
 /** The bar's progress text, which is the way back into the dialog. */

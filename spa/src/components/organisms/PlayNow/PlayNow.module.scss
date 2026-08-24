@@ -1,0 +1,114 @@
+/* Ports `.client-list` and the `.client-*` parts (`frontend/style.css:2168`). */
+
+.playNow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  min-width: min(420px, 80vw);
+}
+
+.playNow__legend {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.playNow__hint {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.playNow__dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  background: var(--text-muted);
+  border-radius: var(--radius-full);
+}
+
+.playNow__dot[data-state='playing'] {
+  background: var(--success);
+}
+
+.playNow__dot[data-state='mobile'] {
+  background: var(--warning);
+}
+
+.playNow__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-height: 320px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.playNow__client {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  padding: var(--spacing-md);
+  font-family: var(--font-family);
+  text-align: left;
+  cursor: pointer;
+  background: var(--bg-tertiary);
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast);
+}
+
+.playNow__client:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.playNow__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.playNow__name {
+  display: block;
+  margin-bottom: 2px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.playNow__product {
+  display: inline-block;
+  padding: 1px 8px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border-radius: var(--radius-full);
+}
+
+.playNow__platform {
+  color: var(--text-muted);
+}
+
+.playNow__status {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.playNow__status[data-state='playing'] {
+  color: var(--success);
+}
+
+.playNow__status[data-state='mobile'] {
+  color: var(--warning);
+}
+
+.playNow__empty {
+  padding: var(--spacing-xl);
+  text-align: center;
+}

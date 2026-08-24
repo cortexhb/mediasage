@@ -1,14 +1,19 @@
 /**
  * The frame every page renders inside, from `frontend/style.css:102-127`.
  *
- * `.app--wide` is not ported: only the results grid widened the frame, so it
- * arrives with that page.
+ * `.app--wide` is `[data-wide]`: the shell owns its width, so the results
+ * route sets the attribute rather than the page reaching up for it.
  */
 
 .shell {
   max-width: 960px;
   padding: var(--spacing-md);
   margin: 0 auto;
+}
+
+/* `frontend/style.css:109`. */
+.shell[data-wide] {
+  max-width: 1200px;
 }
 
 .shell__header {

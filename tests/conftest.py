@@ -1,12 +1,15 @@
 """Pytest fixtures for MediaSage tests."""
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
-from backend.config import MediasageConfig
+from backend import cancellation
+from backend.config import MediasageConfig, settings
 from backend.config.store import config_store
 from backend.models import Dimension, Track
+from backend.tracing import Tracing
 
 # Every environment variable the config reads. A developer's shell may have
 # these set, so tests must clear them or they assert against that machine
@@ -23,6 +26,43 @@ CONFIG_ENV_VARS = (
     "MEDIASAGE_PLEX__TOKEN",
     "MEDIASAGE_PLEX__URL",
 )
+
+# Langfuse's own names, which `LangfuseEnv` reads unprefixed.
+LANGFUSE_ENV_VARS = (
+    "LANGFUSE_BASE_URL",
+    "LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_SECRET_KEY",
+    "LANGFUSE_TRACING_ENVIRONMENT",
+)
+
+
+@pytest.fixture(autouse=True)
+def untraced(monkeypatch):
+    """Guarantee no test ever sends a trace.
+
+    Three ways in, all closed: the developer's `LANGFUSE_*` variables, the
+    repository's `.env.langfuse`, and anything that calls `Tracing.configure`.
+    The SDK's own kill switch is set last, so even a client built by a test
+    exports nothing.
+    """
+    for name in LANGFUSE_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(settings, "LANGFUSE_ENV_PATH", Path("tests/.no-langfuse-env"))
+    monkeypatch.setenv("LANGFUSE_TRACING_ENABLED", "false")
+    monkeypatch.setattr(Tracing, "_client", None)
+    monkeypatch.setattr(Tracing, "_enabled", False)
+
+
+@pytest.fixture(autouse=True)
+def unwatched():
+    """Start every test with no client being watched.
+
+    The flag lives in a `ContextVar`, and pytest runs the whole file in one
+    context, so a test that sets it would abandon every test after it.
+    """
+    token = cancellation._gone.set(None)
+    yield
+    cancellation._gone.reset(token)
 
 
 @pytest.fixture(autouse=True)

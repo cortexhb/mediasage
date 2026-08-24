@@ -30,14 +30,27 @@ class MeteredClient(BaseModel):
     client: LLMClient
     sessions: SessionStore
     session_id: str = NO_SESSION
+    # The client's flow id, when this session serves the playlist flow.
+    flow_id: str = ""
+
+    @property
+    def traced_session(self) -> str:
+        """What traces group under; empty for a call outside any session.
+
+        The flow wins over the session: the playlist flow opens one of these
+        for its questions alone, and its other calls know nothing about it.
+        """
+        if self.flow_id:
+            return self.flow_id
+        return "" if self.session_id == NO_SESSION else self.session_id
 
     def analyze(self, system: str, prompt: str, label: str, albums: int = 0) -> Any:
         """Spend the analysis model and return the parsed JSON reply."""
-        return self._parse(self.client.analyze(prompt, system), label, albums)
+        return self._parse(self.client.analyze(prompt, system, self.traced_session), label, albums)
 
     def generate(self, system: str, prompt: str, label: str, albums: int = 0) -> Any:
         """Spend the generation model and return the parsed JSON reply."""
-        return self._parse(self.client.generate(prompt, system), label, albums)
+        return self._parse(self.client.generate(prompt, system, self.traced_session), label, albums)
 
     def _parse(self, response: LLMResponse, label: str, albums: int) -> Any:
         """Record what the call cost, then decode what it said."""

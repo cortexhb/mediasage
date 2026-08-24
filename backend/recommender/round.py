@@ -20,6 +20,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from typing import Any, Final
 from urllib.parse import quote
 
+from langfuse import observe
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend import library
@@ -37,6 +38,7 @@ from backend.recommender.models import (
 )
 from backend.recommender.pipeline import RecommendationPipeline
 from backend.results import Result, results_store
+from backend.tracing import Tracing
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +109,17 @@ class RoundInputs(BaseModel):
     def is_discovery(self) -> bool:
         return self.mode == "discovery"
 
+    @property
+    def asked(self) -> dict[str, Any]:
+        """What this round was asked for, as the trace shows it.
+
+        The candidate pool and the taste profile are left out: hundreds of
+        albums in the trace input hide the prompt that shaped the round.
+        """
+        return self.model_dump(mode="json", exclude={"candidates", "profile", "already_shown"}) | {
+            "already_shown": len(self.already_shown)
+        }
+
 
 class RecommendationRound:
     """The stages of one round, over one pipeline and one research client.
@@ -138,12 +151,19 @@ class RecommendationRound:
         self.facts: dict[str, ExtractedFacts] = {}
         self.warning: str | None = None
 
+    # Captured output would be every step frame, then the result again.
+    @observe(name="mediasage:recommendation-round", capture_output=False)
     async def run(self) -> AsyncIterator[Step | RecommendGenerateResponse]:
         """Work the round, reporting each stage and finally the result.
+
+        Traced as one span, so the round's several calls land under a single
+        trace. Its session is the recommendation session, set per call in
+        `MeteredClient`.
 
         Raises:
             ValueError: With a message meant for the user
         """
+        Tracing.record(asked=self.inputs.asked)
         yield self._step("selecting_discovery" if self.inputs.is_discovery else "selecting_library")
         familiarity = await self._familiarity()
         recommendations = await self._select(familiarity)
@@ -191,12 +211,14 @@ class RecommendationRound:
             len(self.facts),
             self.warning is not None,
         )
-        yield RecommendGenerateResponse(
+        result = RecommendGenerateResponse(
             recommendations=recommendations,
             token_count=tokens,
             estimated_cost=cost,
             research_warning=self.warning,
         )
+        Tracing.record(answered=result.answered)
+        yield result
 
     def save(self, result: RecommendGenerateResponse) -> str | None:
         """Record the round in history, or None when that failed.

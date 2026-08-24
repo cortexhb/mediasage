@@ -44,13 +44,20 @@ class RecommendationPipeline(BaseModel):
     # SessionStore holds a threading.Lock, which cannot be copied.
     sessions: SessionStore = Field(default_factory=SessionStore)
 
-    def stages(self, session_id: str = NO_SESSION) -> RoundStages:
+    def stages(self, session_id: str = NO_SESSION, flow_id: str = "") -> RoundStages:
         """The stages of a round, spending against `session_id`.
 
         The default runs ahead of any session -- what it costs is logged but
         attributed to nobody, which is what filter suggestion needs.
+
+        `flow_id` only moves where the traces group; spend still lands here.
         """
-        call = MeteredClient(client=self.client, sessions=self.sessions, session_id=session_id)
+        call = MeteredClient(
+            client=self.client,
+            sessions=self.sessions,
+            session_id=session_id,
+            flow_id=flow_id,
+        )
         return RoundStages(
             selection=Selection(call=call), facts=Facts(call=call), pitches=Pitches(call=call)
         )

@@ -9,9 +9,10 @@ Precedence, highest first:
 1. Values passed to the constructor
 2. `MEDIASAGE_*` environment variables
 3. `.env`
-4. `data/config.user.yaml` — settings saved from the UI
-5. `config.yaml` — the deployment's base file
-6. Field defaults
+4. `LANGFUSE_*` variables, and `.env.langfuse` — the tracing section only
+5. `data/config.user.yaml` — settings saved from the UI
+6. `config.yaml` — the deployment's base file
+7. Field defaults
 
 Section fields nest with a double underscore: `MEDIASAGE_LLM__ENDPOINT_URL`,
 `MEDIASAGE_DEFAULTS__TRACK_COUNT`.
@@ -21,9 +22,11 @@ environment variable can supply it. `Identityless` drops those keys, because
 pydantic-settings has no per-field opt-out. See `docs/plex_login.md`.
 """
 
+import os
 from pathlib import Path
 from typing import Any, Final
 
+from dotenv import dotenv_values
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -35,6 +38,7 @@ from backend.config.models import (
     ArtConfig,
     BudgetConfig,
     DefaultsConfig,
+    LangfuseConfig,
     LibraryConfig,
     LLMSection,
     MatchingConfig,
@@ -53,6 +57,17 @@ USER_CONFIG_PATH = Path("data/config.user.yaml")
 PLEX_IDENTITY: Final[frozenset[str]] = frozenset(
     {"url", "token", "account_token", "server_id", "client_id", "server_name"}
 )
+
+# Separate from `.env` so tracing keys mount on their own.
+LANGFUSE_ENV_PATH = Path(".env.langfuse")
+
+# Langfuse's documented variable names, onto the fields they set.
+LANGFUSE_ENV: Final[dict[str, str]] = {
+    "LANGFUSE_BASE_URL": "base_url",
+    "LANGFUSE_PUBLIC_KEY": "public_key",
+    "LANGFUSE_SECRET_KEY": "secret_key",
+    "LANGFUSE_TRACING_ENVIRONMENT": "environment",
+}
 
 
 class Identityless(PydanticBaseSettingsSource):
@@ -85,6 +100,28 @@ class Identityless(PydanticBaseSettingsSource):
         )
 
 
+class LangfuseEnv(PydanticBaseSettingsSource):
+    """The Langfuse section, read under Langfuse's own variable names.
+
+    `MEDIASAGE_LANGFUSE__*` reaches the same fields through the normal nesting.
+    This source exists so the keys a deployment already exports for the
+    Langfuse SDK and CLI are picked up unchanged, from the environment or from
+    `.env.langfuse`.
+    """
+
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+        """Never called: `__call__` is overridden and does not consult it."""
+        raise NotImplementedError
+
+    def __call__(self) -> dict[str, Any]:
+        """The section these variables describe, or nothing if none is set."""
+        offered = {**dotenv_values(LANGFUSE_ENV_PATH), **os.environ}
+        section = {
+            field: offered[name] for name, field in LANGFUSE_ENV.items() if offered.get(name)
+        }
+        return {"langfuse": section} if section else {}
+
+
 class MediasageConfig(BaseSettings):
     """Root configuration object, loaded from YAML and the environment."""
 
@@ -107,6 +144,7 @@ class MediasageConfig(BaseSettings):
     research: ResearchConfig = ResearchConfig()
     art: ArtConfig = ArtConfig()
     defaults: DefaultsConfig = DefaultsConfig()
+    langfuse: LangfuseConfig = LangfuseConfig()
 
     @classmethod
     def settings_customise_sources(
@@ -130,6 +168,8 @@ class MediasageConfig(BaseSettings):
             init_settings,
             Identityless(env_settings),
             Identityless(dotenv_settings),
+            # Below the prefixed sources: an explicit `MEDIASAGE_` wins.
+            LangfuseEnv(settings_cls),
             YamlConfigSettingsSource(
                 settings_cls,
                 yaml_file=[base_path, USER_CONFIG_PATH],

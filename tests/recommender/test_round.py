@@ -411,6 +411,28 @@ class TestResult:
         assert [rec.album for rec in result.recommendations] == ["Ágætis byrjun", "Spiderland"]
 
 
+class TestAsked:
+    """What the trace shows as the round's input."""
+
+    def test_carries_the_prompt_and_the_mode(self):
+        asked = inputs(prompt="something loud", mode="discovery").asked
+
+        assert asked["prompt"] == "something loud"
+        assert asked["mode"] == "discovery"
+
+    def test_the_candidate_pool_is_left_out(self):
+        """Hundreds of albums would bury the prompt that shaped the round."""
+        asked = inputs(candidates=[candidate("Slint", "Spiderland")]).asked
+
+        assert "candidates" not in asked
+        assert "profile" not in asked
+
+    def test_what_was_already_shown_is_counted_not_listed(self):
+        asked = inputs(already_shown=[AlbumRef(artist="Slint", album="Spiderland")]).asked
+
+        assert asked["already_shown"] == 1
+
+
 def saved(response: RecommendGenerateResponse, **round_inputs) -> Result:
     """Save one response, returning the row the round handed the store."""
     round_ = RecommendationRound(fake_pipeline(), fake_research(), inputs(**round_inputs))

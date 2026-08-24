@@ -38,6 +38,30 @@ class ChatModels(BaseModel):
             return self.config.model_analysis
         return self.config.model_for_generation
 
+    def sampling(self) -> dict[str, Any]:
+        """The sampling knobs the user set, in the shape each one is sent.
+
+        `temperature` and `top_p` are constructor arguments of every
+        integration. The rest are not: they reach an OpenAI-compatible server
+        through `model_kwargs`, which the integration puts in the request body
+        verbatim. Unset means absent, so no provider is sent a knob it would
+        reject.
+        """
+        named = {"temperature": self.config.temperature, "top_p": self.config.top_p}
+        extra = {
+            "top_k": self.config.top_k,
+            "min_p": self.config.min_p,
+            "presence_penalty": self.config.presence_penalty,
+            "repetition_penalty": self.config.repetition_penalty,
+        }
+
+        chosen: dict[str, Any] = {key: value for key, value in named.items() if value is not None}
+        body = {key: value for key, value in extra.items() if value is not None}
+        if body:
+            chosen["model_kwargs"] = body
+
+        return chosen
+
     def kwargs(self) -> dict[str, Any]:
         """Arguments shared by every provider integration.
 
@@ -48,6 +72,7 @@ class ChatModels(BaseModel):
             "timeout": self.config.request_timeout,
             "max_tokens": self.config.max_output_tokens,
             "max_retries": self.config.max_retries,
+            **self.sampling(),
         }
 
         key = self.config.api_key.get_secret_value()

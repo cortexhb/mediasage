@@ -74,6 +74,7 @@ logs/
 
 # Local development
 .env
+.env.langfuse
 .env.local
 *.local
 
@@ -89,3 +90,5 @@ temp/
 .archive/
 specs/
 .omc
+node_modules/
+tmp2/

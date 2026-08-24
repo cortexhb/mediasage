@@ -7,10 +7,13 @@ matcher, the narrative -- belong to `models.py`.
 
 import logging
 from collections.abc import Generator
+from typing import Any
 
+from langfuse import observe
 from pydantic import BaseModel, ConfigDict
 
 from backend import library
+from backend.cancellation import Abandoned
 from backend.config import config_store
 from backend.generator import prompts
 from backend.generator.models import Narrative, TrackMatcher, TrackPool
@@ -25,6 +28,7 @@ from backend.models import (
 from backend.plex import PlexQueryError, plex_store
 from backend.results import Result, results_store
 from backend.sse import SSE
+from backend.tracing import Tracing
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +52,18 @@ class PlaylistGeneration(BaseModel):
     exclude_live: bool = True
     min_rating: int = 0
     max_tracks_to_ai: int = 500
+    # The client's flow id; groups this run's traces into one session.
+    flow_id: str = ""
+
+    @property
+    def asked(self) -> dict[str, Any]:
+        """What this run was asked for, as the trace shows it.
+
+        The seed track is named rather than dumped: a whole `Track` in the
+        trace input buries the filters under metadata nobody reads there.
+        """
+        seed = f"{self.seed_track.title} by {self.seed_track.artist}" if self.seed_track else None
+        return self.model_dump(exclude={"seed_track", "flow_id"}) | {"seed_track": seed}
 
     @property
     def pool(self) -> TrackPool:
@@ -138,15 +154,23 @@ class PlaylistGeneration(BaseModel):
             logger.warning("Failed to save result: %s", e)
             return None
 
+    # Captured output would be every frame: the playlist re-serialised.
+    @observe(name="mediasage:playlist-generation", capture_output=False)
     def stream(self) -> Generator[str]:
         """Run one generation, reporting each step as it happens.
 
         Yields SSE frames: progress while it works, then the narrative, the
         tracks in batches, and a final summary. Any failure becomes an error
         frame rather than an exception, because the client is already reading.
+
+        Traced as one span, so both LLM calls land under a single trace. The
+        client-gone flag has to be installed before this is called -- see
+        `watch_stream` -- because the decorator pins every step to the context
+        the generator was built in.
         """
         try:
             logger.info("Starting playlist generation (streaming)")
+            Tracing.record(asked=self.asked)
             llm_client = client_store.get()
             plex_client = plex_store.get()
 
@@ -206,7 +230,9 @@ class PlaylistGeneration(BaseModel):
             yield SSE.progress("ai_working", "AI is curating your playlist...")
 
             logger.info("Calling LLM with prompt length: %d chars", len(generation_prompt))
-            response = llm_client.generate(generation_prompt, prompts.GENERATION_SYSTEM)
+            response = llm_client.generate(
+                generation_prompt, prompts.GENERATION_SYSTEM, self.flow_id
+            )
             logger.info(
                 "LLM response received: %d input, %d output tokens",
                 response.input_tokens,
@@ -225,7 +251,7 @@ class PlaylistGeneration(BaseModel):
 
             yield SSE.progress("narrative", "Writing playlist narrative...")
 
-            written = Narrative.of(selections, llm_client, self.prompt)
+            written = Narrative.of(selections, llm_client, self.prompt, self.flow_id)
             logger.info(
                 "Generated narrative: title='%s', narrative_len=%d",
                 written.title,
@@ -264,6 +290,8 @@ class PlaylistGeneration(BaseModel):
                 yield SSE.error(f"Failed to build response: {e}")
                 return
 
+            Tracing.record(answered=result.answered)
+
             for i in range(0, len(result.tracks), TRACK_BATCH_SIZE):
                 batch = result.tracks[i : i + TRACK_BATCH_SIZE]
                 logger.info("Emitting track batch %d-%d", i, i + len(batch))
@@ -288,6 +316,9 @@ class PlaylistGeneration(BaseModel):
             # An ignored comment frame, sent to flush iOS Safari's buffer.
             yield ": heartbeat\n\n"
 
+        except Abandoned:
+            # Nobody is reading this frame; the log is the only report left.
+            logger.warning("Client left mid-generation; no further calls made")
         except Exception as e:
             logger.exception("Error during playlist generation")
             yield SSE.error(str(e))

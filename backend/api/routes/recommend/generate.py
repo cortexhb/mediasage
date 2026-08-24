@@ -15,6 +15,7 @@ from starlette.responses import StreamingResponse
 
 from backend import library
 from backend.api.clients import shared
+from backend.api.watching import watch_stream
 from backend.library import AlbumCandidate, TrackFilter
 from backend.models import (
     RecommendGenerateRequest,
@@ -186,4 +187,5 @@ def register_recommend_generate_routes(app: FastAPI) -> None:
             }
         },
         operation_id="generateRecommendations",
+        dependencies=[Depends(watch_stream)],
     )

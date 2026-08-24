@@ -1,0 +1,65 @@
+/** Ports `.step-progress-item` and `.step-progress-spinner`. */
+
+.stepProgress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.stepProgress__step {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+
+  &[data-state='active'] {
+    color: var(--text-primary);
+  }
+
+  &[data-state='done'] {
+    color: var(--text-secondary);
+  }
+}
+
+.stepProgress__mark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+
+  [data-state='active'] & {
+    border-top-color: var(--accent);
+    animation: spin 800ms linear infinite;
+  }
+
+  /* A tick, as `frontend/app.js:4580` drew it -- not a filled circle. */
+  [data-state='done'] & {
+    color: var(--success);
+    border-color: transparent;
+
+    &::after {
+      content: '✓';
+    }
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* A spinner that never stops is worse than none for vestibular disorders. */
+@media (prefers-reduced-motion: reduce) {
+  .stepProgress__mark {
+    animation: none;
+  }
+}

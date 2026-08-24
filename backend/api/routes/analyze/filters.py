@@ -1,26 +1,23 @@
-"""``/api/filter/preview`` -- how many tracks match, and what it costs.
+"""``/api/filter/preview`` -- how many tracks one filter selection reaches.
 
 Needs neither Plex nor a model when the library is cached, which is the point
 of caching it; a connected server is only the fallback until one exists.
 """
 
 import asyncio
-from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException
 
 from backend import library
-from backend.api.estimates import FilterPreviewResponse
-from backend.config import MediasageConfig, config_store
 from backend.library import TrackFilter
-from backend.models import FilterPreviewRequest
+from backend.models import FilterPreviewRequest, FilterPreviewResponse
 from backend.plex import PlexFilter, PlexQueryError, plex_store
 
 
 async def _preview_filters(
-    request: FilterPreviewRequest, config: Annotated[MediasageConfig, Depends(config_store.get)]
+    request: FilterPreviewRequest,
 ) -> FilterPreviewResponse:
-    """``POST /api/filter/preview`` -- how many tracks match, and what it costs.
+    """``POST /api/filter/preview`` -- how many tracks one selection reaches.
 
     The cache answers instantly; Plex is the fallback until one exists, and
     only then does this endpoint need a connected server.
@@ -49,7 +46,7 @@ async def _preview_filters(
         except PlexQueryError as err:
             raise HTTPException(status_code=502, detail=str(err)) from err
 
-    return FilterPreviewResponse.of(request, matching, config)
+    return FilterPreviewResponse.of(request, matching)
 
 
 def register_filter_routes(app: FastAPI) -> None:

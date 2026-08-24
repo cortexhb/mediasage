@@ -1,0 +1,31 @@
+/**
+ * `.btn` plus `.btn-plex`, from `frontend/style.css:580` and `:1709`.
+ *
+ * Not a `Button` variant: legacy makes this an anchor, and only these two
+ * dialogs use it.
+ */
+
+.openInPlex {
+  display: inline-flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-sm) var(--spacing-xl);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  color: var(--text-primary);
+  text-decoration: none;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+
+  &:hover {
+    background: var(--bg-hover);
+  }
+
+  svg {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+  }
+}

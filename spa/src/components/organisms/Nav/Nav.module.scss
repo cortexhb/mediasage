@@ -13,6 +13,7 @@
 .nav {
   display: flex;
   gap: var(--spacing-sm);
+  align-items: center;
 }
 
 .nav__dropdown {
@@ -51,8 +52,12 @@
 
 /* The flat entries, which are the root's only direct links. */
 .nav > a {
+  /* Inline-flex like the trigger beside it: an inline box sits differently. */
+  display: inline-flex;
+  align-items: center;
   padding: var(--spacing-sm) var(--spacing-md);
   font-size: var(--font-size-base);
+  line-height: 1;
   color: var(--text-secondary);
   text-decoration: none;
   border-radius: var(--radius-md);

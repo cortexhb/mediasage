@@ -11,6 +11,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException
 from starlette.responses import StreamingResponse
 
+from backend.api.watching import watch_stream
 from backend.generator import PlaylistGeneration
 from backend.llm import LLMClient, client_store
 from backend.models import GenerateRequest, PlaylistStreamFrame
@@ -50,6 +51,7 @@ async def _generate(
         exclude_live=request.exclude_live,
         min_rating=request.min_rating,
         max_tracks_to_ai=request.max_tracks_to_ai,
+        flow_id=request.flow_id,
     )
     return SSE.serve(generation.stream())
 
@@ -73,4 +75,5 @@ def register_generate_routes(app: FastAPI) -> None:
             }
         },
         operation_id="generatePlaylist",
+        dependencies=[Depends(watch_stream)],
     )

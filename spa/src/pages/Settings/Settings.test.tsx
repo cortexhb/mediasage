@@ -27,6 +27,7 @@ const DATA: SettingsData = {
     max_albums_to_ai: 100,
     defaults: { track_count: 25 },
     context_window: 200000,
+    stream_idle_timeout: 600,
   },
   setup: {
     data_dir_writable: true,

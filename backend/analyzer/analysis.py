@@ -8,6 +8,7 @@ A prompt may only be answered with filters the library actually has, so what
 the model names is checked against the Plex stats before it is returned.
 """
 
+from langfuse import observe
 from pydantic import BaseModel, ConfigDict
 
 from backend.analyzer import prompts
@@ -29,7 +30,8 @@ class Analyzer(BaseModel):
     llm: LLMClient
     plex: PlexClient
 
-    def analyze_prompt(self, prompt: str) -> AnalyzePromptResponse:
+    @observe(name="mediasage:analyze-prompt")
+    def analyze_prompt(self, prompt: str, session: str = "") -> AnalyzePromptResponse:
         """Read a natural language prompt into filters the library can serve.
 
         Anything the model names that is not in the library is dropped rather
@@ -39,7 +41,9 @@ class Analyzer(BaseModel):
             ValueError: The model returned something that will not parse
         """
         stats = self.plex.library.stats()
-        response = self.llm.analyze(prompts.filters(prompt, stats), prompts.PROMPT_ANALYSIS_SYSTEM)
+        response = self.llm.analyze(
+            prompts.filters(prompt, stats), prompts.PROMPT_ANALYSIS_SYSTEM, session
+        )
         data = response.parsed()
 
         available_genres = {genre.name for genre in stats.genres}
@@ -57,13 +61,14 @@ class Analyzer(BaseModel):
             estimated_cost=response.cost(config_store.get().llm),
         )
 
-    def analyze_track(self, track: Track) -> AnalyzeTrackResponse:
+    @observe(name="mediasage:analyze-track")
+    def analyze_track(self, track: Track, session: str = "") -> AnalyzeTrackResponse:
         """Read a seed track into the dimensions it can be explored along.
 
         Raises:
             ValueError: The model returned something that will not parse
         """
-        response = self.llm.analyze(prompts.track(track), prompts.TRACK_ANALYSIS_SYSTEM)
+        response = self.llm.analyze(prompts.track(track), prompts.TRACK_ANALYSIS_SYSTEM, session)
         data = response.parsed()
 
         return AnalyzeTrackResponse(

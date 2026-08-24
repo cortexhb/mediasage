@@ -51,7 +51,7 @@ def prompts_of(method: MagicMock) -> tuple[str, str]:
     `LLMClient` takes them the other way round; naming them here keeps a test
     from asserting against the wrong one.
     """
-    user, system = method.call_args[0]
+    user, system = method.call_args[0][:2]
     return system, user
 
 

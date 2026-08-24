@@ -46,3 +46,5 @@ Dockerfile*
 dev/
 docker-compose*.yml
 .dockerignore
+
+.env.langfuse

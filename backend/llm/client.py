@@ -17,10 +17,12 @@ from typing import Self
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict
 
+from backend.cancellation import Cancellation
 from backend.config import LLMSection, Provider, Role
 from backend.llm.chat import ChatModels
 from backend.llm.errors import LLMError, LLMNotConfigured
 from backend.llm.models import LLMResponse
+from backend.tracing import Tracing
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +49,22 @@ class LLMClient(BaseModel):
         """Which provider is being spent, for logs and error messages."""
         return self.models.config.provider
 
-    def complete(self, prompt: str, system: str, role: Role) -> LLMResponse:
+    def complete(self, prompt: str, system: str, role: Role, session: str = "") -> LLMResponse:
         """Run one completion and return it with the provider's token counts.
 
+        Nothing is sent once the client that asked has gone. A completion
+        already in flight cannot be recalled -- the inference server has no
+        way to cancel one -- so this checkpoint is what keeps a run from
+        spending the calls that would have followed it.
+
+        This is the only place a prompt is sent, so it is where tracing is
+        attached; `session` groups the several traces one user flow produces.
+
         Raises:
+            Abandoned: If the client disconnected before this call
             LLMError: If the provider returns no usable content
         """
+        Cancellation.check()
         name = self.models.name_for(role)
         logger.info(
             "Calling %s (%s) for %s with %d char prompt",
@@ -63,7 +75,12 @@ class LLMClient(BaseModel):
         )
 
         message = self.models.for_role(role).invoke(
-            [SystemMessage(content=system), HumanMessage(content=prompt)]
+            [SystemMessage(content=system), HumanMessage(content=prompt)],
+            config={
+                "callbacks": Tracing.callbacks(),
+                "run_name": f"mediasage:{role}-completion",
+                "metadata": Tracing.attributes(session),
+            },
         )
         response = LLMResponse.from_message(message, model=name, role=role)
 
@@ -83,13 +100,13 @@ class LLMClient(BaseModel):
         )
         return response
 
-    def analyze(self, prompt: str, system: str) -> LLMResponse:
+    def analyze(self, prompt: str, system: str, session: str = "") -> LLMResponse:
         """Spend the analysis model, for understanding tasks."""
-        return self.complete(prompt, system, "analysis")
+        return self.complete(prompt, system, "analysis", session)
 
-    def generate(self, prompt: str, system: str) -> LLMResponse:
+    def generate(self, prompt: str, system: str, session: str = "") -> LLMResponse:
         """Spend the generation model, for track and album selection."""
-        return self.complete(prompt, system, "generation")
+        return self.complete(prompt, system, "generation", session)
 
 
 class LLMClientStore:

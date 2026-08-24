@@ -37,6 +37,7 @@ from backend.config import config_store
 from backend.db import migrations
 from backend.llm import LLMClient, LLMNotConfigured, client_store
 from backend.plex import PlexClient, PlexNotConnected, plex_store
+from backend.tracing import Tracing
 from backend.version import Version
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Build what is configured, then release it on the way out."""
     config = config_store.get()
+
+    # Before any client is built: nothing may send a prompt untraced.
+    Tracing.configure(config.langfuse)
 
     if config.plex.url and config.plex.token:
         plex_store.client = PlexClient.of(config.plex)
@@ -59,6 +63,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     yield
 
     await shared.close()
+    Tracing.shutdown()
 
 
 async def _unavailable(request: Request, exc: Exception) -> JSONResponse:

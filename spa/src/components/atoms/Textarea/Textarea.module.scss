@@ -1,0 +1,29 @@
+/**
+ * A multi-line text control, matching `atoms/Input`'s surface.
+ */
+
+.textarea {
+  width: 100%;
+  min-height: 7rem;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+
+  /* Vertical only: widening it would break the column it sits in. */
+  resize: vertical;
+
+  &:focus {
+    border-color: var(--accent);
+    outline: none;
+  }
+
+  &:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+}

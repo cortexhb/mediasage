@@ -1,0 +1,8 @@
+/**
+ * Ports `.playlist-picker-container` (`frontend/style.css:2116`): it carries
+ * the gap the name field it replaces would have left.
+ */
+
+.playlistPicker {
+  margin-bottom: var(--spacing-md);
+}

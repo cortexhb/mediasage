@@ -1,0 +1,94 @@
+/**
+ * Ports `.step-progress` from `frontend/style.css:369`.
+ *
+ * The connector is a real element, as `.step-connector` was: drawn as a
+ * pseudo-element it measured from step centres and sat against the circles.
+ */
+@use 'mixins' as ds;
+
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg) var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  list-style: none;
+
+  @include ds.on-mobile {
+    padding: 0;
+    margin-bottom: var(--spacing-md);
+  }
+}
+
+/* Ports `.step`: the circle over its label, sized by whichever is wider. */
+.stepper__step {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  align-items: center;
+  min-width: 60px;
+}
+
+/* Ports `.step-connector`. 18px of bottom margin lifts it to circle centre. */
+.stepper__connector {
+  flex: 1;
+  min-width: 24px;
+  max-width: 60px;
+  height: 2px;
+  margin: 0 var(--spacing-xs) 18px;
+  background: var(--border);
+  transition: background var(--transition-normal);
+
+  @include ds.on-mobile {
+    margin-bottom: 0;
+  }
+}
+
+.stepper__connector[data-state='done'] {
+  background: var(--accent);
+}
+
+.stepper__number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  transition: all var(--transition-normal);
+}
+
+.stepper__step[data-state='current'] .stepper__number,
+.stepper__step[data-state='done'] .stepper__number {
+  color: var(--bg-primary);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* A done step is a tick, which says finished where a number only says which. */
+.stepper__step[data-state='done'] .stepper__number {
+  font-size: 0;
+}
+
+.stepper__step[data-state='done'] .stepper__number::after {
+  font-size: 14px;
+  content: '✓';
+}
+
+.stepper__label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-align: center;
+  transition: color var(--transition-normal);
+}
+
+.stepper__step[data-state='current'] .stepper__label,
+.stepper__step[data-state='done'] .stepper__label {
+  color: var(--text-primary);
+}

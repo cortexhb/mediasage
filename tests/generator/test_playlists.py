@@ -127,6 +127,34 @@ class TestPool:
         assert run.pool.limit == 300
 
 
+class TestAsked:
+    """What the trace shows as the run's input."""
+
+    def test_carries_the_prompt_and_the_filters(self):
+        run = PlaylistGeneration(prompt="rainy jazz", genres=["Jazz"], track_count=15)
+
+        assert run.asked["prompt"] == "rainy jazz"
+        assert run.asked["genres"] == ["Jazz"]
+        assert run.asked["track_count"] == 15
+
+    def test_the_flow_id_is_left_out(self):
+        """It is the session the trace already hangs under."""
+        run = PlaylistGeneration(prompt="rainy jazz", flow_id="f-1")
+
+        assert "flow_id" not in run.asked
+
+    def test_a_seed_track_is_named_not_dumped(self):
+        seed = Track(
+            rating_key="1", title="Black", artist="Pearl Jam", album="Ten", duration_ms=1000
+        )
+        run = PlaylistGeneration(seed_track=seed)
+
+        assert run.asked["seed_track"] == "Black by Pearl Jam"
+
+    def test_no_seed_track_is_nothing(self):
+        assert PlaylistGeneration(prompt="rainy jazz").asked["seed_track"] is None
+
+
 class TestPlaylistGenerationStream:
     """The stream, end to end, over mocked clients."""
 

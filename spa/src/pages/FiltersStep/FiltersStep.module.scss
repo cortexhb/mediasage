@@ -1,0 +1,81 @@
+/**
+ * Ports the filters step from `frontend/style.css`: `.filter-section` (`:799`),
+ * `.filter-toggle-all` (`:820`) and `.filter-preview` (`:764`).
+ *
+ * A section is spacing, not a card: no background and no border, which is what
+ * keeps the chips and the headings reading as one column.
+ */
+@use 'mixins' as ds;
+
+.filters {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+/* Ports `.step-description`. */
+.filters__description {
+  margin: 0 0 var(--spacing-lg);
+  color: var(--text-secondary);
+}
+
+.filters__section {
+  margin-bottom: var(--spacing-lg);
+}
+
+/* Beside the heading, not pushed to the far edge. */
+.filters__header {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.filters__toggleAll {
+  padding: 0;
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  color: var(--accent);
+  cursor: pointer;
+  background: none;
+  border: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.filters__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.filters__preview {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* The count is the answer here, so it carries the accent. */
+.filters__matching {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.filters__actions {
+  display: flex;
+  gap: var(--spacing-md);
+  justify-content: space-between;
+
+  @include ds.on-mobile {
+    flex-direction: column-reverse;
+  }
+}

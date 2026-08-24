@@ -49,7 +49,54 @@ class TestMeteredClient:
 
         call.analyze("the system prompt", "the user prompt", "test_call")
 
-        assert client.analyze.call_args[0] == ("the user prompt", "the system prompt")
+        assert client.analyze.call_args[0][:2] == ("the user prompt", "the system prompt")
+
+
+class TestTracedSession:
+    """Tests for which id the calls group under in Langfuse."""
+
+    def test_a_call_outside_a_session_groups_under_nothing(self, sessions):
+        call = MeteredClient(client=scripted_llm({}), sessions=sessions)
+
+        assert call.traced_session == ""
+
+    def test_a_session_groups_under_itself(self, sessions):
+        call = MeteredClient(client=scripted_llm({}), sessions=sessions, session_id="s-1")
+
+        assert call.traced_session == "s-1"
+
+    def test_the_flow_wins_over_the_session(self, sessions):
+        """The playlist flow's questions open a session of their own."""
+        call = MeteredClient(
+            client=scripted_llm({}), sessions=sessions, session_id="s-1", flow_id="f-1"
+        )
+
+        assert call.traced_session == "f-1"
+
+    def test_the_flow_reaches_the_client(self, sessions):
+        client = scripted_llm({})
+        call = MeteredClient(client=client, sessions=sessions, flow_id="f-1")
+
+        call.generate("system", "prompt", "test_call")
+
+        assert client.generate.call_args[0][2] == "f-1"
+
+
+class TestStages:
+    def test_the_flow_reaches_every_stage(self, sessions):
+        """One flow id, so questions and generation share a session."""
+        pipeline = RecommendationPipeline(client=scripted_llm({}), sessions=sessions)
+
+        stages = pipeline.stages("s-1", "f-1")
+
+        assert stages.selection.call.traced_session == "f-1"
+        assert stages.facts.call.traced_session == "f-1"
+        assert stages.pitches.call.traced_session == "f-1"
+
+    def test_no_flow_leaves_the_session_in_charge(self, sessions):
+        pipeline = RecommendationPipeline(client=scripted_llm({}), sessions=sessions)
+
+        assert pipeline.stages("s-1").selection.call.traced_session == "s-1"
 
 
 class TestReplyGuards:

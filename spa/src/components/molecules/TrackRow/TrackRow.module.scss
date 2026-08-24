@@ -1,0 +1,68 @@
+/* Ports `.playlist-track` and the `.track-*` parts (`frontend/style.css:1248`). */
+
+.trackRow {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  padding: var(--spacing-sm);
+  background: var(--bg-secondary);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    border-left var(--transition-fast);
+}
+
+.trackRow:hover {
+  background: var(--bg-tertiary);
+}
+
+/* The accent edge is what ties the row to the reason panel beside it. */
+.trackRow[aria-selected='true'] {
+  background: var(--bg-tertiary);
+  border-left-color: var(--accent);
+}
+
+.trackRow__number {
+  width: 24px;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.trackRow__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.trackRow__title {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trackRow__artist {
+  overflow: hidden;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trackRow__remove {
+  padding: var(--spacing-xs);
+  font-family: var(--font-family);
+  color: var(--text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.trackRow__remove:hover {
+  color: var(--error);
+  background: rgb(233 92 89 / 10%);
+}

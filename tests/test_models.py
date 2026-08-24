@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from backend.models import GenerateRequest
+from backend.models import FilterPreviewRequest, FilterPreviewResponse, GenerateRequest
 
 
 def generate(**overrides: object) -> GenerateRequest:
@@ -68,3 +68,38 @@ class TestCheckFlow:
         """Folding null to blank must not open a way past the check."""
         with pytest.raises(ValidationError, match="prompt or seed_track"):
             generate(prompt=None)
+
+
+class TestFilterPreview:
+    """How much of the library a selection reaches. Counts, never costs."""
+
+    @staticmethod
+    def preview(matching: int, max_tracks_to_ai: int = 1000) -> FilterPreviewResponse:
+        request = FilterPreviewRequest(max_tracks_to_ai=max_tracks_to_ai)
+        return FilterPreviewResponse.of(request, matching)
+
+    def test_caps_what_is_sent(self):
+        assert self.preview(5000, max_tracks_to_ai=100).tracks_to_send == 100
+
+    def test_no_cap_sends_everything(self):
+        """A limit of zero is the user turning the cap off, not asking for none."""
+        assert self.preview(5000, max_tracks_to_ai=0).tracks_to_send == 5000
+
+    def test_under_the_cap_sends_what_there_is(self):
+        assert self.preview(60, max_tracks_to_ai=100).tracks_to_send == 60
+
+    def test_an_empty_library_sends_nothing(self):
+        assert self.preview(0).tracks_to_send == 0
+
+    def test_an_unknown_count_sends_nothing(self):
+        """An unsynced cache reports -1, which is not a number of tracks."""
+        assert self.preview(-1).tracks_to_send == 0
+
+    def test_the_matching_count_is_reported_as_given(self):
+        assert self.preview(5000, max_tracks_to_ai=100).matching_tracks == 5000
+
+    def test_nothing_is_predicted_about_cost(self):
+        """Tokens are counted by the provider, after the call, or not at all."""
+        fields = set(FilterPreviewResponse.model_fields)
+
+        assert fields == {"matching_tracks", "tracks_to_send"}

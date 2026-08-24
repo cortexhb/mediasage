@@ -9,6 +9,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
 
+from backend.api.watching import watch_client
 from backend.models import (
     RecommendQuestionsRequest,
     RecommendQuestionsResponse,
@@ -29,12 +30,11 @@ async def _questions(
     would strand the user on a form with nothing to answer.
     """
     session_id = pipeline.sessions.create(RecommendSession(prompt=request.prompt))
+    stages = pipeline.stages(session_id, request.flow_id)
     try:
-        dimension_ids = await asyncio.to_thread(
-            pipeline.stages(session_id).selection.gap_analysis, request.prompt
-        )
+        dimension_ids = await asyncio.to_thread(stages.selection.gap_analysis, request.prompt)
         questions = await asyncio.to_thread(
-            pipeline.stages(session_id).selection.generate_questions,
+            stages.selection.generate_questions,
             request.prompt,
             dimension_ids,
         )
@@ -87,6 +87,8 @@ def register_recommend_session_routes(app: FastAPI) -> None:
         _questions,
         methods=["POST"],
         response_model=RecommendQuestionsResponse,
+        # Two calls: a reader who left is billed for no further one.
+        dependencies=[Depends(watch_client)],
         operation_id="createRecommendQuestions",
     )
     app.add_api_route(

@@ -3,6 +3,7 @@
 import pytest
 
 from backend.recommender.models import (
+    AlbumPreviewResponse,
     AlbumRecommendation,
     AlbumRef,
     AnswerSet,
@@ -223,3 +224,23 @@ class TestTasteProfile:
         summary = profile.summary()
         assert "Top genres: Rock" in summary
         assert "Library size: 1 albums" in summary
+
+
+class TestAlbumPreview:
+    """How many albums a selection reaches. Counts, never costs."""
+
+    def test_caps_what_is_sent(self):
+        assert AlbumPreviewResponse.of(5000, 2500).albums_to_send == 2500
+
+    def test_no_cap_sends_everything(self):
+        """A limit of zero is the user turning the cap off, not asking for none."""
+        assert AlbumPreviewResponse.of(5000, 0).albums_to_send == 5000
+
+    def test_an_unsynced_library_sends_nothing(self):
+        assert AlbumPreviewResponse.of(0, 2500).albums_to_send == 0
+
+    def test_nothing_is_predicted_about_cost(self):
+        """Tokens are counted by the provider, after the call, or not at all."""
+        fields = set(AlbumPreviewResponse.model_fields)
+
+        assert fields == {"matching_albums", "albums_to_send"}

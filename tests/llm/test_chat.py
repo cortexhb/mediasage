@@ -64,6 +64,65 @@ class TestKwargs:
         assert ChatModels(config=config).kwargs()["api_key"] == "real-key"
 
 
+class TestSampling:
+    """Tests for the sampling knobs, which are the model's to choose."""
+
+    def test_nothing_is_sent_when_nothing_is_set(self, cloud_config: CloudLLMConfig):
+        """An unset knob leaves the server's own default in force."""
+        kwargs = ChatModels(config=cloud_config).kwargs()
+
+        for knob in ("temperature", "top_p", "model_kwargs"):
+            assert knob not in kwargs
+
+    @pytest.mark.parametrize(("knob", "value"), [("temperature", 0.7), ("top_p", 0.8)])
+    def test_the_universal_knobs_are_constructor_arguments(
+        self, cloud_config: CloudLLMConfig, knob: str, value: float
+    ):
+        """Every integration takes these two by name."""
+        config = cloud_config.model_copy(update={knob: value})
+
+        assert ChatModels(config=config).kwargs()[knob] == value
+
+    @pytest.mark.parametrize(
+        ("knob", "value"),
+        [("top_k", 20), ("min_p", 0.0), ("presence_penalty", 1.5), ("repetition_penalty", 1.0)],
+    )
+    def test_the_rest_reach_the_server_in_the_body(
+        self, local_config: LocalLLMConfig, knob: str, value: float
+    ):
+        """No integration takes these by name, so they go through `model_kwargs`."""
+        config = local_config.model_copy(update={knob: value})
+
+        kwargs = ChatModels(config=config).kwargs()
+
+        assert kwargs["model_kwargs"] == {knob: value}
+        assert knob not in kwargs
+
+    def test_a_whole_profile_is_carried(self, local_config: LocalLLMConfig):
+        """A full set off a model card, which is how these arrive."""
+        config = local_config.model_copy(
+            update={
+                "temperature": 0.7,
+                "top_p": 0.80,
+                "top_k": 20,
+                "min_p": 0.0,
+                "presence_penalty": 1.5,
+                "repetition_penalty": 1.0,
+            }
+        )
+
+        kwargs = ChatModels(config=config).kwargs()
+
+        assert kwargs["temperature"] == 0.7
+        assert kwargs["top_p"] == 0.80
+        assert kwargs["model_kwargs"] == {
+            "top_k": 20,
+            "min_p": 0.0,
+            "presence_penalty": 1.5,
+            "repetition_penalty": 1.0,
+        }
+
+
 class TestModelSelection:
     """Tests for which model answers to which role."""
 

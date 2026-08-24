@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from backend.cancellation import Abandoned
 from backend.generator.models import Narrative, TrackMatcher, TrackPool
 from backend.library.models import TrackRecord
 from backend.llm import LLMResponse
@@ -168,6 +169,29 @@ class TestNarrative:
 
         assert written.title == f"{datetime.now().strftime('%b %Y')} Playlist"
         assert written.text == ""
+
+    def test_prose_without_a_title_keeps_the_prose(self):
+        """Observed from `qwen3.8-27b-aeon`: it answers with `narrative` alone."""
+        client = self.answering({"narrative": "Pure, unapologetic joy."})
+
+        written = Narrative.of(self.selections(), client)
+
+        assert written.title == f"{datetime.now().strftime('%b %Y')} Playlist"
+        assert written.text == "Pure, unapologetic joy."
+
+    @pytest.mark.parametrize("key", ["title", "playlist_title", "name"])
+    def test_the_title_is_taken_from_whichever_key_carries_it(self, key: str):
+        client = self.answering({key: "Rainstorm Reverie", "narrative": "x"})
+
+        assert Narrative.of(self.selections(), client).title.startswith("Rainstorm Reverie - ")
+
+    def test_a_departed_client_is_not_papered_over_with_a_date(self):
+        """A dated title would read as the model's answer; nothing was asked."""
+        client = MagicMock()
+        client.analyze.side_effect = Abandoned("The client disconnected")
+
+        with pytest.raises(Abandoned):
+            Narrative.of(self.selections(), client)
 
     def test_a_long_narrative_is_not_truncated(self):
         """The prompt guides the length; cutting mid-sentence reads worse."""
