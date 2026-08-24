@@ -9,12 +9,8 @@
  */
 import { useState } from 'react'
 
-import {
-  LARGEST,
-  SMALLEST,
-} from '../../../libs/contextWindowError/contextWindowError.ts'
 import { customErrors } from '../../../libs/customErrors/customErrors.ts'
-import { tracksThatFit } from '../../../libs/tracksThatFit/tracksThatFit.ts'
+import { ContextWindowField } from '../../molecules/ContextWindowField/ContextWindowField.tsx'
 import { Field } from '../../molecules/Field/Field.tsx'
 
 export interface CustomSettingsProps {
@@ -39,7 +35,6 @@ export function CustomSettings({
   const [urlVisited, setUrlVisited] = useState(false)
 
   const errors = customErrors(url, window)
-  const fits = tracksThatFit(Number.parseInt(window, 10) || contextWindow)
 
   return (
     <>
@@ -73,21 +68,11 @@ export function CustomSettings({
         placeholder="model-name"
         hint="Used for analysis and for generation both."
       />
-      <Field
-        label="Context Window"
-        name="context_window"
-        type="number"
-        // Constraints, not decoration: they are what blocks an invalid submit.
-        min={SMALLEST}
-        max={LARGEST}
-        required
+      <ContextWindowField
         value={window}
-        onChange={(event) => {
-          setWindow(event.target.value)
-        }}
-        {...(errors.contextWindow === undefined
-          ? { hint: `~${fits.toLocaleString()} tracks fit in it` }
-          : { error: errors.contextWindow })}
+        onChange={setWindow}
+        saved={contextWindow}
+        error={errors.contextWindow}
       />
     </>
   )

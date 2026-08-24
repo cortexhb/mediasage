@@ -4,6 +4,8 @@ Listing rather than completing: a key can be valid and the model name wrong,
 and the provider's model list answers that without billing for it.
 """
 
+from typing import Any
+
 from fastapi import FastAPI
 from pydantic import ValidationError
 
@@ -27,17 +29,21 @@ async def _validate_ai(request: ValidateAIRequest) -> ValidateAIResponse:
     if not request.context_window:
         return rejected("A context window is required")
 
+    # Omitted rather than blanked: an empty field here means "leave it alone",
+    # and a patch reads presence, not truthiness.
+    llm: dict[str, Any] = {
+        "provider": request.provider,
+        "model_analysis": request.model,
+        "model_generation": request.model,
+        "context_window": request.context_window,
+    }
+    if request.api_key:
+        llm["api_key"] = request.api_key
+    if request.endpoint_url:
+        llm["endpoint_url"] = request.endpoint_url
+
     try:
-        change = config_store.candidate(
-            ConfigUpdate(
-                llm_provider=request.provider,
-                llm_api_key=request.api_key or None,
-                endpoint_url=request.endpoint_url or None,
-                model_analysis=request.model,
-                model_generation=request.model,
-                context_window=request.context_window,
-            )
-        )
+        change = config_store.candidate(ConfigUpdate(llm=llm))
     except ValidationError as err:
         return rejected(str(err))
 

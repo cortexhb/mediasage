@@ -76,7 +76,7 @@ class TestRejected:
     async def test_a_price_edit_touches_nothing(self):
         with patch("backend.api.probes.ModelListing.of", listed()) as listing:
             refusal = await Probe.rejection(
-                ConfigUpdate(cost_analysis_input=3.0), mediasage_config()
+                ConfigUpdate(llm={"cost_analysis_input": 3.0}), mediasage_config()
             )
 
         assert refusal == ""
@@ -85,19 +85,25 @@ class TestRejected:
     async def test_a_music_library_edit_spends_nothing(self):
         """Plex resolves the library name later, and is not probed here at all."""
         with patch("backend.api.probes.ModelListing.of", listed()) as listing:
-            refusal = await Probe.rejection(ConfigUpdate(music_library="Other"), mediasage_config())
+            refusal = await Probe.rejection(
+                ConfigUpdate(plex={"music_library": "Other"}), mediasage_config()
+            )
 
         assert refusal == ""
         listing.assert_not_called()
 
     async def test_a_provider_that_will_not_answer_is_named(self):
         with patch("backend.api.probes.ModelListing.of", listed(error="nope")):
-            refusal = await Probe.rejection(ConfigUpdate(llm_provider="openai"), mediasage_config())
+            refusal = await Probe.rejection(
+                ConfigUpdate(llm={"provider": "openai"}), mediasage_config()
+            )
 
         assert refusal == "Anthropic (Claude): nope"
 
     async def test_a_change_that_breaks_nothing_is_not_refused(self):
         with patch("backend.api.probes.ModelListing.of", listed(supported=False)):
-            refusal = await Probe.rejection(ConfigUpdate(llm_provider="openai"), mediasage_config())
+            refusal = await Probe.rejection(
+                ConfigUpdate(llm={"provider": "openai"}), mediasage_config()
+            )
 
         assert refusal == ""

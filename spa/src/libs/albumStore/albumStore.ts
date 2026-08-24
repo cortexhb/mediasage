@@ -10,13 +10,15 @@
  * A record of its own, not the playlist flow's: `frontend/app.js:72` held
  * `state.rec` beside `state`, and starting one flow never cleared the other.
  *
- * `sessionStorage` and the versioning work as `libs/flowStore` describes them.
+ * Storage and versioning are `libs/sessionRecord`, as they are for the
+ * playlist flow's record.
  */
 import type {
   ClarifyingQuestion,
   FilterSuggestion,
   RecommendResultFrame,
 } from '../../api/generated/types.gen.ts'
+import { sessionRecord } from '../sessionRecord/sessionRecord.ts'
 
 /** Bump on any change to `AlbumFlow`. Mismatched records are dropped. */
 const VERSION = 1
@@ -62,50 +64,13 @@ export interface AlbumFlow {
   readonly result?: RecommendResultFrame | undefined
 }
 
-/** The stored shape: the record, and the version it was written under. */
-interface Stored {
-  readonly version: number
-  readonly flow: AlbumFlow
-}
+const record = sessionRecord<AlbumFlow>(KEY, VERSION)
 
-/**
- * The album flow's record, or nothing.
- *
- * Answers nothing for a missing record, a version that does not match, and a
- * body that will not parse, exactly as `libs/flowStore` does.
- */
-export function readAlbumFlow(): AlbumFlow | undefined {
-  let raw: string | null
-  try {
-    raw = sessionStorage.getItem(KEY)
-  } catch {
-    return undefined
-  }
-  if (raw === null) return undefined
-
-  try {
-    const stored = JSON.parse(raw) as Stored
-    return stored.version === VERSION ? stored.flow : undefined
-  } catch {
-    return undefined
-  }
-}
+/** The album flow's record, or nothing. */
+export const readAlbumFlow = record.read
 
 /** Keep the flow, or do nothing where storage refuses. */
-export function writeAlbumFlow(flow: AlbumFlow): void {
-  const stored: Stored = { version: VERSION, flow }
-  try {
-    sessionStorage.setItem(KEY, JSON.stringify(stored))
-  } catch {
-    // Refused storage costs the session on reload, not the round in flight.
-  }
-}
+export const writeAlbumFlow = record.write
 
 /** Drop the record, once its flow has been started over. */
-export function forgetAlbumFlow(): void {
-  try {
-    sessionStorage.removeItem(KEY)
-  } catch {
-    // Nothing to do: the next write replaces it anyway.
-  }
-}
+export const forgetAlbumFlow = record.forget

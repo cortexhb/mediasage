@@ -1,12 +1,11 @@
 /**
- * Narrowing for the frames `POST /api/recommend/generate` sends.
+ * The frames `POST /api/recommend/generate` sends, as a union.
  *
  * The terminal frame is `result`, not `complete`: this stream and the playlist
  * one disagree (`backend/api/routes/recommend/generate.py:156`), which is why
  * `readEventStream` ends on the body rather than on a frame name.
  *
- * A frame this build does not know is skipped rather than thrown on, so a
- * backend that adds one does not break a running page.
+ * The narrowing itself is `libs/narrowFrame`, which both streams share.
  */
 import type {
   ErrorFrame,
@@ -14,6 +13,7 @@ import type {
   RecommendResultFrame,
 } from '../../api/generated/types.gen.ts'
 import type { StreamFrame } from '../../api/readEventStream/readEventStream.ts'
+import { knownFrame } from '../knownFrame/knownFrame.ts'
 
 export type AlbumFrame =
   | { readonly event: 'progress'; readonly data: ProgressFrame }
@@ -24,8 +24,5 @@ const KNOWN = ['progress', 'result', 'error']
 
 /** One frame as its declared shape, or `undefined` where it is not one. */
 export function albumFrame(frame: StreamFrame): AlbumFrame | undefined {
-  if (!KNOWN.includes(frame.event)) return undefined
-  if (typeof frame.data !== 'object' || frame.data === null) return undefined
-  // The event name is the discriminant the backend already sends.
-  return { event: frame.event, data: frame.data } as AlbumFrame
+  return knownFrame(KNOWN, frame) as AlbumFrame | undefined
 }

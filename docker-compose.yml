@@ -1,9 +1,9 @@
 services:
   mediasage:
-    image: ecwilson/mediasage:latest
+    image: cortexhb/mediasage:latest
     build:
       context: .
-      dockerfile: dev/Dockerfile
+#      dockerfile: docker/Dockerfile
     container_name: mediasage
     # Optional: Run as specific user for NAS/Synology (use your PUID:PGID)
     # user: "1000:1000"

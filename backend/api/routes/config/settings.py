@@ -38,8 +38,12 @@ async def _update_config(request: ConfigUpdate) -> ConfigResponse:
     if request.is_empty:
         raise HTTPException(status_code=400, detail="No configuration values provided")
 
-    # Field names only: two of them are credentials.
-    supplied = sorted(name for name, value in request.model_dump().items() if value is not None)
+    # Field names only: three of them are credentials.
+    supplied = [
+        f"{section}.{key}"
+        for section in request.sections()
+        for key in sorted(request.changes(section))
+    ]
     logger.info("Saving settings: %s", ", ".join(supplied))
 
     change = config_store.candidate(request)

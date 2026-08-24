@@ -1,0 +1,41 @@
+/**
+ * Ports `.rec-research-warning` (`frontend/style.css:3129`) and
+ * `.rec-secondary-results` (`:3003`). The column width around it belongs to
+ * the page that draws this.
+ */
+
+.albumResultView__warning {
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin: 0 0 var(--spacing-lg);
+  font-size: var(--font-size-sm);
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.albumResultView__more {
+  padding-top: 32px;
+  padding-bottom: var(--spacing-xl);
+  margin-top: 56px;
+  border-top: 1px solid var(--border);
+}
+
+/* Small caps: a marker for the section, not a heading in the type scale. */
+.albumResultView__moreHeading {
+  margin: 0 0 var(--spacing-md);
+  font-size: var(--font-size-lg);
+  font-variant: small-caps;
+  font-weight: 400;
+  color: var(--text-muted);
+  text-transform: lowercase;
+  letter-spacing: 0.08em;
+}
+
+.albumResultView__cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-md);
+
+  @media (width <= 600px) {
+    grid-template-columns: 1fr;
+  }
+}

@@ -39,11 +39,15 @@ README.md
 CLAUDE.md
 .specify/
 frontend/
-spa/
+
+# The SPA source is the build stage's input; its outputs are not.
+spa/node_modules/
+spa/dist/
+spa/coverage/
 
 # Docker
 Dockerfile*
-dev/
+docker/
 docker-compose*.yml
 .dockerignore
 

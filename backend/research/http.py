@@ -12,7 +12,7 @@ import httpx
 
 # MusicBrainz requires a User-Agent that identifies the application and gives
 # them somewhere to complain; a generic one is rate-limited harder or blocked.
-USER_AGENT: Final = "MediaSage/1.0 (https://github.com/ecwilsonaz/mediasage)"
+USER_AGENT: Final = "MediaSage/1.0 (https://github.com/cortexhb/mediasage)"
 
 
 class Throttle:

@@ -1,39 +1,39 @@
-"""The frontend, served by the same process as the API when one is present.
+"""The single-page app, served by the same process as the API when one is built.
 
-The image ships the API alone while the UI is rebuilt, so `locate` finds
-nothing there and the root reports it; a checkout still serves the directory
-beside it. The index is rewritten on each request to carry the running version
-on its asset URLs: without it a browser holds a cached stylesheet across an
-upgrade.
+`spa/dist` is a Vite build: an index naming content-hashed files under
+`assets/`, plus whatever `spa/public/` contributed at the top level. The image
+copies that tree to `/app/frontend`; a checkout serves it where vite wrote it.
+
+Routing is client-side, so a path that matches no file and no API route answers
+the index rather than 404ing -- without that, reloading `/settings` is broken.
+Deploying the API alone stays supported: `locate` answers None and the root
+says so.
 """
 
 import logging
 from pathlib import Path
 from typing import Final, Self
 
-from fastapi import FastAPI, Response
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict
-
-from backend.version import Version
 
 logger = logging.getLogger(__name__)
 
-# A checkout keeps it here; the image ships no frontend, so neither exists there.
-REPO_FRONTEND: Final = Path(__file__).resolve().parents[3] / "frontend"
+# A checkout has it only after `npm run build`.
+REPO_FRONTEND: Final = Path(__file__).resolve().parents[3] / "spa" / "dist"
 IMAGE_FRONTEND: Final = Path("/app/frontend")
 
-# Versioned URLs, so an upgrade busts the browser cache.
-VERSIONED_ASSETS: Final = ("/static/style.css", "/static/app.js")
+# Vite content-hashes every name under it, so a hit is never stale.
+HASHED: Final = "assets/"
+FOREVER: Final = "public, max-age=31536000, immutable"
+
+# A mistyped endpoint must 404, not answer a fetch with HTML.
+API_PREFIX: Final = "api/"
 
 
 class Frontend(BaseModel):
-    """The frontend directory this process serves, and the page inside it.
-
-    Deploying the API alone is supported, so `locate` answers None rather than
-    raising and the root route says so instead of 500ing.
-    """
+    """The build directory this process serves, and the files inside it."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -41,46 +41,66 @@ class Frontend(BaseModel):
 
     @classmethod
     def locate(cls) -> Self | None:
-        """The deployed frontend, checkout before image, or None if absent."""
+        """The deployed build, checkout before image, or None if absent."""
         for path in (REPO_FRONTEND, IMAGE_FRONTEND):
             if path.exists():
                 return cls(directory=path)
         return None
 
     def index_html(self) -> str | None:
-        """The index page with its assets stamped, or None if it is missing."""
+        """The page every client-side route is served as, or None if missing."""
         index = self.directory / "index.html"
         if not index.exists():
             return None
-        return self.cache_busted(index.read_text())
+        return index.read_text()
+
+    def file(self, path: str) -> Path | None:
+        """The build file a request names, or None when it names none.
+
+        Resolved and contained: a `..` left unresolved would read any file the
+        process can.
+        """
+        root = self.directory.resolve()
+        candidate = (root / path).resolve()
+        if not candidate.is_relative_to(root) or not candidate.is_file():
+            return None
+        return candidate
 
     @staticmethod
-    def cache_busted(html: str) -> str:
-        """Stamp the running version onto every versioned asset URL."""
-        version = Version.current()
-        for asset in VERSIONED_ASSETS:
-            html = html.replace(asset, f"{asset}?v={version}")
-        return html
+    def caching(path: str) -> dict[str, str]:
+        """How long the browser may hold what `path` named.
+
+        Only the hashed bundles are safe to keep; anything else must revalidate,
+        which `FileResponse` arranges with an ETag.
+        """
+        return {"Cache-Control": FOREVER} if path.startswith(HASHED) else {}
 
 
 def register_static_routes(app: FastAPI) -> None:
-    """Mount the frontend, and serve its index at the root.
+    """Serve the build, and the index for every path the API did not claim.
 
-    The mount is skipped when there is no frontend directory: the API still
-    runs, and the root reports it rather than failing.
+    Registered last, so the catch-all shadows nothing. Framework-mandated
+    shape: FastAPI takes the handler, not an object.
     """
     frontend = Frontend.locate()
 
-    if frontend is not None:
-        app.mount("/static", StaticFiles(directory=frontend.directory), name="static")
+    async def _index(path: str = "") -> Response:
+        """``GET /{path}`` -- a build file, or the page that routes itself."""
+        if path.startswith(API_PREFIX):
+            raise HTTPException(status_code=404, detail="Not Found")
 
-    async def _index() -> Response:
-        """``GET /`` -- the single page, with cache-busted assets."""
         html = frontend.index_html() if frontend else None
-        if html is None:
+        if frontend is None or html is None:
             return JSONResponse({"message": "MediaSage API is running. Frontend not found."})
-        # `no-cache` on the index alone: it is what carries the versioned asset
-        # URLs, so a cached copy would keep pointing at the old ones.
+
+        file = frontend.file(path)
+        if file is not None:
+            return FileResponse(file, headers=frontend.caching(path))
+        # It names the hashed bundles; a held copy pins the old ones.
         return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
-    app.add_api_route("/", _index, methods=["GET"], response_model=None, operation_id="getIndex")
+    # Out of the schema: a path that matches everything generates a client
+    # function that means nothing.
+    app.add_api_route(
+        "/{path:path}", _index, methods=["GET"], response_model=None, include_in_schema=False
+    )

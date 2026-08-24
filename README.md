@@ -1,8 +1,8 @@
 # MediaSage for Plex
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker Hub](https://img.shields.io/badge/docker-ecwilson%2Fmediasage-blue)](https://hub.docker.com/r/ecwilson/mediasage)
-[![GHCR](https://img.shields.io/badge/ghcr-ecwilsonaz%2Fmediasage-blue)](https://ghcr.io/ecwilsonaz/mediasage)
+[![Docker Hub](https://img.shields.io/badge/docker-cortexhb%2Fmediasage-blue)](https://hub.docker.com/r/cortexhb/mediasage)
+[![GHCR](https://img.shields.io/badge/ghcr-cortexhb%2Fmediasage-blue)](https://ghcr.io/cortexhb/mediasage)
 [![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
 
 **AI-powered playlists and album recommendations for Plex—using only music you actually own.**
@@ -35,7 +35,7 @@ docker run -d \
   -p 5765:5765 \
   -v mediasage-data:/app/data \
   --restart unless-stopped \
-  ghcr.io/ecwilsonaz/mediasage:latest
+  ghcr.io/cortexhb/mediasage:latest
 ```
 
 Open **http://localhost:5765** — a setup wizard walks you through connecting Plex, choosing an AI provider, and syncing
@@ -145,7 +145,7 @@ Bring your own API key—or run locally:
 | **Ollama** ⚗️        | Varies       | Free          | Privacy, local inference            |
 | **Custom** ⚗️        | Configurable | Free          | Self-hosted, OpenAI-compatible APIs |
 
-⚗️ *Local LLM support is experimental. [Report issues](https://github.com/ecwilsonaz/mediasage/issues).*
+⚗️ *Local LLM support is experimental. [Report issues](https://github.com/cortexhb/mediasage/issues).*
 
 > **Free option:** Google Gemini offers a free API tier that's more than enough for personal use — no credit card
 > required. See the [Gemini free credit guide](docs/gemini-free-credit-guide.md) for setup instructions and details.
@@ -171,8 +171,8 @@ Estimated cost displays before you generate. MediaSage auto-detects your provide
 
 ```bash
 mkdir mediasage && cd mediasage
-curl -O https://raw.githubusercontent.com/ecwilsonaz/mediasage/main/docker-compose.yml
-curl -O https://raw.githubusercontent.com/ecwilsonaz/mediasage/main/.env.example
+curl -O https://raw.githubusercontent.com/cortexhb/mediasage/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/cortexhb/mediasage/main/.env.example
 mv .env.example .env
 ```
 
@@ -202,7 +202,7 @@ docker compose up -d
 
 **GUI:**
 
-1. **Container Manager** → **Registry** → Search `ghcr.io/ecwilsonaz/mediasage`
+1. **Container Manager** → **Registry** → Search `ghcr.io/cortexhb/mediasage`
 2. Download `latest` tag
 3. **Container** → **Create**
 4. Port: 5765 → 5765
@@ -212,8 +212,8 @@ docker compose up -d
 
 ```bash
 mkdir -p /volume1/docker/mediasage && cd /volume1/docker/mediasage
-curl -O https://raw.githubusercontent.com/ecwilsonaz/mediasage/main/docker-compose.yml
-curl -O https://raw.githubusercontent.com/ecwilsonaz/mediasage/main/.env.example
+curl -O https://raw.githubusercontent.com/cortexhb/mediasage/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/cortexhb/mediasage/main/.env.example
 mv .env.example .env && nano .env
 ```
 
@@ -228,7 +228,7 @@ See [Bare Metal](#bare-metal-no-docker) below for running MediaSage directly wit
 <summary><strong>Unraid</strong></summary>
 
 1. **Docker** → **Add Container**
-2. Repository: `ghcr.io/ecwilsonaz/mediasage:latest`
+2. Repository: `ghcr.io/cortexhb/mediasage:latest`
 3. Port: 5765 → 5765
 4. Add variables: `MEDIASAGE_PLEX__URL`, `MEDIASAGE_PLEX__TOKEN`, `MEDIASAGE_LLM__API_KEY`
 
@@ -238,7 +238,7 @@ See [Bare Metal](#bare-metal-no-docker) below for running MediaSage directly wit
 <summary><strong>TrueNAS SCALE</strong></summary>
 
 1. **Apps** → **Discover Apps** → **Custom App**
-2. Image: `ghcr.io/ecwilsonaz/mediasage`, Tag: `latest`
+2. Image: `ghcr.io/cortexhb/mediasage`, Tag: `latest`
 3. Port: 5765
 4. Add environment variables
 
@@ -252,7 +252,7 @@ See [Bare Metal](#bare-metal-no-docker) below for running MediaSage directly wit
 ```yaml
 services:
   mediasage:
-    image: ghcr.io/ecwilsonaz/mediasage:latest
+    image: ghcr.io/cortexhb/mediasage:latest
     ports:
       - "5765:5765"
     environment:
@@ -273,7 +273,7 @@ Docker isn't required. MediaSage is Python + FastAPI with no native dependencies
 Linux/macOS/Windows box.
 
 ```bash
-git clone https://github.com/ecwilsonaz/mediasage.git
+git clone https://github.com/cortexhb/mediasage.git
 cd mediasage
 uv sync
 ```
@@ -506,7 +506,7 @@ This ensures every track exists in your library while keeping API costs manageab
 ### Local Setup
 
 ```bash
-git clone https://github.com/ecwilsonaz/mediasage.git
+git clone https://github.com/cortexhb/mediasage.git
 cd mediasage
 uv sync
 

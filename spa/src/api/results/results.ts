@@ -2,10 +2,33 @@
  * The saved-history endpoints, paired with their generated types.
  *
  * `GET /api/results` is the whole feed: one page at a time, newest first.
- * Reading one result back is Phase 4's `/result/:id`, so it is not here yet.
+ * `GET /api/results/{id}` is one of them, with the snapshot to redraw it from.
  */
-import type { ResultListResponse } from '../generated/types.gen.ts'
+import type {
+  AlbumResultDetail,
+  PlaylistResultDetail,
+  ResultListResponse,
+} from '../generated/types.gen.ts'
 import { request } from '../request/request.ts'
+
+/** Either shape the detail endpoint answers, told apart by `type`. */
+export type ResultDetail = PlaylistResultDetail | AlbumResultDetail
+
+/**
+ * `GET /api/results/{result_id}` — one saved result and its snapshot.
+ *
+ * 422 is its own case: `backend/api/routes/results/detail.py:26` answers it
+ * for a snapshot too old for the current models, which is not a missing one.
+ */
+export function readResult(
+  resultId: string,
+  signal: AbortSignal,
+): Promise<ResultDetail> {
+  return request<ResultDetail>('/api/results/{result_id}', {
+    path: { result_id: resultId },
+    signal,
+  })
+}
 
 /**
  * `GET /api/results` — one page of history, newest first.

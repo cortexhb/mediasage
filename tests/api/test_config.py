@@ -39,10 +39,12 @@ class TestGetConfig:
 
         assert response.status_code == 200
         data = response.json()
-        assert (data["plex_linked"], data["plex_server_name"]) == (True, "Living Room")
+        assert (data["plex_linked"], data["sections"]["plex"]["server_name"]) == (
+            True,
+            "Living Room",
+        )
         # The id, so the picker can mark the server already in force.
-        assert data["plex_server_id"] == "abc123"
-        assert "plex_url" not in data
+        assert data["sections"]["plex"]["server_id"] == "abc123"
         assert "secret-token" not in response.text
 
     def test_reports_an_installation_that_has_never_signed_in(self, client, plex):
@@ -58,9 +60,10 @@ class TestGetConfig:
             response = client.get("/api/config")
 
         data = response.json()
-        assert data["llm_provider"] == "anthropic"
+        assert data["sections"]["llm"]["provider"] == "anthropic"
         assert data["llm_api_key_set"] is True
-        assert "api_key" not in data
+        # Present but masked: `SecretStr` serialises to stars, never the value.
+        assert data["sections"]["llm"]["api_key"] == "**********"
         assert "secret-api-key" not in response.text
 
     def test_reports_the_prompt_budget(self, client, plex):
@@ -77,7 +80,7 @@ class TestGetConfig:
         with patch("backend.config.store.ConfigStore.get", return_value=config):
             data = client.get("/api/config").json()
 
-        assert data["smart_generation"] is True
+        assert data["sections"]["llm"]["smart_generation"] is True
 
 
 class TestUpdateConfig:
@@ -87,27 +90,27 @@ class TestUpdateConfig:
         """All a settings form still says about Plex; the rest is the sign-in."""
         config = mediasage_config(music_library="Vinyl Rips")
         with patch("backend.config.store.ConfigStore.commit", return_value=config):
-            response = client.post("/api/config", json={"music_library": "Vinyl Rips"})
+            response = client.post("/api/config", json={"plex": {"music_library": "Vinyl Rips"}})
 
         assert response.status_code == 200
-        assert response.json()["music_library"] == "Vinyl Rips"
+        assert response.json()["sections"]["plex"]["music_library"] == "Vinyl Rips"
 
     def test_saves_a_new_provider(self, client, plex, answering):
         config = mediasage_config(llm_provider="openai")
         with patch("backend.config.store.ConfigStore.commit", return_value=config):
-            response = client.post("/api/config", json={"llm_provider": "openai"})
+            response = client.post("/api/config", json={"llm": {"provider": "openai"}})
 
         assert response.status_code == 200
-        assert response.json()["llm_provider"] == "openai"
+        assert response.json()["sections"]["llm"]["provider"] == "openai"
 
     def test_saves_smart_generation(self, client, plex, answering):
         """Only settable from YAML before, so a save had no way to turn it off."""
         config = mediasage_config(smart_generation=True)
         with patch("backend.config.store.ConfigStore.commit", return_value=config):
-            response = client.post("/api/config", json={"smart_generation": True})
+            response = client.post("/api/config", json={"llm": {"smart_generation": True}})
 
         assert response.status_code == 200
-        assert response.json()["smart_generation"] is True
+        assert response.json()["sections"]["llm"]["smart_generation"] is True
 
     def test_a_plex_change_rebuilds_the_plex_client(self, client, plex, answering, rebuilds):
         """Without the rebuild the next request would read the old library."""
@@ -115,7 +118,7 @@ class TestUpdateConfig:
         with (
             patch("backend.config.store.ConfigStore.commit", return_value=config),
         ):
-            client.post("/api/config", json={"music_library": "Vinyl Rips"})
+            client.post("/api/config", json={"plex": {"music_library": "Vinyl Rips"}})
 
         rebuilds.plex.assert_called_once_with(config.plex)
 
@@ -124,7 +127,7 @@ class TestUpdateConfig:
         with (
             patch("backend.config.store.ConfigStore.commit", return_value=config),
         ):
-            client.post("/api/config", json={"llm_provider": "openai"})
+            client.post("/api/config", json={"llm": {"provider": "openai"}})
 
         rebuilds.llm.assert_called_once_with(config.llm)
 
@@ -141,7 +144,7 @@ class TestUpdateConfigProbes:
             patch("backend.api.probes.ModelListing.of", new_callable=AsyncMock) as listing,
             patch("backend.config.store.ConfigStore.commit", return_value=mediasage_config()),
         ):
-            response = client.post("/api/config", json={"music_library": "Vinyl Rips"})
+            response = client.post("/api/config", json={"plex": {"music_library": "Vinyl Rips"}})
 
         assert response.status_code == 200
         listing.assert_not_called()
@@ -154,7 +157,7 @@ class TestUpdateConfigProbes:
             ),
             patch("backend.config.store.ConfigStore.commit") as commit,
         ):
-            response = client.post("/api/config", json={"llm_provider": "openai"})
+            response = client.post("/api/config", json={"llm": {"provider": "openai"}})
 
         assert response.status_code == 422
         commit.assert_not_called()
@@ -168,7 +171,7 @@ class TestUpdateConfigProbes:
             ),
             patch("backend.config.store.ConfigStore.commit"),
         ):
-            client.post("/api/config", json={"llm_provider": "openai"})
+            client.post("/api/config", json={"llm": {"provider": "openai"}})
 
         rebuilds.llm.assert_not_called()
 
@@ -178,7 +181,7 @@ class TestUpdateConfigProbes:
             patch("backend.api.probes.ModelListing.of", new_callable=AsyncMock) as listing,
             patch("backend.config.store.ConfigStore.commit", return_value=mediasage_config()),
         ):
-            response = client.post("/api/config", json={"cost_analysis_input": 3.0})
+            response = client.post("/api/config", json={"llm": {"cost_analysis_input": 3.0}})
 
         assert response.status_code == 200
         listing.assert_not_called()
@@ -188,7 +191,7 @@ class TestUpdateConfigProbes:
             "backend.config.store.ConfigStore.commit",
             side_effect=ConfigSaveError("disk full"),
         ):
-            response = client.post("/api/config", json={"llm_provider": "openai"})
+            response = client.post("/api/config", json={"llm": {"provider": "openai"}})
 
         assert response.status_code == 500
 

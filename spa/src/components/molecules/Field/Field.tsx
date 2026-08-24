@@ -1,16 +1,12 @@
 /**
  * A labelled input with its hint or its error: `Label`, `Input`, `Text`.
  *
- * Replaces the legacy `.form-group` triple, which hand-maintained the `for`
- * and `id` pair on every field. `useId` supplies both here.
+ * The stack and the ids are `molecules/FieldShell`, which every labelled
+ * control shares.
  */
-import { useId } from 'react'
-
 import { Input } from '../../atoms/Input/Input.tsx'
 import type { InputProps } from '../../atoms/Input/Input.tsx'
-import { Label } from '../../atoms/Label/Label.tsx'
-import { Text } from '../../atoms/Text/Text.tsx'
-import styles from './Field.module.scss'
+import { FieldShell } from '../FieldShell/FieldShell.tsx'
 
 export interface FieldProps extends Omit<InputProps, 'id'> {
   readonly label: string
@@ -23,31 +19,16 @@ export interface FieldProps extends Omit<InputProps, 'id'> {
 }
 
 export function Field({ label, optional, hint, error, ...input }: FieldProps) {
-  const id = useId()
-  const described = useId()
-
   return (
-    <div className={styles.field}>
-      <Label htmlFor={id} optional={optional}>
-        {label}
-      </Label>
-      <Input
-        {...input}
-        id={id}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={(error ?? hint) ? described : undefined}
-      />
-      {error ? (
-        <Text tone="error" id={described} role="alert">
-          {error}
-        </Text>
-      ) : (
-        hint && (
-          <Text tone="muted" id={described}>
-            {hint}
-          </Text>
-        )
+    <FieldShell label={label} optional={optional} hint={hint} error={error}>
+      {({ id, describedBy }) => (
+        <Input
+          {...input}
+          id={id}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
+        />
       )}
-    </div>
+    </FieldShell>
   )
 }

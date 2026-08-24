@@ -191,7 +191,7 @@ class TestApply:
             },
         )
 
-        config = applied(store, ConfigUpdate(music_library="New"))
+        config = applied(store, ConfigUpdate(plex={"music_library": "New"}))
 
         assert config.plex.music_library == "New"
         assert config.plex.token.get_secret_value() == "tok"
@@ -210,7 +210,7 @@ class TestApply:
             },
         )
 
-        config = applied(store, ConfigUpdate(llm_provider="openai"))
+        config = applied(store, ConfigUpdate(llm={"provider": "openai"}))
 
         assert config.llm.provider == "openai"
         assert config.llm.model_analysis == ""
@@ -220,7 +220,9 @@ class TestApply:
         """An explicitly supplied model should be kept."""
         store = store_over(tmp_path, {"llm": {"provider": "anthropic", "context_window": 200_000}})
 
-        config = applied(store, ConfigUpdate(llm_provider="openai", model_analysis="gpt-mine"))
+        config = applied(
+            store, ConfigUpdate(llm={"provider": "openai", "model_analysis": "gpt-mine"})
+        )
 
         assert config.llm.model_analysis == "gpt-mine"
         assert config.llm.model_generation == ""
@@ -234,9 +236,11 @@ class TestApply:
         config = applied(
             store,
             ConfigUpdate(
-                llm_provider="custom",
-                endpoint_url="http://localhost:5000/v1",
-                context_window=8192,
+                llm={
+                    "provider": "custom",
+                    "endpoint_url": "http://localhost:5000/v1",
+                    "context_window": 8192,
+                }
             ),
         )
 
@@ -268,7 +272,7 @@ class TestCandidate:
     def test_nothing_is_written(self, tmp_path, clean_config_env):
         store = store_over(tmp_path, {"plex": {"music_library": "Old"}, "llm": LLM})
 
-        store.candidate(ConfigUpdate(music_library="New"))
+        store.candidate(ConfigUpdate(plex={"music_library": "New"}))
 
         assert not store.path.exists()
 
@@ -276,14 +280,14 @@ class TestCandidate:
         """The held configuration is untouched until the change is committed."""
         store = store_over(tmp_path, {"plex": {"music_library": "Old"}, "llm": LLM})
 
-        store.candidate(ConfigUpdate(music_library="New"))
+        store.candidate(ConfigUpdate(plex={"music_library": "New"}))
 
         assert store.get().plex.music_library == "Old"
 
     def test_the_change_carries_what_it_would_write(self, tmp_path, clean_config_env):
         store = store_over(tmp_path, {"plex": {"music_library": "Old"}, "llm": LLM})
 
-        change = store.candidate(ConfigUpdate(music_library="New"))
+        change = store.candidate(ConfigUpdate(plex={"music_library": "New"}))
 
         assert change.config.plex.music_library == "New"
         assert change.sections == {"plex": {"music_library": "New"}}
@@ -300,7 +304,7 @@ class TestCommit:
     def test_a_failed_write_publishes_nothing(self, tmp_path, clean_config_env):
         """Otherwise the process runs on settings that will not survive a restart."""
         store = store_over(tmp_path, {"plex": {"music_library": "Old"}, "llm": LLM})
-        change = store.candidate(ConfigUpdate(music_library="New"))
+        change = store.candidate(ConfigUpdate(plex={"music_library": "New"}))
         store.user_config_path = tmp_path / "missing-dir" / "config.user.yaml"
 
         with pytest.raises(ConfigSaveError):
@@ -311,7 +315,7 @@ class TestCommit:
     def test_a_written_change_is_published(self, tmp_path, clean_config_env):
         store = store_over(tmp_path, {"plex": {"music_library": "Old"}, "llm": LLM})
 
-        store.commit(store.candidate(ConfigUpdate(music_library="New")))
+        store.commit(store.candidate(ConfigUpdate(plex={"music_library": "New"})))
 
         assert store.get().plex.music_library == "New"
 

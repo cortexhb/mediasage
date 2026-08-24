@@ -1,6 +1,6 @@
 /**
- * Ports the results grid (`frontend/style.css:1032`): header and tracks in one
- * column, a sticky sidebar beside them.
+ * What this step draws around the grid: the way back to the filters, and the
+ * way out of the flow. The grid itself is `organisms/PlaylistResultGrid`.
  */
 @use 'mixins' as ds;
 
@@ -19,67 +19,6 @@
 
 .playlist__back:hover {
   color: var(--accent);
-}
-
-.playlist__grid {
-  /* `frontend/style.css:52`: this grid is their only reader. */
-  --detail-panel-width: 300px;
-  --detail-panel-width-narrow: 240px;
-
-  display: grid;
-  grid-template:
-    'header  sidebar' auto
-    'tracks  sidebar' 1fr
-    / 1fr var(--detail-panel-width);
-  gap: var(--spacing-lg);
-
-  /* This grid's own query, and its only caller: a narrower panel on tablets. */
-  @media (769px <= width <= 1023px) {
-    grid-template-columns: 1fr var(--detail-panel-width-narrow);
-  }
-
-  @include ds.on-mobile {
-    grid-template:
-      'header'
-      'sidebar'
-      'tracks'
-      / 1fr;
-  }
-}
-
-.playlist__header {
-  grid-area: header;
-  min-width: 0;
-  padding-bottom: var(--spacing-md);
-  border-bottom: 1px solid rgb(255 255 255 / 6%);
-}
-
-.playlist__sidebar {
-  position: sticky;
-  top: var(--spacing-md);
-  display: flex;
-  grid-area: sidebar;
-  flex-direction: column;
-  gap: var(--spacing-lg);
-  align-self: start;
-
-  /* Nothing to stick to once the panel below it is gone. */
-  @include ds.on-mobile {
-    position: static;
-  }
-}
-
-/* Ports `.results-header-actions`: one column, stretched. */
-.playlist__actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-  align-items: stretch;
-
-  @include ds.on-mobile {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-  }
 }
 
 /* Ports `.rec-action-link--subtle`: underlined, and never the loud one. */
@@ -103,101 +42,4 @@
 
 .playlist__startOver:hover {
   color: var(--text-secondary);
-}
-
-/**
- * `.playlist-name-input` (`frontend/style.css:1111`), except that legacy is
- * transparent until hovered and `xl`. It rests as a field here, at the size
- * every other field uses, so swapping in the picker changes nothing.
- */
-.playlist__name {
-  width: 100%;
-  padding: var(--spacing-sm) var(--spacing-md);
-  margin-bottom: var(--spacing-md);
-  font-family: var(--font-family);
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: var(--text-primary);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  transition:
-    border-color var(--transition-fast),
-    background var(--transition-fast);
-}
-
-.playlist__name:hover {
-  background: var(--bg-hover);
-  border-color: var(--text-muted);
-}
-
-.playlist__name:focus {
-  background: var(--bg-secondary);
-  border-color: var(--accent);
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-}
-
-.playlist__name:focus:not(:focus-visible) {
-  outline: none;
-}
-
-/* Ports `.narrative-text`: deliberately quieter than the tracks. */
-.playlist__narrative {
-  margin: 0 0 var(--spacing-xs);
-  font-size: 14px;
-  line-height: 1.5;
-  color: rgb(255 255 255 / 50%);
-}
-
-.playlist__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-sm);
-  align-items: center;
-  margin-top: var(--spacing-xs);
-}
-
-/* Ports `.meta-pill`. */
-.playlist__pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px var(--spacing-md);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-full);
-}
-
-/* Ports `.prompt-pill`: one line, however long the prompt was. */
-.playlist__prompt {
-  display: inline-block;
-  max-width: 500px;
-  padding: 2px var(--spacing-md);
-  overflow: hidden;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: middle;
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-full);
-}
-
-.playlist__tracks {
-  display: flex;
-  grid-area: tracks;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-  min-width: 0;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-
-.playlist__working {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-  min-width: min(420px, 80vw);
 }

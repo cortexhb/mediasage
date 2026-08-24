@@ -1,11 +1,9 @@
 /**
- * Narrowing for the frames `POST /api/generate/stream` sends.
+ * The frames `POST /api/generate/stream` sends, as a union.
  *
- * `readEventStream` is frame-agnostic, so `data` reaches a caller as
- * `unknown`. This turns one frame into a member of the union the schema
- * declares (`GeneratePlaylistResponses[200]`), or into nothing at all: a frame
- * this build does not know is skipped rather than thrown on, so a backend that
- * adds one does not break a running page.
+ * The narrowing itself is `libs/narrowFrame`, which both streams share; what
+ * is declared here is which events this one carries
+ * (`GeneratePlaylistResponses[200]`).
  *
  * The stream also carries `: heartbeat` comment frames
  * (`backend/generator/playlists.py:236`); those never reach here, as a comment
@@ -19,6 +17,7 @@ import type {
   TracksFrame,
 } from '../../api/generated/types.gen.ts'
 import type { StreamFrame } from '../../api/readEventStream/readEventStream.ts'
+import { knownFrame } from '../knownFrame/knownFrame.ts'
 
 export type PlaylistFrame =
   | { readonly event: 'progress'; readonly data: ProgressFrame }
@@ -31,8 +30,5 @@ const KNOWN = ['progress', 'narrative', 'tracks', 'complete', 'error']
 
 /** One frame as its declared shape, or `undefined` where it is not one. */
 export function playlistFrame(frame: StreamFrame): PlaylistFrame | undefined {
-  if (!KNOWN.includes(frame.event)) return undefined
-  if (typeof frame.data !== 'object' || frame.data === null) return undefined
-  // The event name is the discriminant the backend already sends.
-  return { event: frame.event, data: frame.data } as PlaylistFrame
+  return knownFrame(KNOWN, frame) as PlaylistFrame | undefined
 }

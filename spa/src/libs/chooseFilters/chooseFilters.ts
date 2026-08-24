@@ -20,16 +20,9 @@ import type { ChosenFilters } from '../flowStore/flowStore.ts'
 import { readPlaylistFlow, writePlaylistFlow } from '../flowStore/flowStore.ts'
 import { formLast, formText } from '../formText/formText.ts'
 import { generateBody } from '../generateBody/generateBody.ts'
+import { narrowSelection } from '../narrowSelection/narrowSelection.ts'
 import { startRun } from '../playlistRun/playlistRun.ts'
 import { streamDeadline } from '../streamDeadline/streamDeadline.ts'
-
-/** The chosen names, or nothing where every one of them was chosen. */
-function narrowed(
-  chosen: readonly string[],
-  available: number,
-): readonly string[] {
-  return chosen.length === available ? [] : chosen
-}
 
 export async function chooseFilters({
   request,
@@ -39,11 +32,11 @@ export async function chooseFilters({
 
   const form = await request.formData()
   const filters: ChosenFilters = {
-    genres: narrowed(
+    genres: narrowSelection(
       form.getAll('genres').map(String),
       Number(formText(form, 'genre_total')),
     ),
-    decades: narrowed(
+    decades: narrowSelection(
       form.getAll('decades').map(String),
       Number(formText(form, 'decade_total')),
     ),

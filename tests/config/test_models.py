@@ -10,6 +10,7 @@ from backend.config import (
     ConfigUpdate,
     LocalLLMConfig,
     MatchingConfig,
+    MediasageConfig,
     PlexConfig,
     RecommendConfig,
     ResearchConfig,
@@ -99,81 +100,117 @@ class TestLLMConfig:
 
 
 class TestConfigUpdate:
-    """Tests for the update payload and the field mapping it owns."""
+    """Tests for the update payload, one optional patch per config section."""
 
     def test_is_empty_when_nothing_supplied(self):
         """An update with no values should report itself empty."""
         assert ConfigUpdate().is_empty is True
 
+    def test_an_empty_patch_is_still_empty(self):
+        """A section named with no keys in it asks for nothing."""
+        assert ConfigUpdate(plex={}).is_empty is True
+
     def test_is_not_empty_when_a_value_is_supplied(self):
         """Any supplied value should make the update non-empty."""
-        assert ConfigUpdate(music_library="Vinyl Rips").is_empty is False
+        assert ConfigUpdate(plex={"music_library": "Vinyl Rips"}).is_empty is False
+
+    def test_carries_every_section_the_config_has(self):
+        """A section the config declares must be submittable, or it is unreachable."""
+        assert ConfigUpdate.sections() == tuple(MediasageConfig.model_fields)
 
     @pytest.mark.parametrize(
-        ("field", "key", "value"),
+        ("key", "value"),
         [
-            ("cost_analysis_input", "cost_analysis_input", 0.0),
-            ("cost_generation_output", "cost_generation_output", 0.0),
-            ("context_window", "context_window", 0),
-            ("model_analysis", "model_analysis", ""),
-            ("smart_generation", "smart_generation", False),
+            ("cost_analysis_input", 0.0),
+            ("cost_generation_output", 0.0),
+            ("model_analysis", ""),
+            ("smart_generation", False),
         ],
     )
-    def test_a_falsy_value_is_still_a_change(self, field, key, value):
-        """Presence is `is not None`: zero is a value, not an omission."""
-        update = ConfigUpdate(**{field: value})
+    def test_a_falsy_value_is_still_a_change(self, key, value):
+        """Presence is what a change means: zero is a value, not an omission."""
+        update = ConfigUpdate(llm={key: value})
 
         assert update.is_empty is False
         assert update.changes("llm") == {key: value}
 
+    def test_an_explicit_null_clears_an_optional_field(self):
+        """`temperature` unset means the provider's own default, and is reachable."""
+        update = ConfigUpdate(llm={"temperature": None})
+
+        assert update.is_empty is False
+        assert update.changes("llm") == {"temperature": None}
+
     def test_a_price_change_does_not_reconnect(self):
         """A falsy price is a change, but not one that can stop the provider answering."""
-        assert ConfigUpdate(cost_analysis_input=0.0).reconnects("llm") is False
+        assert ConfigUpdate(llm={"cost_analysis_input": 0.0}).reconnects("llm") is False
 
     def test_a_supplied_zero_price_survives_a_provider_switch(self):
         """`provider_changes` blanks only what the caller left out."""
-        update = ConfigUpdate(llm_provider="openai", cost_analysis_input=0.0)
+        update = ConfigUpdate(llm={"provider": "openai", "cost_analysis_input": 0.0})
 
         assert "cost_analysis_input" not in update.provider_changes
         assert update.changes("llm")["cost_analysis_input"] == 0.0
 
     def test_smart_generation_survives_a_provider_switch(self):
         """It is a taste, not something naming what the old provider served."""
-        update = ConfigUpdate(llm_provider="openai")
+        update = ConfigUpdate(llm={"provider": "openai"})
 
         assert "smart_generation" not in update.provider_changes
 
-    def test_plex_changes_are_keyed_for_the_section(self):
-        """API field names should map onto PlexConfig field names."""
-        update = ConfigUpdate(music_library="Vinyl Rips")
+    def test_a_section_is_keyed_as_that_section_names_its_fields(self):
+        """No renaming between the wire and the config: the patch mirrors the section."""
+        update = ConfigUpdate(plex={"music_library": "Vinyl Rips"})
 
         assert update.changes("plex") == {"music_library": "Vinyl Rips"}
 
-    @pytest.mark.parametrize("field", ["plex_url", "plex_token", "account_token", "server_id"])
-    def test_plex_identity_cannot_be_submitted_as_a_setting(self, field):
-        """Only the sign-in writes it; a form offering it would overwrite a link."""
-        assert ConfigUpdate.model_validate({field: "anything"}).is_empty is True
+    @pytest.mark.parametrize("field", ["url", "token", "account_token", "server_id"])
+    def test_plex_identity_is_refused_rather_than_ignored(self, field):
+        """Only the sign-in writes it, and a dropped field is a form that lies."""
+        with pytest.raises(ValidationError):
+            ConfigUpdate.model_validate({"plex": {field: "anything"}})
 
-    def test_llm_changes_include_provider(self):
-        """The LLM section owns the provider field."""
-        update = ConfigUpdate(llm_provider="openai", llm_api_key="sk-test")
+    def test_an_unknown_section_is_refused(self):
+        """A typo must not read as a save that quietly did nothing."""
+        with pytest.raises(ValidationError):
+            ConfigUpdate.model_validate({"mtaching": {"track_threshold": 55}})
 
-        assert update.changes("llm") == {"provider": "openai", "api_key": "sk-test"}
+    def test_an_unknown_field_is_refused(self):
+        """Same reason, one level down."""
+        with pytest.raises(ValidationError):
+            ConfigUpdate.model_validate({"matching": {"track_treshold": 55}})
 
-    def test_touches_plex_only_for_plex_fields(self):
-        """Should report whether the Plex client needs rebuilding."""
-        assert ConfigUpdate(music_library="Vinyl Rips").touches("plex") is True
-        assert ConfigUpdate(llm_api_key="sk-test").touches("plex") is False
+    def test_bounds_come_from_the_section(self):
+        """A patch is derived, so a constraint is declared once and inherited."""
+        with pytest.raises(ValidationError):
+            ConfigUpdate.model_validate({"matching": {"track_threshold": 500}})
+
+    def test_reaches_a_field_no_form_could_carry_before(self):
+        """The point of the change: 57 settings were YAML-only."""
+        update = ConfigUpdate(research={"max_reviews": 0})
+
+        assert update.changes("research") == {"max_reviews": 0}
+
+    def test_touches_only_the_sections_supplied(self):
+        """Should report whether that section's client needs rebuilding."""
+        update = ConfigUpdate(plex={"music_library": "Vinyl Rips"})
+
+        assert update.touches("plex") is True
+        assert update.touches("llm") is False
 
     def test_touches_llm_includes_provider(self):
         """A provider change alone should still rebuild the LLM client."""
-        assert ConfigUpdate(llm_provider="openai").touches("llm") is True
-        assert ConfigUpdate(music_library="Vinyl Rips").touches("llm") is False
+        assert ConfigUpdate(llm={"provider": "openai"}).touches("llm") is True
 
     def test_rejects_unknown_provider(self):
         """Should reject a provider outside the supported set."""
         with pytest.raises(ValidationError):
-            ConfigUpdate.model_validate({"llm_provider": "notaprovider"})
+            ConfigUpdate.model_validate({"llm": {"provider": "notaprovider"}})
+
+    def test_accepts_every_provider_the_config_serves(self):
+        """The patch widens the literal the local and cloud sections narrow."""
+        for provider in ("anthropic", "openai", "gemini", "ollama", "custom"):
+            assert ConfigUpdate(llm={"provider": provider}).touches("llm") is True
 
 
 class TestPricing:
@@ -392,10 +429,16 @@ class TestSecretsReachTheConfigFile:
 
     def test_an_api_key_is_unwrapped_for_persistence(self):
         """Left wrapped, the deployment would restart unconfigured."""
-        update = ConfigUpdate(llm_provider="anthropic", llm_api_key="sk-real")
+        update = ConfigUpdate(llm={"provider": "anthropic", "api_key": "sk-real"})
 
         assert update.changes("llm")["api_key"] == "sk-real"
 
+    def test_every_secret_in_every_section_is_unwrapped(self):
+        """Three sections hold one; a mask written to YAML is unrecoverable."""
+        update = ConfigUpdate(langfuse={"secret_key": "sk-lf"})
+
+        assert update.changes("langfuse")["secret_key"] == "sk-lf"
+
     def test_an_omitted_credential_is_not_written(self):
         """Absent, not blank: a save that names no key must not clear one."""
-        assert "api_key" not in ConfigUpdate(llm_provider="anthropic").changes("llm")
+        assert "api_key" not in ConfigUpdate(llm={"provider": "anthropic"}).changes("llm")

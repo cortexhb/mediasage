@@ -5,8 +5,8 @@ from typing import Annotated, Any, Final, Literal, Self
 
 from pydantic import BaseModel, Field, SecretStr, TypeAdapter, field_validator, model_validator
 
-from backend.config.models import PROVIDER_LABELS, DefaultsConfig
-from backend.config.settings import MediasageConfig
+from backend.config.models import PROVIDER_LABELS
+from backend.config.settings import LANGFUSE_ENV, MediasageConfig
 from backend.library import DecadeCount, GenreCount, SyncProgress, TrackRecord
 from backend.llm.models import TokenBudget
 from backend.recommender import (
@@ -431,36 +431,31 @@ class PlayQueueRequest(TrackListRequest):
 
 
 class ConfigResponse(BaseModel):
-    """The settings the UI shows: no credential, only whether one is set."""
+    """Every setting the UI shows, plus the facts it cannot compute itself.
+
+    `sections` is the configuration as loaded, so a field added to a section
+    reaches the form without a second declaration here. Credentials inside it
+    serialise as `**********`; `llm_api_key_set` is how a form knows one is
+    there at all.
+
+    Everything outside `sections` is derived: a version, a live connection, a
+    budget computed from the context window, or a fact about the environment.
+    """
 
     version: str
+    sections: MediasageConfig
+
     plex_connected: bool
     plex_linked: bool  # True once a browser sign-in has stored a token
-    plex_server_name: str  # The chosen server, or empty before one is chosen
-    plex_server_id: str  # Which one the picker marks as current
-    music_library: str
-    llm_provider: str
     llm_configured: bool
     llm_api_key_set: bool
-    model_analysis: str  # The analysis model being used
-    model_generation: str  # The generation model being used
-    smart_generation: bool = False  # True if the analysis model generates too
     max_tracks_to_ai: int  # Recommended max tracks for this model
     max_albums_to_ai: int  # Recommended max albums for this model
-    # Per million tokens, as configured; 0.0 throughout means unpriced.
-    cost_generation_input: float = 0.0
-    cost_generation_output: float = 0.0
-    cost_analysis_input: float = 0.0
-    cost_analysis_output: float = 0.0
     is_priced: bool = False
-    defaults: DefaultsConfig
-    # Local provider fields
-    endpoint_url: str = ""
-    context_window: int
     is_local_provider: bool = False
-    provider_from_env: bool = False  # True if LLM_PROVIDER env var is overriding UI
-    # Seconds a reader waits between stream frames before giving up.
-    stream_idle_timeout: float
+
+    # `section.field` paths the environment sets; a save cannot beat them.
+    from_env: list[str] = []
 
     @classmethod
     def of(cls, config: MediasageConfig, plex_connected: bool) -> Self:
@@ -473,33 +468,36 @@ class ConfigResponse(BaseModel):
 
         return cls(
             version=Version.current(),
+            sections=config,
             plex_connected=plex_connected,
             plex_linked=bool(config.plex.account_token),
-            plex_server_name=config.plex.server_name,
-            plex_server_id=config.plex.server_id,
-            music_library=config.plex.music_library,
-            llm_provider=config.llm.provider,
             llm_configured=config.llm.is_configured,
             llm_api_key_set=bool(config.llm.api_key),
-            model_analysis=config.llm.model_analysis,
-            model_generation=config.llm.model_generation,
-            smart_generation=config.llm.smart_generation,
             max_tracks_to_ai=budget.max_tracks,
             max_albums_to_ai=budget.max_albums,
-            cost_generation_input=config.llm.cost_generation_input,
-            cost_generation_output=config.llm.cost_generation_output,
-            cost_analysis_input=config.llm.cost_analysis_input,
-            cost_analysis_output=config.llm.cost_analysis_output,
             is_priced=config.llm.is_priced,
-            defaults=config.defaults,
-            endpoint_url=config.llm.local_endpoint,
-            context_window=config.llm.context_window,
             is_local_provider=config.llm.is_local,
-            stream_idle_timeout=config.llm.stream_idle_timeout,
-            # The form disables the provider field when the environment sets it:
-            # a saved value would be overridden on the next boot.
-            provider_from_env=os.environ.get("MEDIASAGE_LLM__PROVIDER") is not None,
+            from_env=cls.overridden(),
         )
+
+    @staticmethod
+    def overridden() -> list[str]:
+        """Which settings the environment pins, as `section.field` paths.
+
+        The form disables these: a saved value would be overridden on the next
+        boot, so offering the field would be a lie. Read from `os.environ`
+        rather than listed, so a new setting needs no entry here.
+        """
+        prefix = "MEDIASAGE_"
+        pinned = [
+            name.removeprefix(prefix).replace("__", ".", 1).lower()
+            for name in os.environ
+            if name.startswith(prefix) and "__" in name
+        ]
+        pinned += [
+            f"langfuse.{field}" for name, field in LANGFUSE_ENV.items() if os.environ.get(name)
+        ]
+        return sorted(set(pinned))
 
 
 class HealthResponse(BaseModel):

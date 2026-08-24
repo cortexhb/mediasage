@@ -24,9 +24,11 @@ from pydantic import (
     Field,
     SecretStr,
     TypeAdapter,
+    create_model,
     field_validator,
     model_validator,
 )
+from pydantic.fields import FieldInfo
 
 Provider = Literal["anthropic", "openai", "gemini", "ollama", "custom"]
 
@@ -47,10 +49,63 @@ MIN_CONTEXT_WINDOW = 512
 MAX_CONTEXT_WINDOW = 2_000_000
 
 
+class ConfigPatch(BaseModel):
+    """Base for the partial form of a section: every field absent by default.
+
+    Presence is what a change means here, not a non-null value: `temperature`
+    is legitimately `None`, and clearing it back to the server's own default
+    has to be expressible. `model_dump(exclude_unset=True)` is the only correct
+    way to read one.
+
+    `extra="forbid"`, unlike the sections themselves: a settings API that
+    silently drops a misspelled field is one a form cannot be debugged against.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
+
+
 class ConfigSection(BaseModel):
     """Base for configuration sections: frozen, and strict about stray keys."""
 
     model_config = ConfigDict(frozen=True, extra="ignore", str_strip_whitespace=True)
+
+    # Fields no form may write; see `PlexConfig` for the only case.
+    UNEDITABLE: ClassVar[frozenset[str]] = frozenset()
+
+    @classmethod
+    def patch(cls, name: str, **overrides: Any) -> type[ConfigPatch]:
+        """This section with every editable field optional and unset.
+
+        Derived rather than declared, so a field's type and its bounds are
+        stated once -- on the section -- and a new setting needs no second
+        entry anywhere to become editable.
+
+        Args:
+            name: The generated model's name, which is what codegen emits
+            overrides: Replacement annotations for fields a subclass narrows
+                further than a form should; `LLMPatch` needs one for `provider`
+
+        Returns:
+            A `ConfigPatch` subclass over this section's editable fields
+        """
+        fields: dict[str, Any] = {
+            field: cls.optional(info, overrides.get(field))
+            for field, info in cls.model_fields.items()
+            if field not in cls.UNEDITABLE
+        }
+        return create_model(name, __base__=ConfigPatch, **fields)
+
+    @staticmethod
+    def optional(info: FieldInfo, override: Any = None) -> tuple[Any, Any]:
+        """One field, absent by default, with its constraints intact.
+
+        The constraints stay inside the `Annotated` rather than outside the
+        union: `gt=0` applied to `T | None` rejects the unset case.
+        """
+        annotation: Any = override if override is not None else info.annotation
+        if info.metadata:
+            annotation = Annotated[(annotation, *info.metadata)]
+        return (annotation | None, Field(default=None, description=info.description))
 
 
 class PlexConfig(ConfigSection):
@@ -63,6 +118,12 @@ class PlexConfig(ConfigSection):
     The timing values depend on the hardware Plex runs on: a NAS answers a bulk
     page slower than a desktop does, and rides closer to its own limits.
     """
+
+    # Written by `/api/plex/*` from a sign-in, so shown but never edited.
+    # Also what `backend.config.settings` drops from the environment sources.
+    UNEDITABLE: ClassVar[frozenset[str]] = frozenset(
+        {"url", "token", "account_token", "server_id", "client_id", "server_name"}
+    )
 
     # A cache, not a setting: addresses move, and `server_id` re-resolves them.
     url: str = ""
@@ -487,61 +548,64 @@ class LangfuseConfig(ConfigSection):
         return bool(self.base_url and self.public_key and self.secret_key.get_secret_value())
 
 
-# Fields whose value decides whether a dependency answers at all. Everything
-# else in an update -- prices, and the music library name Plex resolves later --
-# is saved on its own word.
-CONNECTING: Final[frozenset[str]] = frozenset(
-    {
-        "llm_provider",
-        "llm_api_key",
-        "endpoint_url",
-        "model_analysis",
-        "model_generation",
-        "context_window",
-    }
-)
+# Keys whose value decides whether a section's dependency answers at all,
+# per section. Everything else -- prices, thresholds, the music library name
+# Plex resolves later -- is saved on the caller's own word.
+CONNECTING: Final[dict[str, frozenset[str]]] = {
+    "llm": frozenset(
+        {
+            "provider",
+            "api_key",
+            "endpoint_url",
+            "model_analysis",
+            "model_generation",
+            "context_window",
+        }
+    )
+}
+
+PlexPatch = PlexConfig.patch("PlexPatch")
+# From the local subclass, which is the superset: only it declares
+# `endpoint_url`. Its `provider` literal is widened back to every provider.
+LLMPatch = LocalLLMConfig.patch("LLMPatch", provider=Provider)
+BudgetPatch = BudgetConfig.patch("BudgetPatch")
+LibraryPatch = LibraryConfig.patch("LibraryPatch")
+MatchingPatch = MatchingConfig.patch("MatchingPatch")
+RecommendPatch = RecommendConfig.patch("RecommendPatch")
+ResearchPatch = ResearchConfig.patch("ResearchPatch")
+ArtPatch = ArtConfig.patch("ArtPatch")
+DefaultsPatch = DefaultsConfig.patch("DefaultsPatch")
+LangfusePatch = LangfuseConfig.patch("LangfusePatch")
 
 
-class ConfigUpdate(ConfigSection):
+class ConfigUpdate(BaseModel):
     """A partial configuration change submitted from the UI.
 
-    Owns the mapping from API field names to the section and key they write, so
-    neither the route nor the store has to restate it.
+    Shaped like `MediasageConfig`: one optional patch per section, each derived
+    from the section it writes. There is no field-name table, so a setting
+    added to a section is submittable the moment it exists.
 
-    No Plex identity here: the address and both tokens come from a browser
-    sign-in, written by `/api/plex/*`. `music_library` is all a form still says
-    about Plex.
+    No Plex identity here -- `PlexConfig.UNEDITABLE` keeps it out of `PlexPatch`
+    -- because the address and both tokens come from a browser sign-in.
     """
 
-    music_library: str | None = None
-    llm_provider: Provider | None = None
-    llm_api_key: SecretStr | None = None
-    model_analysis: str | None = None
-    model_generation: str | None = None
-    smart_generation: bool | None = None
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
-    endpoint_url: str | None = None
-    context_window: int | None = None
-    cost_analysis_input: float | None = None
-    cost_analysis_output: float | None = None
-    cost_generation_input: float | None = None
-    cost_generation_output: float | None = None
+    plex: PlexPatch | None = None
+    llm: LLMPatch | None = None
+    budget: BudgetPatch | None = None
+    library: LibraryPatch | None = None
+    matching: MatchingPatch | None = None
+    recommend: RecommendPatch | None = None
+    research: ResearchPatch | None = None
+    art: ArtPatch | None = None
+    defaults: DefaultsPatch | None = None
+    langfuse: LangfusePatch | None = None
 
-    # Field name -> the section and key it writes.
-    FIELD_MAP: ClassVar[dict[str, tuple[str, str]]] = {
-        "music_library": ("plex", "music_library"),
-        "llm_provider": ("llm", "provider"),
-        "llm_api_key": ("llm", "api_key"),
-        "model_analysis": ("llm", "model_analysis"),
-        "model_generation": ("llm", "model_generation"),
-        "smart_generation": ("llm", "smart_generation"),
-        "endpoint_url": ("llm", "endpoint_url"),
-        "context_window": ("llm", "context_window"),
-        "cost_analysis_input": ("llm", "cost_analysis_input"),
-        "cost_analysis_output": ("llm", "cost_analysis_output"),
-        "cost_generation_input": ("llm", "cost_generation_input"),
-        "cost_generation_output": ("llm", "cost_generation_output"),
-    }
+    @classmethod
+    def sections(cls) -> tuple[str, ...]:
+        """Every section an update can carry, in declaration order."""
+        return tuple(cls.model_fields)
 
     @property
     def provider_changes(self) -> dict[str, Any]:
@@ -554,18 +618,19 @@ class ConfigUpdate(ConfigSection):
         `context_window` is deliberately kept: it is required, so blanking it
         would leave the section unvalidatable until the user supplies a new one.
         """
-        derived: dict[str, Any] = {"provider": self.llm_provider}
+        supplied = self.changes("llm")
+        derived: dict[str, Any] = {"provider": supplied["provider"]}
 
-        for field, supplied, blank in (
-            ("model_analysis", self.model_analysis, ""),
-            ("model_generation", self.model_generation, ""),
-            ("endpoint_url", self.endpoint_url, ""),
-            ("cost_analysis_input", self.cost_analysis_input, 0.0),
-            ("cost_analysis_output", self.cost_analysis_output, 0.0),
-            ("cost_generation_input", self.cost_generation_input, 0.0),
-            ("cost_generation_output", self.cost_generation_output, 0.0),
+        for field, blank in (
+            ("model_analysis", ""),
+            ("model_generation", ""),
+            ("endpoint_url", ""),
+            ("cost_analysis_input", 0.0),
+            ("cost_analysis_output", 0.0),
+            ("cost_generation_input", 0.0),
+            ("cost_generation_output", 0.0),
         ):
-            if supplied is None:
+            if field not in supplied:
                 derived[field] = blank
 
         return derived
@@ -582,21 +647,21 @@ class ConfigUpdate(ConfigSection):
     def changes(self, section: str) -> dict[str, Any]:
         """Supplied values for one section, keyed as that section names them.
 
-        Presence is `is not None`, not truthiness: a price of `0.0` and a
-        `context_window` of `0` are values the caller asked for, and dropping
-        them made a cost impossible to clear and an all-zero body a 400.
+        Presence, not a non-null value: `temperature` is legitimately `None`,
+        and clearing it back to the provider's own default has to be something
+        a form can ask for.
 
         Args:
-            section: Either `plex` or `llm`
+            section: One of `sections()`
 
         Returns:
             The section's changed keys; empty when nothing was supplied for it
         """
-        supplied = self.model_dump()
+        patch = getattr(self, section, None)
+        if patch is None:
+            return {}
         return {
-            key: self.plain(supplied[field])
-            for field, (owner, key) in self.FIELD_MAP.items()
-            if owner == section and supplied[field] is not None
+            key: self.plain(value) for key, value in patch.model_dump(exclude_unset=True).items()
         }
 
     def touches(self, section: str) -> bool:
@@ -610,14 +675,9 @@ class ConfigUpdate(ConfigSection):
         editing one must not spend a completion, nor fail because the provider
         happens to be down.
         """
-        supplied = self.model_dump()
-        return any(
-            field in CONNECTING
-            for field, (owner, _) in self.FIELD_MAP.items()
-            if owner == section and supplied[field] is not None
-        )
+        return bool(CONNECTING.get(section, frozenset()) & self.changes(section).keys())
 
     @property
     def is_empty(self) -> bool:
         """Whether the request asks for no change at all."""
-        return not (self.touches("plex") or self.touches("llm"))
+        return not any(self.touches(section) for section in self.sections())

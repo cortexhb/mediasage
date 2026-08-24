@@ -10,20 +10,18 @@
  * needs no click handler and no state -- the activated button is what the
  * form sends.
  */
-import { useState } from 'react'
 import { Form, useActionData, useLoaderData, useNavigation } from 'react-router'
 
 import { AlbumArt } from '../../components/atoms/AlbumArt/AlbumArt.tsx'
 import { Button } from '../../components/atoms/Button/Button.tsx'
 import { Heading } from '../../components/atoms/Heading/Heading.tsx'
 import { Input } from '../../components/atoms/Input/Input.tsx'
-import { Overlay } from '../../components/atoms/Overlay/Overlay.tsx'
 import { Text } from '../../components/atoms/Text/Text.tsx'
-import { StepProgress } from '../../components/molecules/StepProgress/StepProgress.tsx'
 import { Stepper } from '../../components/molecules/Stepper/Stepper.tsx'
+import { WorkingOverlay } from '../../components/molecules/WorkingOverlay/WorkingOverlay.tsx'
 import type { SeedSearchData } from '../../libs/loadSeedSearch/loadSeedSearch.ts'
 import type { SeedActionResult } from '../../libs/pickSeedTrack/pickSeedTrack.ts'
-import { playlistSteps } from '../../libs/playlistSteps/playlistSteps.ts'
+import { playlistSteps } from '../../libs/flowSteps/flowSteps.ts'
 import styles from './SeedStep.module.scss'
 
 /** The stages `frontend/app.js:2947` named for this same wait. */
@@ -36,7 +34,6 @@ const STAGES = [
 export function SeedStep() {
   const { query, tracks, error } = useLoaderData<SeedSearchData>()
   const failed = useActionData<SeedActionResult>()
-  const [watching, setWatching] = useState(true)
   const navigation = useNavigation()
   const analysing = navigation.state === 'submitting'
 
@@ -68,13 +65,7 @@ export function SeedStep() {
         </Text>
       )}
 
-      <Form
-        method="post"
-        onSubmit={() => {
-          // Dismissed once, shown again for the next pick.
-          setWatching(true)
-        }}
-      >
+      <Form method="post">
         <div
           className={styles.seed__results}
           role="listbox"
@@ -112,19 +103,12 @@ export function SeedStep() {
         <Text tone="muted">No tracks found</Text>
       )}
 
-      {/* Dismissable: closing it abandons the wait, not the request. */}
-      <Overlay
-        open={analysing && watching}
-        onClose={() => {
-          setWatching(false)
-        }}
+      <WorkingOverlay
+        open={analysing}
         label="Analyzing track"
-      >
-        <div className={styles.seed__working}>
-          <Heading level={2}>Analyzing track</Heading>
-          <StepProgress steps={STAGES} />
-        </div>
-      </Overlay>
+        steps={STAGES}
+        titled
+      />
     </div>
   )
 }

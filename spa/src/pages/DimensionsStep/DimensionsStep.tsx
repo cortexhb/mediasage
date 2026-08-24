@@ -21,7 +21,7 @@ import { DimensionCard } from '../../components/molecules/DimensionCard/Dimensio
 import { Stepper } from '../../components/molecules/Stepper/Stepper.tsx'
 import type { DimensionsActionResult } from '../../libs/chooseDimensions/chooseDimensions.ts'
 import type { SeedFlow } from '../../libs/flowStore/flowStore.ts'
-import { playlistSteps } from '../../libs/playlistSteps/playlistSteps.ts'
+import { playlistSteps } from '../../libs/flowSteps/flowSteps.ts'
 import styles from './DimensionsStep.module.scss'
 
 export function DimensionsStep() {

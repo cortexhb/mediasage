@@ -6,13 +6,9 @@
  * must not send the reader back to step one — but a deep link with nothing
  * behind it must, which is why every step's loader reads this.
  *
- * `sessionStorage`, not `localStorage`: a flow belongs to the tab it was
- * started in, and two tabs mid-flow must not overwrite each other.
- *
- * Versioned, because the record's shape will change while old tabs still hold
- * the previous one. A version that does not match is discarded rather than
- * migrated: the cost is one re-analysis, and a migration path for a record
- * that lives minutes is not worth maintaining.
+ * Storage, versioning and the read that answers nothing rather than a broken
+ * record are `libs/sessionRecord`, which the album flow keeps its own record
+ * with. What is here is the shape of a playlist flow.
  */
 import type {
   AnalyzePromptResponse,
@@ -21,6 +17,7 @@ import type {
   PlaylistCompleteFrame,
   Track,
 } from '../../api/generated/types.gen.ts'
+import { sessionRecord } from '../sessionRecord/sessionRecord.ts'
 
 /** Bump on any change to `PlaylistFlow`. Mismatched records are dropped. */
 const VERSION = 3
@@ -90,53 +87,13 @@ export interface ChosenFilters {
   readonly max_tracks_to_ai: number
 }
 
-/** The stored shape: the record, and the version it was written under. */
-interface Stored {
-  readonly version: number
-  readonly flow: PlaylistFlow
-}
+const record = sessionRecord<PlaylistFlow>(KEY, VERSION)
 
-/**
- * The playlist flow's record, or nothing.
- *
- * Answers nothing for a missing record, a version that does not match, and a
- * body that will not parse — a step cannot act on any of the three, and
- * telling them apart would only give the caller a choice it does not have.
- *
- * Storage itself can throw: Safari's private mode denies access outright.
- */
-export function readPlaylistFlow(): PlaylistFlow | undefined {
-  let raw: string | null
-  try {
-    raw = sessionStorage.getItem(KEY)
-  } catch {
-    return undefined
-  }
-  if (raw === null) return undefined
-
-  try {
-    const stored = JSON.parse(raw) as Stored
-    return stored.version === VERSION ? stored.flow : undefined
-  } catch {
-    return undefined
-  }
-}
+/** The playlist flow's record, or nothing. */
+export const readPlaylistFlow = record.read
 
 /** Keep the flow, or do nothing where storage refuses. */
-export function writePlaylistFlow(flow: PlaylistFlow): void {
-  const stored: Stored = { version: VERSION, flow }
-  try {
-    sessionStorage.setItem(KEY, JSON.stringify(stored))
-  } catch {
-    // Refused storage costs a re-analysis, not a broken flow.
-  }
-}
+export const writePlaylistFlow = record.write
 
 /** Drop the record, once its flow has reached a saved result. */
-export function forgetPlaylistFlow(): void {
-  try {
-    sessionStorage.removeItem(KEY)
-  } catch {
-    // Nothing to do: the next write replaces it anyway.
-  }
-}
+export const forgetPlaylistFlow = record.forget

@@ -1,0 +1,33 @@
+/**
+ * Ports `.filter-toggle-all` (`frontend/style.css:820`) and the chip row under
+ * it. The section spacing around it belongs to the step that draws it.
+ */
+
+/* Beside the heading, not pushed to the far edge. */
+.chipPicker__header {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.chipPicker__toggleAll {
+  padding: 0;
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  color: var(--accent);
+  cursor: pointer;
+  background: none;
+  border: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.chipPicker__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}

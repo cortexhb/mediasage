@@ -52,27 +52,41 @@ class ConfigChange(BaseModel):
         Returns:
             The would-be configuration and the sections it writes
         """
-        plex_changes = update.changes("plex")
-        llm_changes: dict[str, Any] = {}
-        if update.llm_provider:
-            llm_changes.update(update.provider_changes)
-        llm_changes.update(update.changes("llm"))
+        changed = {
+            section: cls.section_changes(update, section) for section in ConfigUpdate.sections()
+        }
+        written = {section: keys for section, keys in changed.items() if keys}
 
         return cls(
             config=current.model_copy(
                 update={
-                    "plex": PlexConfig(**(current.plex.model_dump() | plex_changes)),
-                    "llm": LLM_SECTION_ADAPTER.validate_python(
-                        current.llm.model_dump() | llm_changes
-                    ),
+                    section: cls.rebuilt(current, section, keys)
+                    for section, keys in written.items()
                 }
             ),
-            sections={
-                section: changes
-                for section, changes in (("plex", plex_changes), ("llm", llm_changes))
-                if changes
-            },
+            sections=written,
         )
+
+    @staticmethod
+    def section_changes(update: ConfigUpdate, section: str) -> dict[str, Any]:
+        """One section's changed keys, with a provider switch folded in."""
+        changes = update.changes(section)
+        if section != "llm" or "provider" not in changes:
+            return changes
+        # The switch clears first; what the caller supplied lands over the top.
+        return update.provider_changes | changes
+
+    @staticmethod
+    def rebuilt(current: MediasageConfig, section: str, changes: dict[str, Any]) -> Any:
+        """That section, revalidated with `changes` written into it.
+
+        `llm` goes through the adapter: which class it becomes is decided by
+        the provider name, and a switch changes the class as well as the field.
+        """
+        merged = getattr(current, section).model_dump() | changes
+        if section == "llm":
+            return LLM_SECTION_ADAPTER.validate_python(merged)
+        return type(getattr(current, section))(**merged)
 
     @classmethod
     def to_plex(cls, current: MediasageConfig, changes: dict[str, Any]) -> Self:

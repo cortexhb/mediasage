@@ -14,18 +14,19 @@
  * control. One `Form`, so what is previewed is what is submitted.
  */
 import { useEffect, useRef, useState } from 'react'
-import { Form, useFetcher, useLoaderData, useNavigate } from 'react-router'
+import { Form, useFetcher, useLoaderData } from 'react-router'
 
 import type { FilterPreviewResponse } from '../../api/generated/types.gen.ts'
 import { Button } from '../../components/atoms/Button/Button.tsx'
-import { Chip } from '../../components/atoms/Chip/Chip.tsx'
 import { Heading } from '../../components/atoms/Heading/Heading.tsx'
 import { CheckboxField } from '../../components/molecules/CheckboxField/CheckboxField.tsx'
+import { ChipPicker } from '../../components/molecules/ChipPicker/ChipPicker.tsx'
 import { ChoiceRow } from '../../components/molecules/ChoiceRow/ChoiceRow.tsx'
 import { Stepper } from '../../components/molecules/Stepper/Stepper.tsx'
+import { playlistSteps } from '../../libs/flowSteps/flowSteps.ts'
 import type { FiltersData } from '../../libs/loadFilters/loadFilters.ts'
 import { PREVIEW } from '../../libs/previewSelection/previewSelection.ts'
-import { playlistSteps } from '../../libs/playlistSteps/playlistSteps.ts'
+import { useGo } from '../../libs/useGo/useGo.ts'
 import styles from './FiltersStep.module.scss'
 
 const SIZES = [15, 25, 50, 100].map((value) => ({
@@ -60,7 +61,7 @@ export function FiltersStep() {
     ceiling,
   } = useLoaderData<FiltersData>()
   const preview = useFetcher<FilterPreviewResponse | null>()
-  const navigate = useNavigate()
+  const go = useGo()
   const form = useRef<HTMLFormElement>(null)
 
   const [genres, setGenres] = useState<readonly string[]>(suggestedGenres)
@@ -84,19 +85,6 @@ export function FiltersStep() {
     // `preview` is left out: submitting would then loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [genres, decades, size, rating, limit, excludeLive])
-
-  /** Add or remove one name, which is what a chip click means. */
-  const toggle = (
-    chosen: readonly string[],
-    keep: (next: readonly string[]) => void,
-    name: string,
-  ): void => {
-    keep(
-      chosen.includes(name)
-        ? chosen.filter((each) => each !== name)
-        : [...chosen, name],
-    )
-  }
 
   /**
    * The no-limit option, named for what no limit actually means here.
@@ -144,85 +132,23 @@ export function FiltersStep() {
         ))}
 
         <section className={styles.filters__section}>
-          <div className={styles.filters__header}>
-            <Heading level={3}>Genres</Heading>
-            <button
-              type="button"
-              className={styles.filters__toggleAll}
-              aria-label={
-                genres.length === allGenres.length
-                  ? 'Deselect all genres'
-                  : 'Select all genres'
-              }
-              onClick={() => {
-                setGenres(genres.length === allGenres.length ? [] : allGenres)
-              }}
-            >
-              {genres.length === allGenres.length
-                ? 'Deselect All'
-                : 'Select All'}
-            </button>
-          </div>
-          <div
-            className={styles.filters__chips}
-            role="group"
-            aria-label="Genre filters"
-          >
-            {availableGenres.map((genre) => (
-              <Chip
-                key={genre.name}
-                selected={genres.includes(genre.name)}
-                count={genre.count}
-                onChoose={() => {
-                  toggle(genres, setGenres, genre.name)
-                }}
-              >
-                {genre.name}
-              </Chip>
-            ))}
-          </div>
+          <ChipPicker
+            title="Genres"
+            groupLabel="Genre filters"
+            choices={availableGenres}
+            selected={genres}
+            onChange={setGenres}
+          />
         </section>
 
         <section className={styles.filters__section}>
-          <div className={styles.filters__header}>
-            <Heading level={3}>Decades</Heading>
-            <button
-              type="button"
-              className={styles.filters__toggleAll}
-              aria-label={
-                decades.length === allDecades.length
-                  ? 'Deselect all decades'
-                  : 'Select all decades'
-              }
-              onClick={() => {
-                setDecades(
-                  decades.length === allDecades.length ? [] : allDecades,
-                )
-              }}
-            >
-              {decades.length === allDecades.length
-                ? 'Deselect All'
-                : 'Select All'}
-            </button>
-          </div>
-          <div
-            className={styles.filters__chips}
-            role="group"
-            aria-label="Decade filters"
-          >
-            {availableDecades.map((decade) => (
-              <Chip
-                key={decade.name}
-                selected={decades.includes(decade.name)}
-                count={decade.count}
-                onChoose={() => {
-                  toggle(decades, setDecades, decade.name)
-                }}
-              >
-                {decade.name}
-              </Chip>
-            ))}
-          </div>
+          <ChipPicker
+            title="Decades"
+            groupLabel="Decade filters"
+            choices={availableDecades}
+            selected={decades}
+            onChange={setDecades}
+          />
         </section>
 
         <section className={styles.filters__section}>
@@ -275,13 +201,11 @@ export function FiltersStep() {
           <Button
             variant="secondary"
             onClick={() => {
-              Promise.resolve(
-                navigate(
-                  mode === 'seed'
-                    ? '/playlist/seed/dimensions'
-                    : '/playlist/prompt/refine',
-                ),
-              ).catch(() => undefined)
+              go(
+                mode === 'seed'
+                  ? '/playlist/seed/dimensions'
+                  : '/playlist/prompt/refine',
+              )
             }}
           >
             Back

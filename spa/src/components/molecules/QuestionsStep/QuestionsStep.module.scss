@@ -1,28 +1,33 @@
-/** Ports `#rec-step-refine` from `frontend/index.html:564`. */
+/**
+ * Ports `#step-refine` (`frontend/index.html:236`) and `#rec-step-refine`
+ * (`:564`), which are the same column at two widths. The playlist step's 720px
+ * is what both use here: the question cards read better wide, and two widths
+ * for one layout was an accident of the port.
+ */
 @use 'mixins' as ds;
 
-.albumRefine {
+.questionsStep {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
-  max-width: 640px;
+  max-width: 720px;
   margin: 0 auto;
 }
 
 /* The form is one flex child, so its own children need their own gap. */
-.albumRefine__form {
+.questionsStep__form {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
 }
 
-.albumRefine__questions {
+.questionsStep__questions {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
 }
 
-.albumRefine__actions {
+.questionsStep__actions {
   display: flex;
   gap: var(--spacing-md);
   justify-content: space-between;

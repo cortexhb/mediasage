@@ -1,0 +1,13 @@
+/**
+ * The card inside the dialog, which `atoms/Overlay` supplies the frame for.
+ *
+ * 280px is a floor, not a width: the stage labels are sentences and decide the
+ * real one.
+ */
+
+.workingOverlay {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  min-width: 280px;
+}

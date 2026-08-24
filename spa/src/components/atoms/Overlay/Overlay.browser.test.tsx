@@ -48,6 +48,27 @@ function Controlled({ onClose = () => undefined }: { onClose?: () => void }) {
   )
 }
 
+/** The other kind: a wait the reader is not offered a way out of. */
+function Sticky() {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(true)
+        }}
+      >
+        Open
+      </button>
+      <Overlay open={open} sticky label="Generating">
+        <p>Body</p>
+      </Overlay>
+    </>
+  )
+}
+
 /** What the browser would hand a click at this element's centre. */
 function topmostOver(element: Element): Element | null {
   const box = element.getBoundingClientRect()
@@ -172,6 +193,27 @@ describe('Overlay', () => {
       await userEvent.keyboard('{Escape}')
 
       expect(topmostOver(behind)).toBe(behind)
+    })
+
+    it('refuses Escape when the caller says the dialog is sticky', async () => {
+      render(<Sticky />)
+      // Clicked first: Chromium ignores `preventDefault` on `cancel` with no
+      // user activation behind it.
+      await userEvent.click(screen.getByRole('button', { name: 'Open' }))
+
+      await userEvent.keyboard('{Escape}')
+
+      expect(screen.getByRole('dialog', { name: 'Generating' })).toBeVisible()
+    })
+
+    it('gives a sticky dialog no close button', () => {
+      render(
+        <Overlay open sticky label="Generating">
+          <p>Body</p>
+        </Overlay>,
+      )
+
+      expect(screen.queryByRole('button', { name: 'Close' })).toBeNull()
     })
 
     it('paints a backdrop', async () => {

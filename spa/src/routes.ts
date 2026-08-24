@@ -26,6 +26,7 @@ import { loadFilters } from './libs/loadFilters/loadFilters.ts'
 import { loadFooter } from './libs/loadFooter/loadFooter.ts'
 import { loadHistory } from './libs/loadHistory/loadHistory.ts'
 import { loadRefine } from './libs/loadRefine/loadRefine.ts'
+import { loadResult } from './libs/loadResult/loadResult.ts'
 import { loadSeedSearch } from './libs/loadSeedSearch/loadSeedSearch.ts'
 import { pickSeedTrack } from './libs/pickSeedTrack/pickSeedTrack.ts'
 import { loadSettings } from './libs/loadSettings/loadSettings.ts'
@@ -42,6 +43,7 @@ import {
 import { probeOllama } from './libs/probeOllama/probeOllama.ts'
 import { refinePrompt } from './libs/refinePrompt/refinePrompt.ts'
 import { savePlaylistToPlex } from './libs/savePlaylistToPlex/savePlaylistToPlex.ts'
+import { saveResultToPlex } from './libs/saveResultToPlex/saveResultToPlex.ts'
 import { AlbumFilters } from './pages/AlbumFilters/AlbumFilters.tsx'
 import { AlbumPrompt } from './pages/AlbumPrompt/AlbumPrompt.tsx'
 import { AlbumRefine } from './pages/AlbumRefine/AlbumRefine.tsx'
@@ -54,6 +56,7 @@ import { NotFound } from './pages/NotFound/NotFound.tsx'
 import { PlaylistStep } from './pages/PlaylistStep/PlaylistStep.tsx'
 import { PromptStep } from './pages/PromptStep/PromptStep.tsx'
 import { RefineStep } from './pages/RefineStep/RefineStep.tsx'
+import { Result } from './pages/Result/Result.tsx'
 import { SeedStep } from './pages/SeedStep/SeedStep.tsx'
 import { Settings } from './pages/Settings/Settings.tsx'
 
@@ -140,6 +143,13 @@ export const routes: RouteObject[] = [
             // No component: the album filters step counts its selection here.
             path: ALBUM_PREVIEW.slice(1),
             loader: previewAlbums,
+          },
+          {
+            // Where both flows' history entries point, per `HistoryEntry`.
+            path: 'result/:resultId',
+            Component: Result,
+            loader: loadResult,
+            action: saveResultToPlex,
           },
           {
             // No action: the save is a plain call, see `libs/saveSettings`.

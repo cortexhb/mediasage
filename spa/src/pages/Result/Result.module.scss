@@ -1,0 +1,12 @@
+/**
+ * The column a saved album sits in.
+ *
+ * 700px, as the live album step uses (`frontend/style.css:2563` widens that
+ * step alone). A saved playlist needs no column of its own: the grid in
+ * `organisms/PlaylistResultGrid` is the full width.
+ */
+
+.result__album {
+  max-width: 700px;
+  margin: 0 auto;
+}

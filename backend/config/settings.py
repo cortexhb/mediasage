@@ -54,9 +54,7 @@ BASE_CONFIG_PATH = Path("config.yaml")
 USER_CONFIG_PATH = Path("data/config.user.yaml")
 
 # Plex identity keys, ignored wherever the environment offers them.
-PLEX_IDENTITY: Final[frozenset[str]] = frozenset(
-    {"url", "token", "account_token", "server_id", "client_id", "server_name"}
-)
+PLEX_IDENTITY: Final[frozenset[str]] = PlexConfig.UNEDITABLE
 
 # Separate from `.env` so tracing keys mount on their own.
 LANGFUSE_ENV_PATH = Path(".env.langfuse")

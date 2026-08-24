@@ -1,13 +1,11 @@
 /**
  * A labelled select with its hint: `Label`, `Select`, `Text`.
+ *
+ * The stack and the ids are `molecules/FieldShell`.
  */
-import { useId } from 'react'
-
 import { Select } from '../../atoms/Select/Select.tsx'
 import type { SelectProps } from '../../atoms/Select/Select.tsx'
-import { Label } from '../../atoms/Label/Label.tsx'
-import { Text } from '../../atoms/Text/Text.tsx'
-import styles from './SelectField.module.scss'
+import { FieldShell } from '../FieldShell/FieldShell.tsx'
 
 export interface SelectFieldProps extends Omit<SelectProps, 'id'> {
   readonly label: string
@@ -16,22 +14,11 @@ export interface SelectFieldProps extends Omit<SelectProps, 'id'> {
 }
 
 export function SelectField({ label, hint, ...control }: SelectFieldProps) {
-  const id = useId()
-  const described = useId()
-
   return (
-    <div className={styles.selectField}>
-      <Label htmlFor={id}>{label}</Label>
-      <Select
-        {...control}
-        id={id}
-        aria-describedby={hint ? described : undefined}
-      />
-      {hint && (
-        <Text tone="muted" id={described}>
-          {hint}
-        </Text>
+    <FieldShell label={label} hint={hint}>
+      {({ id, describedBy }) => (
+        <Select {...control} id={id} aria-describedby={describedBy} />
       )}
-    </div>
+    </FieldShell>
   )
 }

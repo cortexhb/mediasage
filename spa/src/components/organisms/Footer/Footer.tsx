@@ -24,11 +24,14 @@ import { Text } from '../../atoms/Text/Text.tsx'
 import { readPlaylistFlow } from '../../../libs/flowStore/flowStore.ts'
 import { generateBody } from '../../../libs/generateBody/generateBody.ts'
 import type { FooterFacts } from '../../../libs/loadFooter/loadFooter.ts'
-import { forgetRun, startRun } from '../../../libs/playlistRun/playlistRun.ts'
+import {
+  forgetRun,
+  startRun,
+  useGeneratedPlaylist,
+} from '../../../libs/playlistRun/playlistRun.ts'
 import { streamDeadline } from '../../../libs/streamDeadline/streamDeadline.ts'
 import { syncProgress } from '../../../libs/syncProgress/syncProgress.ts'
 import { timeAgo } from '../../../libs/timeAgo/timeAgo.ts'
-import { useGeneratedPlaylist } from '../../../libs/useGeneratedPlaylist/useGeneratedPlaylist.ts'
 import { useSharedLibrarySync } from '../../../libs/useLibrarySync/useLibrarySync.ts'
 import styles from './Footer.module.scss'
 
@@ -120,7 +123,7 @@ export function Footer() {
       <div className={styles.footer__identity}>
         <a
           className={styles.footer__brand}
-          href="https://github.com/ecwilsonaz/mediasage"
+          href="https://github.com/cortexhb/mediasage"
           target="_blank"
           rel="noopener"
         >

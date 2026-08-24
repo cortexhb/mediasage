@@ -11,13 +11,9 @@
  */
 import { useState } from 'react'
 
-import {
-  contextWindowError,
-  LARGEST,
-  SMALLEST,
-} from '../../../libs/contextWindowError/contextWindowError.ts'
-import { tracksThatFit } from '../../../libs/tracksThatFit/tracksThatFit.ts'
+import { contextWindowError } from '../../../libs/contextWindowError/contextWindowError.ts'
 import { CheckboxField } from '../../molecules/CheckboxField/CheckboxField.tsx'
+import { ContextWindowField } from '../../molecules/ContextWindowField/ContextWindowField.tsx'
 import { Field } from '../../molecules/Field/Field.tsx'
 
 /** Said where the analysis model is doing the generating as well. */
@@ -45,7 +41,6 @@ export function CloudSettings({
   const [smartOn, setSmartOn] = useState(smart)
 
   const error = contextWindowError(window)
-  const fits = tracksThatFit(Number.parseInt(window, 10) || contextWindow)
 
   return (
     <>
@@ -82,20 +77,11 @@ export function CloudSettings({
         }}
         hint="Better playlists, at the analysis model's price."
       />
-      <Field
-        label="Context Window"
-        name="context_window"
-        type="number"
-        min={SMALLEST}
-        max={LARGEST}
-        required
+      <ContextWindowField
         value={window}
-        onChange={(event) => {
-          setWindow(event.target.value)
-        }}
-        {...(error === undefined
-          ? { hint: `~${fits.toLocaleString()} tracks fit in it` }
-          : { error })}
+        onChange={setWindow}
+        saved={contextWindow}
+        error={error}
       />
     </>
   )

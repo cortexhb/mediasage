@@ -1,40 +1,40 @@
 /**
- * The album prompt step. Same shape as the playlist one -- `.rec-step-content`
- * and `#step-content` are both a 640px column (`frontend/style.css:2557`,
- * `:447`) -- and the same `.example-prompts` and `.prompt-pills` under it.
+ * Ports `.step-content`, `.example-prompts` and `.prompt-pills` from
+ * `frontend/style.css:447`, `:2634` and `:2651`. The album step's
+ * `.rec-step-content` (`:2557`) is the same 640px column.
  */
 @use 'mixins' as ds;
 
-.albumPrompt {
+.promptForm {
   max-width: 640px;
   margin: 0 auto;
 }
 
-.albumPrompt__form {
+.promptForm__form {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
 }
 
-.albumPrompt__suggestions {
+.promptForm__suggestions {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
 }
 
-.albumPrompt__suggestionsHeader {
+.promptForm__suggestionsHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.albumPrompt__pills {
+.promptForm__pills {
   display: flex;
   flex-wrap: wrap;
   gap: var(--spacing-sm);
 }
 
-.albumPrompt__pill {
+.promptForm__pill {
   padding: var(--spacing-xs) var(--spacing-md);
   font-family: var(--font-family);
   font-size: var(--font-size-sm);
@@ -59,21 +59,14 @@
   }
 }
 
-.albumPrompt__actions {
+.promptForm__actions {
   display: flex;
   gap: var(--spacing-sm);
   align-items: center;
 }
 
-.albumPrompt__working {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-lg);
-  min-width: 280px;
-}
-
 /* Ports `.prompt-shuffle`: a 32px circle, not a text button. */
-.albumPrompt__shuffle {
+.promptForm__shuffle {
   display: flex;
   flex-shrink: 0;
   align-items: center;

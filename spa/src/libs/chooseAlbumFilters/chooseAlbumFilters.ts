@@ -22,16 +22,9 @@ import { readAlbumFlow, writeAlbumFlow } from '../albumStore/albumStore.ts'
 import { startRound } from '../albumRun/albumRun.ts'
 import { keepFamiliarity } from '../familiarityPref/familiarityPref.ts'
 import { formText } from '../formText/formText.ts'
+import { narrowSelection } from '../narrowSelection/narrowSelection.ts'
 import { roundBody } from '../roundBody/roundBody.ts'
 import { streamDeadline } from '../streamDeadline/streamDeadline.ts'
-
-/** The chosen names, or nothing where every one of them was chosen. */
-function narrowed(
-  chosen: readonly string[],
-  available: number,
-): readonly string[] {
-  return chosen.length === available ? [] : chosen
-}
 
 export async function chooseAlbumFilters({
   request,
@@ -41,11 +34,11 @@ export async function chooseAlbumFilters({
 
   const form = await request.formData()
   const filters: ChosenAlbumFilters = {
-    genres: narrowed(
+    genres: narrowSelection(
       form.getAll('genres').map(String),
       Number(formText(form, 'genre_total')),
     ),
-    decades: narrowed(
+    decades: narrowSelection(
       form.getAll('decades').map(String),
       Number(formText(form, 'decade_total')),
     ),

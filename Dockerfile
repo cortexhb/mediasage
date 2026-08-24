@@ -1,5 +1,27 @@
 # syntax=docker/dockerfile:1
 
+# The SPA is built where node and its toolchain may live freely. Only `dist`
+# is copied forward, so neither node nor `node_modules` reaches the runtime
+# image -- which ships no javascript runtime at all.
+FROM node:24-slim AS spa
+
+# The browser project in `vitest.config.ts` is a test concern. `npm ci`
+# would otherwise pull ~400MB of Chromium that this stage never runs.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
+WORKDIR /spa
+
+# Its own layer, ahead of the source: the lock file changes far less often
+# than the code, so an edit reuses the installed dependencies.
+COPY spa/package.json spa/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+
+COPY spa/ ./
+
+# `tsc -b && vite build`: a type error fails the image rather than shipping.
+RUN npm run build
+
+
 # The virtualenv is built where uv and its download cache may live freely.
 # Only `/app/.venv` is copied forward, so neither reaches the runtime image;
 # together they are the bulk of what a single-stage build ships.
@@ -53,9 +75,11 @@ RUN install -d -o mediasageappuser -g mediasageappuser /app/data
 # The venv carries absolute paths, so it must land on the path it was built at.
 COPY --from=builder --chown=mediasageappuser:mediasageappuser /app/.venv /app/.venv
 
-# No frontend: the image serves the API alone while the UI is rebuilt, and
-# `Frontend.locate` reports its absence rather than failing.
 COPY --chown=mediasageappuser:mediasageappuser backend/ ./backend/
+
+# `IMAGE_FRONTEND` in `backend/api/routes/static.py`. Ahead of the version arg
+# but after the venv: the bundle changes far more often than the deps.
+COPY --from=spa --chown=mediasageappuser:mediasageappuser /spa/dist ./frontend/
 
 # A runtime dependency left in dev-dependencies resolves fine and installs
 # nothing, so without this the failure is a crash on first boot, not a build.

@@ -15,13 +15,16 @@ import styles from './Overlay.module.scss'
  * `form method="dialog"` submit close the element on their own, so `onClose`
  * is how the caller learns it has to catch up.
  *
- * The close button is not optional. Escape dismisses every one of these, and
- * a way out that only a keyboard can find is not a way out.
+ * The close button is not optional on a dialog that can be dismissed at all:
+ * Escape dismisses those, and a way out only a keyboard can find is not one.
+ *
+ * `sticky` is the other kind, and there is exactly one -- a wait the reader
+ * must not walk away from while it spends money (`molecules/WorkingOverlay`).
+ * It has no close button and refuses `cancel`, which is what the legacy
+ * generation overlay did by never wiring one up (`frontend/app.js:2079`).
  */
-export interface OverlayProps {
+interface Shared {
   readonly open: boolean
-  /** Fired whenever the dialog closes, including by Escape. */
-  readonly onClose: () => void
   /** Names the dialog for assistive technology. */
   readonly label: string
   /** `compact` is the 400px card the two save dialogs use. */
@@ -29,11 +32,26 @@ export interface OverlayProps {
   readonly children: ReactNode
 }
 
+/** Split so the compiler rejects a sticky dialog that offers a way out. */
+export type OverlayProps = Shared &
+  (
+    | {
+        readonly sticky: true
+        readonly onClose?: never
+      }
+    | {
+        readonly sticky?: false | undefined
+        /** Fired whenever the dialog closes, including by Escape. */
+        readonly onClose: () => void
+      }
+  )
+
 export function Overlay({
   open,
   onClose,
   label,
   size,
+  sticky,
   children,
 }: OverlayProps) {
   const ref = useRef<HTMLDialogElement>(null)
@@ -50,6 +68,14 @@ export function Overlay({
     <dialog
       ref={ref}
       onClose={onClose}
+      // Escape asks through `cancel`; refusing it is what keeps a sticky open.
+      onCancel={
+        sticky
+          ? (event) => {
+              event.preventDefault()
+            }
+          : undefined
+      }
       aria-label={label}
       className={styles.overlay}
       data-size={size}
@@ -58,15 +84,17 @@ export function Overlay({
           which jsdom does not apply, so its content stayed queryable. */}
       {open && (
         <>
-          <button
-            type="button"
-            className={styles.overlay__dismiss}
-            aria-label="Close"
-            // `close()` rather than `onClose`: it fires `close` for both.
-            onClick={() => ref.current?.close()}
-          >
-            ×
-          </button>
+          {!sticky && (
+            <button
+              type="button"
+              className={styles.overlay__dismiss}
+              aria-label="Close"
+              // `close()` rather than `onClose`: it fires `close` for both.
+              onClick={() => ref.current?.close()}
+            >
+              ×
+            </button>
+          )}
           {children}
         </>
       )}

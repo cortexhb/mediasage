@@ -11,19 +11,21 @@
  * and spends nothing.
  */
 import { useEffect, useState } from 'react'
-import { Form, useFetcher, useLoaderData, useNavigate } from 'react-router'
+import { Form, useFetcher, useLoaderData } from 'react-router'
 
 import type { AlbumPreviewResponse } from '../../api/generated/types.gen.ts'
 import { Button } from '../../components/atoms/Button/Button.tsx'
 import { Chip } from '../../components/atoms/Chip/Chip.tsx'
 import { Heading } from '../../components/atoms/Heading/Heading.tsx'
+import { ChipPicker } from '../../components/molecules/ChipPicker/ChipPicker.tsx'
 import { ChoiceRow } from '../../components/molecules/ChoiceRow/ChoiceRow.tsx'
 import { ModeSwitch } from '../../components/molecules/ModeSwitch/ModeSwitch.tsx'
 import { Stepper } from '../../components/molecules/Stepper/Stepper.tsx'
-import { ALBUM_STEPS } from '../../libs/albumSteps/albumSteps.ts'
 import { FAMILIARITIES } from '../../libs/familiarityPref/familiarityPref.ts'
+import { ALBUM_STEPS } from '../../libs/flowSteps/flowSteps.ts'
 import type { AlbumFiltersData } from '../../libs/loadAlbumFilters/loadAlbumFilters.ts'
 import { ALBUM_PREVIEW } from '../../libs/previewAlbums/previewAlbums.ts'
+import { useGo } from '../../libs/useGo/useGo.ts'
 import styles from './AlbumFilters.module.scss'
 
 /** `frontend/app.js:1288`, kept whole and cut to the model's ceiling. */
@@ -36,7 +38,7 @@ const PRESELECTED = 'Pre-selected based on your prompt. Adjust if needed.'
 export function AlbumFilters() {
   const data = useLoaderData<AlbumFiltersData>()
   const preview = useFetcher<AlbumPreviewResponse | null>()
-  const navigate = useNavigate()
+  const go = useGo()
 
   const [mode, setMode] = useState(data.mode)
   const [familiarity, setFamiliarity] = useState(data.familiarity)
@@ -60,19 +62,6 @@ export function AlbumFilters() {
     // `preview` is left out: loading would then loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [genres, decades, maxAlbums])
-
-  /** Add or remove one name, which is what a chip click means. */
-  const toggle = (
-    chosen: readonly string[],
-    keep: (next: readonly string[]) => void,
-    name: string,
-  ): void => {
-    keep(
-      chosen.includes(name)
-        ? chosen.filter((each) => each !== name)
-        : [...chosen, name],
-    )
-  }
 
   /** What the preview says, as `frontend/app.js:4172` phrased it. */
   const matching = counts
@@ -116,85 +105,23 @@ export function AlbumFilters() {
         </div>
 
         <section className={styles.albumFilters__section}>
-          <div className={styles.albumFilters__header}>
-            <Heading level={3}>Genres</Heading>
-            <button
-              type="button"
-              className={styles.albumFilters__toggleAll}
-              aria-label={
-                genres.length === allGenres.length
-                  ? 'Deselect all genres'
-                  : 'Select all genres'
-              }
-              onClick={() => {
-                setGenres(genres.length === allGenres.length ? [] : allGenres)
-              }}
-            >
-              {genres.length === allGenres.length
-                ? 'Deselect All'
-                : 'Select All'}
-            </button>
-          </div>
-          <div
-            className={styles.albumFilters__chips}
-            role="group"
-            aria-label="Genre filters"
-          >
-            {data.availableGenres.map((genre) => (
-              <Chip
-                key={genre.name}
-                selected={genres.includes(genre.name)}
-                count={genre.count}
-                onChoose={() => {
-                  toggle(genres, setGenres, genre.name)
-                }}
-              >
-                {genre.name}
-              </Chip>
-            ))}
-          </div>
+          <ChipPicker
+            title="Genres"
+            groupLabel="Genre filters"
+            choices={data.availableGenres}
+            selected={genres}
+            onChange={setGenres}
+          />
         </section>
 
         <section className={styles.albumFilters__section}>
-          <div className={styles.albumFilters__header}>
-            <Heading level={3}>Decades</Heading>
-            <button
-              type="button"
-              className={styles.albumFilters__toggleAll}
-              aria-label={
-                decades.length === allDecades.length
-                  ? 'Deselect all decades'
-                  : 'Select all decades'
-              }
-              onClick={() => {
-                setDecades(
-                  decades.length === allDecades.length ? [] : allDecades,
-                )
-              }}
-            >
-              {decades.length === allDecades.length
-                ? 'Deselect All'
-                : 'Select All'}
-            </button>
-          </div>
-          <div
-            className={styles.albumFilters__chips}
-            role="group"
-            aria-label="Decade filters"
-          >
-            {data.availableDecades.map((decade) => (
-              <Chip
-                key={decade.name}
-                selected={decades.includes(decade.name)}
-                count={decade.count}
-                onChoose={() => {
-                  toggle(decades, setDecades, decade.name)
-                }}
-              >
-                {decade.name}
-              </Chip>
-            ))}
-          </div>
+          <ChipPicker
+            title="Decades"
+            groupLabel="Decade filters"
+            choices={data.availableDecades}
+            selected={decades}
+            onChange={setDecades}
+          />
         </section>
 
         <section className={styles.albumFilters__section}>
@@ -243,9 +170,7 @@ export function AlbumFilters() {
           <Button
             variant="secondary"
             onClick={() => {
-              Promise.resolve(navigate('/recommend/refine')).catch(
-                () => undefined,
-              )
+              go('/recommend/refine')
             }}
           >
             Back
