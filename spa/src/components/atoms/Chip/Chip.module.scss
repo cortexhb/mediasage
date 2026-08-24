@@ -1,8 +1,9 @@
 /**
  * A pill-shaped toggle.
  *
- * Selected is `[aria-pressed='true']`, not a class: the attribute has to be
- * there anyway, and a second source of truth is one that can disagree.
+ * Selected is the aria attribute, not a class: it has to be there anyway, and
+ * a second source of truth is one that can disagree. Which attribute depends
+ * on the role -- a toggle is pressed, one of a radiogroup is checked.
  */
 
 .chip {
@@ -27,7 +28,8 @@
 }
 
 /* Colour only: a heavier weight would resize the pill on every click. */
-.chip[aria-pressed='true'] {
+.chip[aria-pressed='true'],
+.chip[aria-checked='true'] {
   color: var(--bg-primary);
   background: var(--accent);
 }
@@ -37,7 +39,8 @@
   color: var(--text-muted);
 }
 
-.chip[aria-pressed='true'] .chip__count {
+.chip[aria-pressed='true'] .chip__count,
+.chip[aria-checked='true'] .chip__count {
   color: var(--bg-primary);
   opacity: 0.8;
 }

@@ -110,4 +110,10 @@
       color: var(--text-secondary);
     }
   }
+
+  /* Last: same specificity as the variants, so it overrides their padding. */
+  &[data-size='sm'] {
+    padding: var(--spacing-xs) var(--spacing-md);
+    font-size: var(--font-size-sm);
+  }
 }

@@ -70,7 +70,7 @@ export function PlaylistStep() {
   const startOver = (): void => {
     forgetRun()
     forgetPlaylistFlow()
-    go('/playlist/prompt')
+    go(`/playlist/${flow.mode}`)
   }
 
   const tracks = run.tracks.filter(
@@ -79,7 +79,7 @@ export function PlaylistStep() {
   // The first track until one is picked, as `frontend/app.js:1673` did it.
   const selected =
     tracks.find((track) => track.rating_key === chosen) ?? tracks[0]
-  const name = typed ?? (run.title || playlistName(flow.prompt, new Date()))
+  const name = typed ?? (run.title || playlistName(flow, new Date()))
   const count = `♫ ${String(tracks.length)} track${tracks.length === 1 ? '' : 's'}`
 
   return (
@@ -89,7 +89,7 @@ export function PlaylistStep() {
         type="button"
         className={styles.playlist__back}
         onClick={() => {
-          go('/playlist/prompt/filters')
+          go(`/playlist/${flow.mode}/filters`)
         }}
       >
         ← Back to filters
@@ -129,7 +129,8 @@ export function PlaylistStep() {
           )}
           <div className={styles.playlist__meta}>
             <span className={styles.playlist__pill}>{count}</span>
-            {flow.prompt && (
+            {/* A seed flow has no request to quote, so it draws none. */}
+            {flow.mode === 'prompt' && flow.prompt && (
               <span className={styles.playlist__prompt}>{flow.prompt}</span>
             )}
           </div>

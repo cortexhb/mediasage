@@ -1,0 +1,96 @@
+/**
+ * The album prompt step. Same shape as the playlist one -- `.rec-step-content`
+ * and `#step-content` are both a 640px column (`frontend/style.css:2557`,
+ * `:447`) -- and the same `.example-prompts` and `.prompt-pills` under it.
+ */
+@use 'mixins' as ds;
+
+.albumPrompt {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.albumPrompt__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.albumPrompt__suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.albumPrompt__suggestionsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.albumPrompt__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.albumPrompt__pill {
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  transition: all var(--transition-fast);
+
+  /* Wraps on narrow screens rather than truncating a whole suggestion. */
+  text-align: left;
+
+  &:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+    border-color: var(--accent);
+  }
+
+  @include ds.on-mobile {
+    min-height: 44px;
+  }
+}
+
+.albumPrompt__actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+.albumPrompt__working {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  min-width: 280px;
+}
+
+/* Ports `.prompt-shuffle`: a 32px circle, not a text button. */
+.albumPrompt__shuffle {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  color: var(--text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  transition: all var(--transition-fast);
+
+  &:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+    border-color: var(--accent);
+  }
+}

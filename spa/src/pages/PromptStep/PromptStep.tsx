@@ -19,11 +19,12 @@ import { Textarea } from '../../components/atoms/Textarea/Textarea.tsx'
 import { StepProgress } from '../../components/molecules/StepProgress/StepProgress.tsx'
 import { Stepper } from '../../components/molecules/Stepper/Stepper.tsx'
 import type { PromptActionResult } from '../../libs/askPromptQuestions/askPromptQuestions.ts'
-import { PLAYLIST_STEPS } from '../../libs/playlistSteps/playlistSteps.ts'
+import { playlistSteps } from '../../libs/playlistSteps/playlistSteps.ts'
 import {
   nextSuggestions,
   pickSuggestions,
 } from '../../libs/promptSuggestions/pickSuggestions.ts'
+import { PROMPT_GROUPS } from '../../libs/promptSuggestions/promptSuggestions.ts'
 import styles from './PromptStep.module.scss'
 
 const PLACEHOLDER = 'e.g., melancholy 90s alternative for a rainy day...'
@@ -37,7 +38,9 @@ const STAGES = [
 
 export function PromptStep() {
   const box = useRef<HTMLTextAreaElement>(null)
-  const [suggestions, setSuggestions] = useState(pickSuggestions)
+  const [suggestions, setSuggestions] = useState(() =>
+    pickSuggestions(PROMPT_GROUPS),
+  )
   const [watching, setWatching] = useState(true)
   const navigation = useNavigation()
   const result = useActionData<PromptActionResult>()
@@ -53,7 +56,7 @@ export function PromptStep() {
 
   return (
     <div className={styles.prompt}>
-      <Stepper steps={PLAYLIST_STEPS} current={1} />
+      <Stepper steps={playlistSteps('prompt')} current={1} />
 
       <Form
         method="post"
@@ -92,7 +95,7 @@ export function PromptStep() {
               type="button"
               className={styles.prompt__shuffle}
               onClick={() => {
-                setSuggestions(nextSuggestions)
+                setSuggestions((shown) => nextSuggestions(PROMPT_GROUPS, shown))
               }}
               aria-label="Show different suggestions"
               title="Show different suggestions"

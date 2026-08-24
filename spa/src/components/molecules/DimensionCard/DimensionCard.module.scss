@@ -1,0 +1,34 @@
+/**
+ * Ports `.dimension-card`, `.dimension-label` and `.dimension-description`
+ * (`frontend/style.css:952`).
+ *
+ * The border is 2px and transparent unselected, so selecting one changes its
+ * colour without moving anything beside it.
+ */
+
+.dimensionCard {
+  padding: var(--spacing-md);
+  cursor: pointer;
+  background: var(--bg-secondary);
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+
+  &:hover {
+    background: var(--bg-tertiary);
+  }
+
+  &[aria-checked='true'] {
+    border-color: var(--accent);
+  }
+}
+
+.dimensionCard__label {
+  margin-bottom: var(--spacing-xs);
+  font-weight: 500;
+}
+
+.dimensionCard__description {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}

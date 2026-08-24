@@ -35,7 +35,7 @@ export async function refinePrompt({
   Response | RefineActionResult
 > {
   const flow = readPlaylistFlow()
-  if (!flow) return redirect('/playlist/prompt')
+  if (flow?.mode !== 'prompt') return redirect('/playlist/prompt')
 
   const form = await request.formData()
   const refinementAnswers = flow.questions.map((_, index) =>

@@ -1,15 +1,16 @@
 /**
  * What a prompt implies, and what a filter selection would cost.
  *
- * `POST /api/analyze/prompt` spends two LLM calls and needs both Plex and a
- * model, so it is only ever reached from an action. `POST /api/filter/preview`
- * spends nothing once a sync has run -- it counts rows in the local cache.
- *
- * `/api/analyze/track` belongs to the seed flow and is not here yet.
+ * `POST /api/analyze/prompt` and `POST /api/analyze/track` each spend LLM
+ * calls and need both Plex and a model, so both are only ever reached from an
+ * action. `POST /api/filter/preview` spends nothing once a sync has run -- it
+ * counts rows in the local cache.
  */
 import type {
   AnalyzePromptRequest,
   AnalyzePromptResponse,
+  AnalyzeTrackRequest,
+  AnalyzeTrackResponse,
   FilterPreviewRequest,
   FilterPreviewResponse,
 } from '../generated/types.gen.ts'
@@ -29,6 +30,27 @@ export function analyzePrompt(
   return request<AnalyzePromptResponse>('/api/analyze/prompt', {
     method: 'POST',
     body: { prompt, flow_id: flowId } satisfies AnalyzePromptRequest,
+    signal,
+  })
+}
+
+/**
+ * `POST /api/analyze/track` — the dimensions a seed track can be explored along.
+ *
+ * Answers the track itself as well as its dimensions, so the step that draws
+ * both needs no second read. 404 where the rating key names nothing.
+ */
+export function analyzeTrack(
+  ratingKey: AnalyzeTrackRequest['rating_key'],
+  flowId: string,
+  signal: AbortSignal,
+): Promise<AnalyzeTrackResponse> {
+  return request<AnalyzeTrackResponse>('/api/analyze/track', {
+    method: 'POST',
+    body: {
+      rating_key: ratingKey,
+      flow_id: flowId,
+    } satisfies AnalyzeTrackRequest,
     signal,
   })
 }

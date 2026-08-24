@@ -24,8 +24,8 @@ import { Text } from '../../components/atoms/Text/Text.tsx'
 import { QuestionCard } from '../../components/molecules/QuestionCard/QuestionCard.tsx'
 import { StepProgress } from '../../components/molecules/StepProgress/StepProgress.tsx'
 import { Stepper } from '../../components/molecules/Stepper/Stepper.tsx'
-import type { PlaylistFlow } from '../../libs/flowStore/flowStore.ts'
-import { PLAYLIST_STEPS } from '../../libs/playlistSteps/playlistSteps.ts'
+import type { PromptFlow } from '../../libs/flowStore/flowStore.ts'
+import { playlistSteps } from '../../libs/playlistSteps/playlistSteps.ts'
 import type { RefineActionResult } from '../../libs/refinePrompt/refinePrompt.ts'
 import styles from './RefineStep.module.scss'
 
@@ -41,7 +41,7 @@ interface Answer {
 const BLANK: Answer = { option: '', detail: '' }
 
 export function RefineStep() {
-  const flow = useLoaderData<PlaylistFlow>()
+  const flow = useLoaderData<PromptFlow>()
   const result = useActionData<RefineActionResult>()
   const navigation = useNavigation()
   const navigate = useNavigate()
@@ -51,14 +51,21 @@ export function RefineStep() {
   const [watching, setWatching] = useState(true)
   const working = navigation.state === 'submitting'
 
-  /** Replace one answer, leaving the others as they were. */
-  const change = (index: number, next: Answer): void => {
-    setAnswers(answers.map((each, at) => (at === index ? next : each)))
+  /**
+   * Replace one answer, leaving the others as they were.
+   *
+   * Functional, because skipping calls this twice in one handler and the
+   * second call would otherwise overwrite the first from stale state.
+   */
+  const change = (index: number, next: (was: Answer) => Answer): void => {
+    setAnswers((was) =>
+      was.map((each, at) => (at === index ? next(each) : each)),
+    )
   }
 
   return (
     <div className={styles.refine}>
-      <Stepper steps={PLAYLIST_STEPS} current={2} />
+      <Stepper steps={playlistSteps('prompt')} current={2} />
 
       <Heading level={2}>Just a couple questions</Heading>
       <Text tone="secondary">
@@ -89,10 +96,10 @@ export function RefineStep() {
                   answer={answer.option}
                   detail={answer.detail}
                   onAnswer={(option) => {
-                    change(index, { ...answer, option })
+                    change(index, (was) => ({ ...was, option }))
                   }}
                   onDetail={(detail) => {
-                    change(index, { ...answer, detail })
+                    change(index, (was) => ({ ...was, detail }))
                   }}
                 />
               </div>

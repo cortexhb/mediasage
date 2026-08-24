@@ -1,0 +1,72 @@
+/**
+ * Ports the dimensions step from `frontend/style.css`: `.selected-track`
+ * (`:929`), `.dimensions-list` (`:945`), `.additional-notes` (`:980`) and
+ * `.notes-textarea` (`:991`).
+ *
+ * The track lines repeat `.track-title` and `.track-artist` (`:913`) rather
+ * than sharing them: the seed flow is the only other place they appear, and a
+ * shared class across two pages is what CSS Modules exists to avoid.
+ */
+
+.dimensions {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+/* Ports `.step-description`. */
+.dimensions__description {
+  margin: 0 0 var(--spacing-lg);
+  color: var(--text-secondary);
+}
+
+.dimensions__track {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+}
+
+.dimensions__info {
+  min-width: 0;
+  flex: 1;
+}
+
+/* Both lines truncate: a long title must not push the row wider. */
+.dimensions__title {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dimensions__artist {
+  overflow: hidden;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dimensions__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+}
+
+.dimensions__notes {
+  margin-bottom: var(--spacing-lg);
+
+  /* The atom carries the rest; `.additional-notes label` adds the gap. */
+  label {
+    margin-bottom: var(--spacing-xs);
+  }
+
+  /* Ports `.notes-textarea`, which only sets a floor. */
+  textarea {
+    min-height: 60px;
+  }
+}

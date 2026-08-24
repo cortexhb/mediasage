@@ -50,11 +50,10 @@ because the first page would drag the entire API layer in behind it, un-reviewab
 Components are born in `organisms/`. The second consumer moves one down a layer, as
 `spa/README.md` already requires. Nothing is promoted speculatively.
 
-A route is declared when its page is built, not ahead of it. `src/routes.ts` holds the shell, `Home`
-at `/`, `Settings`, and a catch-all; the navigation links to `/playlist` and `/recommend`, and each
-answers `NotFound` until its phase lands. Stub routes were rejected for the
-same reason as a speculative component library: a stub is a shape guessed before its loader exists,
-and a route table full of them reads as coverage the app does not have.
+A route is declared when its page is built, not ahead of it, so a link in the navigation answers
+`NotFound` until its phase lands. Stub routes were rejected for the same reason as a speculative
+component library: a stub is a shape guessed before its loader exists, and a route table full of
+them reads as coverage the app does not have.
 
 | Phase | Scope                                                | Why here                                       |
 | ----- | ---------------------------------------------------- | ---------------------------------------------- |

@@ -13,7 +13,8 @@ import { askQuestions } from '../../api/questions/questions.ts'
 import { keepAnalysis, startAnalysis } from '../analysisCache/analysisCache.ts'
 import { explainError } from '../explainError/explainError.ts'
 import { formText } from '../formText/formText.ts'
-import { newFlowId, writePlaylistFlow } from '../flowStore/flowStore.ts'
+import { newFlowId } from '../flowId/flowId.ts'
+import { writePlaylistFlow } from '../flowStore/flowStore.ts'
 
 /** What the prompt step renders when the request failed. */
 export interface PromptActionResult {
@@ -36,7 +37,12 @@ export async function askPromptQuestions({
 
   try {
     const asked = await askQuestions(prompt, id, request.signal)
-    writePlaylistFlow({ id, prompt, questions: asked.questions })
+    writePlaylistFlow({
+      mode: 'prompt',
+      id,
+      prompt,
+      questions: asked.questions,
+    })
     // After the write: an analysis that landed first would be overwritten.
     keepAnalysis(prompt)
   } catch (error) {

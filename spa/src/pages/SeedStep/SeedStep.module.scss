@@ -1,0 +1,95 @@
+/**
+ * Ports the seed step from `frontend/style.css`: `.search-container` (`:569`),
+ * `.search-results` (`:849`), `.search-result-item` (`:857`), `.track-info`
+ * (`:908`), `.track-title` (`:913`) and `.track-artist` (`:920`).
+ *
+ * The result is a button here where the legacy used a div, so the type
+ * defaults it carries -- background, border, font, alignment -- are cleared
+ * rather than inherited.
+ */
+
+.seed {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+/* Ports `.step-description`. */
+.seed__description {
+  margin: 0 0 var(--spacing-lg);
+  color: var(--text-secondary);
+}
+
+.seed__search {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+
+  /* Ports `.search-input`, which is the row's only flexible part. */
+  > input {
+    flex: 1;
+  }
+}
+
+.seed__results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.seed__result {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  width: 100%;
+  padding: var(--spacing-sm);
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+
+  &:hover:not(:disabled) {
+    background: var(--bg-tertiary);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
+.seed__info {
+  min-width: 0;
+  flex: 1;
+}
+
+/* Both lines truncate: a long title must not push the row wider. */
+.seed__title {
+  display: block;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seed__artist {
+  display: block;
+  overflow: hidden;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seed__working {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  min-width: 280px;
+}

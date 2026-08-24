@@ -17,27 +17,54 @@
 import type {
   AnalyzePromptResponse,
   ClarifyingQuestion,
+  Dimension,
   PlaylistCompleteFrame,
   Track,
 } from '../../api/generated/types.gen.ts'
 
 /** Bump on any change to `PlaylistFlow`. Mismatched records are dropped. */
-const VERSION = 2
+const VERSION = 3
 
 const KEY = 'mediasage.flow.playlist'
 
-/** What each step of the playlist flow leaves for the next. */
-export interface PlaylistFlow {
+/** Which of the two ways into a playlist a record was started by. */
+export type FlowMode = 'prompt' | 'seed'
+
+/** What both flows carry, whichever way they were started. */
+interface FlowBase {
   /** Groups this flow's LLM calls into one Langfuse session. */
   readonly id: string
+  readonly filters?: ChosenFilters | undefined
+  readonly playlist?: SavedPlaylist | undefined
+}
+
+/** A flow started from a sentence the reader typed. */
+export interface PromptFlow extends FlowBase {
+  readonly mode: 'prompt'
   readonly prompt: string
   readonly questions: readonly ClarifyingQuestion[]
   /** One per question, positional; null where it was skipped. */
   readonly refinementAnswers?: readonly (string | null)[] | undefined
   readonly analysis?: AnalyzePromptResponse | undefined
-  readonly filters?: ChosenFilters | undefined
-  readonly playlist?: SavedPlaylist | undefined
 }
+
+/** A flow started from a track the reader picked out of the library. */
+export interface SeedFlow extends FlowBase {
+  readonly mode: 'seed'
+  readonly track: Track
+  readonly dimensions: readonly Dimension[]
+  /** Which of them to explore; empty until the dimensions step is left. */
+  readonly selectedDimensions?: readonly string[] | undefined
+  readonly notes?: string | undefined
+}
+
+/**
+ * What each step of a playlist flow leaves for the next.
+ *
+ * One record, not one per mode: the legacy held a single `state.mode`
+ * (`frontend/app.js:72`) and starting either flow abandons the other.
+ */
+export type PlaylistFlow = PromptFlow | SeedFlow
 
 /**
  * What a finished run produced.
@@ -67,18 +94,6 @@ export interface ChosenFilters {
 interface Stored {
   readonly version: number
   readonly flow: PlaylistFlow
-}
-
-/**
- * An id for a flow about to start.
- *
- * `crypto.randomUUID` is secure-context only, and MediaSage is normally
- * reached over plain HTTP on a LAN, where it is undefined. `getRandomValues`
- * carries no such restriction.
- */
-export function newFlowId(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(16))
-  return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
 /**

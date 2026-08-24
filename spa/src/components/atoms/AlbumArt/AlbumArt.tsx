@@ -18,8 +18,12 @@ export interface AlbumArtProps {
   readonly src?: string | null | undefined
   readonly artist: string
   readonly album: string
-  /** `large` fills its container; the default is the 48px row thumbnail. */
-  readonly size?: 'row' | 'large'
+  /**
+   * `large` fills its container; the default row is 48px.
+   *
+   * The rest are fixed widths: `seed` 64px, `card` 80px, `pitch` 380px.
+   */
+  readonly size?: 'row' | 'seed' | 'card' | 'pitch' | 'large'
 }
 
 /** djb2, as `frontend/app.js:196` hashed it. -1 stands for "no artist". */

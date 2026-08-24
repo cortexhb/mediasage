@@ -7,10 +7,13 @@
  */
 import { redirect } from 'react-router'
 
-import type { PlaylistFlow } from '../flowStore/flowStore.ts'
+import type { PromptFlow } from '../flowStore/flowStore.ts'
 import { readPlaylistFlow } from '../flowStore/flowStore.ts'
 
-export function loadRefine(): PlaylistFlow | Response {
+export function loadRefine(): PromptFlow | Response {
   const flow = readPlaylistFlow()
-  return flow ?? redirect('/playlist/prompt')
+  // A seed flow has no questions to refine.
+  if (flow?.mode !== 'prompt') return redirect('/playlist/prompt')
+
+  return flow
 }

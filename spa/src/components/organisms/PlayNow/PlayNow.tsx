@@ -36,9 +36,24 @@ function status(client: PlexClientInfo): { state: string; text: string } {
 
 export interface PlayNowProps {
   readonly ratingKeys: readonly string[]
+  /**
+   * How the trigger is drawn. Defaults to the playlist step's own.
+   *
+   * The album flow draws three of these on one screen: a primary one under
+   * the pitch and a small secondary one on each card
+   * (`frontend/app.js:4700`, `:4728`).
+   */
+  readonly variant?: 'primary' | 'secondary'
+  readonly size?: 'sm'
+  readonly label?: string
 }
 
-export function PlayNow({ ratingKeys }: PlayNowProps) {
+export function PlayNow({
+  ratingKeys,
+  variant = 'secondary',
+  size,
+  label = '▶ Play Now',
+}: PlayNowProps) {
   const [open, setOpen] = useState(false)
   const [clients, setClients] = useState<PlexClientInfo[] | null>(null)
   const [failure, setFailure] = useState('')
@@ -75,7 +90,8 @@ export function PlayNow({ ratingKeys }: PlayNowProps) {
   return (
     <>
       <Button
-        variant="secondary"
+        variant={variant}
+        size={size}
         disabled={!ratingKeys.length}
         onClick={() => {
           setFailure('')
@@ -84,7 +100,7 @@ export function PlayNow({ ratingKeys }: PlayNowProps) {
           setOpen(true)
         }}
       >
-        ▶ Play Now
+        {label}
       </Button>
 
       <Overlay

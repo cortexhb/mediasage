@@ -1,0 +1,101 @@
+/**
+ * Ports `.rec-primary-*` from `frontend/style.css:2888`.
+ *
+ * `--text-body` is declared here rather than in the design system: it is read
+ * by this component alone, which is what `design-system/_tokens.scss` says
+ * about page-local values.
+ */
+
+.albumPitch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: var(--spacing-xl);
+
+  /* `frontend/style.css:44`; nothing else in the app reads it. */
+  --text-body: #e0e0e0;
+}
+
+.albumPitch__art {
+  margin-bottom: 24px;
+}
+
+.albumPitch__body {
+  width: 100%;
+}
+
+.albumPitch__album {
+  margin: 0;
+  font-size: var(--font-size-3xl);
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+
+  @media (width <= 600px) {
+    font-size: var(--font-size-2xl);
+  }
+}
+
+.albumPitch__artist {
+  margin: 0 0 8px;
+  font-size: 1.175rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.albumPitch__hook {
+  padding-left: var(--spacing-md);
+  margin: 36px 0;
+  font-size: 1.5rem;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--accent);
+  border-left: 3px solid var(--accent);
+
+  @media (width <= 600px) {
+    margin: 28px 0;
+    font-size: var(--font-size-lg);
+  }
+}
+
+.albumPitch__section {
+  margin-top: 32px;
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  color: var(--text-body);
+
+  &[data-kind='connection'] {
+    font-style: italic;
+  }
+}
+
+/* Small caps: the label is a marker, not a heading in the type scale. */
+.albumPitch__label {
+  margin: 0 0 14px;
+  font-size: 1.3rem;
+  font-variant: small-caps;
+  font-weight: 400;
+  color: var(--accent);
+  text-transform: lowercase;
+  letter-spacing: 0.1em;
+}
+
+.albumPitch__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  align-items: center;
+  justify-content: center;
+  margin-top: 36px;
+
+  @media (width <= 600px) {
+    flex-direction: column;
+    width: 100%;
+
+    > * {
+      justify-content: center;
+      width: 100%;
+      text-align: center;
+    }
+  }
+}

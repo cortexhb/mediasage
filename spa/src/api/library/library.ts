@@ -1,14 +1,27 @@
-/**
- * The library endpoints, paired with their generated types.
- *
- * Search is not here: it belongs to the seed flow, which has not landed.
- */
+/** The library endpoints, paired with their generated types. */
 import type {
   LibraryCacheStatusResponse,
   LibraryStatsResponse,
   SyncTriggerResponse,
+  Track,
 } from '../generated/types.gen.ts'
 import { request } from '../request/request.ts'
+
+/**
+ * `GET /api/library/search` — tracks matching a query, read live from Plex.
+ *
+ * Plex, not the cache, so it answers before a sync has ever run. The backend
+ * straightens the curly quotes iOS substitutes (`library/search.py:13`).
+ */
+export function searchTracks(
+  query: string,
+  signal: AbortSignal,
+): Promise<Track[]> {
+  return request<Track[]>(
+    `/api/library/search?q=${encodeURIComponent(query)}`,
+    { signal },
+  )
+}
 
 /**
  * `GET /api/library/stats/cached` — the counts, out of SQLite.

@@ -15,15 +15,23 @@ type NativeProps = Omit<ComponentProps<'button'>, 'className'>
 
 export interface ButtonProps extends NativeProps {
   readonly variant: 'primary' | 'secondary' | 'ghost' | 'link' | 'nav'
+  /** `sm` is `.btn-sm` (`frontend/style.css:635`), for buttons inside a card. */
+  readonly size?: 'sm' | undefined
 }
 
-export function Button({ variant, type = 'button', ...native }: ButtonProps) {
+export function Button({
+  variant,
+  size,
+  type = 'button',
+  ...native
+}: ButtonProps) {
   return (
     <button
       {...native}
       type={type}
       className={styles.button}
       data-variant={variant}
+      data-size={size}
     />
   )
 }

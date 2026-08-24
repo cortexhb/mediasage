@@ -67,12 +67,7 @@ function spent(tokens: number, cost: number, local: boolean): string {
 function regenerate(): void {
   const flow = readPlaylistFlow()
   if (!flow?.filters) return
-  const body = generateBody(
-    flow.id,
-    flow.prompt,
-    flow.refinementAnswers,
-    flow.filters,
-  )
+  const body = generateBody(flow, flow.filters)
 
   forgetRun()
   const aborter = new AbortController()
@@ -88,7 +83,9 @@ export function Footer() {
   const facts = useFetcher<FooterFacts | null>()
   const run = useGeneratedPlaylist()
   // `.footer-results-only`: the totals belong to the page that produced them.
-  const onResults = useLocation().pathname === '/playlist/prompt/playlist'
+  const onResults = /^\/playlist\/(prompt|seed)\/playlist$/.test(
+    useLocation().pathname,
+  )
   const [open, setOpen] = useState(false)
   const status = sync.status
   const running = status?.is_syncing ?? false

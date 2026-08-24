@@ -1,0 +1,93 @@
+/**
+ * Ports `#rec-step-setup` from `frontend/style.css:2557`: the 640px column,
+ * `.rec-filter-info` (`:3142`), `.rec-album-preview` (`:2614`) and
+ * `.rec-familiarity-hint` (`:3151`). The section spacing and the Select All
+ * link are the shared `.filter-section` rules `pages/FiltersStep` also ports.
+ */
+@use 'mixins' as ds;
+
+.albumFilters {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+/* Ports `.rec-filter-info`: an aside, marked by the rule rather than a box. */
+.albumFilters__suggested {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin: 0 0 var(--spacing-md);
+  font-size: var(--font-size-sm);
+  font-style: italic;
+  color: var(--text-muted);
+  border-left: 2px solid var(--accent);
+}
+
+.albumFilters__mode {
+  margin-bottom: var(--spacing-lg);
+}
+
+.albumFilters__section {
+  margin-bottom: var(--spacing-lg);
+}
+
+/* Beside the heading, not pushed to the far edge. */
+.albumFilters__header {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.albumFilters__toggleAll {
+  padding: 0;
+  font-family: var(--font-family);
+  font-size: var(--font-size-sm);
+  color: var(--accent);
+  cursor: pointer;
+  background: none;
+  border: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.albumFilters__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.albumFilters__preview {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* The count is the answer here, so it carries the accent. */
+.albumFilters__matching {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Ports `.rec-familiarity-hint`. */
+.albumFilters__hint {
+  margin: var(--spacing-xs) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.albumFilters__actions {
+  display: flex;
+  gap: var(--spacing-md);
+  justify-content: space-between;
+
+  @include ds.on-mobile {
+    flex-direction: column-reverse;
+  }
+}

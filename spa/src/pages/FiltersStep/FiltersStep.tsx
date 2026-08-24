@@ -1,8 +1,11 @@
 /**
- * Step three of the playlist flow: narrow the library before spending a model.
+ * Step three of either playlist flow: narrow the library before spending a
+ * model.
  *
- * The chips and their counts come from the analysis the refine step bought, so
- * this draws without a read of its own. The preview under them is asked again
+ * Shared by both, so nothing here knows where the chips came from: a prompt
+ * flow bought them with its analysis, a seed flow read them off the library,
+ * and the loader hands over the same four lists. The preview under them is
+ * asked again
  * on every change: `POST /api/filter/preview` counts rows in the local cache
  * and spends nothing.
  *
@@ -22,7 +25,7 @@ import { ChoiceRow } from '../../components/molecules/ChoiceRow/ChoiceRow.tsx'
 import { Stepper } from '../../components/molecules/Stepper/Stepper.tsx'
 import type { FiltersData } from '../../libs/loadFilters/loadFilters.ts'
 import { PREVIEW } from '../../libs/previewSelection/previewSelection.ts'
-import { PLAYLIST_STEPS } from '../../libs/playlistSteps/playlistSteps.ts'
+import { playlistSteps } from '../../libs/playlistSteps/playlistSteps.ts'
 import styles from './FiltersStep.module.scss'
 
 const SIZES = [15, 25, 50, 100].map((value) => ({
@@ -48,24 +51,27 @@ const LIMIT_HINT =
   'Limit how many tracks are sent to the AI for selection. Higher = better variety but more cost.'
 
 export function FiltersStep() {
-  const { analysis, ceiling } = useLoaderData<FiltersData>()
+  const {
+    mode,
+    availableGenres,
+    availableDecades,
+    suggestedGenres,
+    suggestedDecades,
+    ceiling,
+  } = useLoaderData<FiltersData>()
   const preview = useFetcher<FilterPreviewResponse | null>()
   const navigate = useNavigate()
   const form = useRef<HTMLFormElement>(null)
 
-  const [genres, setGenres] = useState<readonly string[]>(
-    analysis.suggested_genres,
-  )
-  const [decades, setDecades] = useState<readonly string[]>(
-    analysis.suggested_decades,
-  )
+  const [genres, setGenres] = useState<readonly string[]>(suggestedGenres)
+  const [decades, setDecades] = useState<readonly string[]>(suggestedDecades)
   const [size, setSize] = useState(25)
   const [rating, setRating] = useState(0)
   const [limit, setLimit] = useState(500)
   const [excludeLive, setExcludeLive] = useState(true)
 
-  const allGenres = analysis.available_genres.map((genre) => genre.name)
-  const allDecades = analysis.available_decades.map((decade) => decade.name)
+  const allGenres = availableGenres.map((genre) => genre.name)
+  const allDecades = availableDecades.map((decade) => decade.name)
   const counts = preview.data
 
   useEffect(() => {
@@ -115,7 +121,7 @@ export function FiltersStep() {
 
   return (
     <div className={styles.filters}>
-      <Stepper steps={PLAYLIST_STEPS} current={3} />
+      <Stepper steps={playlistSteps(mode)} current={3} />
 
       <Heading level={2}>Filter your library</Heading>
       <p className={styles.filters__description}>
@@ -124,6 +130,9 @@ export function FiltersStep() {
       </p>
 
       <Form method="post" ref={form}>
+        {/* How many were on offer: the action narrows all-selected to none. */}
+        <input type="hidden" name="genre_total" value={allGenres.length} />
+        <input type="hidden" name="decade_total" value={allDecades.length} />
         <input type="hidden" name="track_count" value={size} />
         <input type="hidden" name="min_rating" value={rating} />
         <input type="hidden" name="max_tracks_to_ai" value={limit} />
@@ -159,7 +168,7 @@ export function FiltersStep() {
             role="group"
             aria-label="Genre filters"
           >
-            {analysis.available_genres.map((genre) => (
+            {availableGenres.map((genre) => (
               <Chip
                 key={genre.name}
                 selected={genres.includes(genre.name)}
@@ -201,7 +210,7 @@ export function FiltersStep() {
             role="group"
             aria-label="Decade filters"
           >
-            {analysis.available_decades.map((decade) => (
+            {availableDecades.map((decade) => (
               <Chip
                 key={decade.name}
                 selected={decades.includes(decade.name)}
@@ -266,9 +275,13 @@ export function FiltersStep() {
           <Button
             variant="secondary"
             onClick={() => {
-              Promise.resolve(navigate('/playlist/prompt/refine')).catch(
-                () => undefined,
-              )
+              Promise.resolve(
+                navigate(
+                  mode === 'seed'
+                    ? '/playlist/seed/dimensions'
+                    : '/playlist/prompt/refine',
+                ),
+              ).catch(() => undefined)
             }}
           >
             Back

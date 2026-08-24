@@ -1,0 +1,46 @@
+/** Ports `.rec-secondary-card` from `frontend/style.css:3052`. */
+
+.albumCard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.albumCard__header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.albumCard__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.albumCard__title {
+  margin: 0 0 2px;
+  font-weight: 600;
+}
+
+.albumCard__artist {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.albumCard__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.albumCard__pitch {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}

@@ -1,30 +1,31 @@
 import { describe, expect, it } from 'vitest'
 
+import type { PlaylistFlow } from './flowStore.ts'
 import {
   forgetPlaylistFlow,
-  newFlowId,
   readPlaylistFlow,
   writePlaylistFlow,
 } from './flowStore.ts'
 
-const FLOW = { id: 'f-1', prompt: 'moody jazz', questions: [] }
+const FLOW: PlaylistFlow = {
+  mode: 'prompt',
+  id: 'f-1',
+  prompt: 'moody jazz',
+  questions: [],
+}
 
-describe('newFlowId', () => {
-  it('is 32 hex characters', () => {
-    expect(newFlowId()).toMatch(/^[0-9a-f]{32}$/)
-  })
-
-  it('does not repeat', () => {
-    const minted = new Set(Array.from({ length: 50 }, newFlowId))
-
-    expect(minted.size).toBe(50)
-  })
-
-  it('does not need a secure context', () => {
-    // `crypto.randomUUID` is undefined over plain HTTP; this must not be.
-    expect(globalThis.isSecureContext || newFlowId()).toBeTruthy()
-  })
-})
+const SEED: PlaylistFlow = {
+  mode: 'seed',
+  id: 'f-2',
+  track: {
+    rating_key: '99',
+    title: 'Fake Plastic Trees',
+    artist: 'Radiohead',
+    album: 'The Bends',
+    duration_ms: 290_000,
+  },
+  dimensions: [{ id: 'mood', label: 'Mood', description: 'How it feels' }],
+}
 
 describe('the flow record', () => {
   it('reads back what was written', () => {
@@ -53,5 +54,18 @@ describe('the flow record', () => {
     sessionStorage.setItem('mediasage.flow.playlist', 'not json')
 
     expect(readPlaylistFlow()).toBeUndefined()
+  })
+
+  it('reads a seed record back with its track and dimensions', () => {
+    writePlaylistFlow(SEED)
+
+    expect(readPlaylistFlow()).toEqual(SEED)
+  })
+
+  it('holds one flow, so starting a seed abandons a prompt', () => {
+    writePlaylistFlow(FLOW)
+    writePlaylistFlow(SEED)
+
+    expect(readPlaylistFlow()?.mode).toBe('seed')
   })
 })

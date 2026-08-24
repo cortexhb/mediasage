@@ -1,0 +1,33 @@
+/** Ports `#rec-step-refine` from `frontend/index.html:564`. */
+@use 'mixins' as ds;
+
+.albumRefine {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+/* The form is one flex child, so its own children need their own gap. */
+.albumRefine__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.albumRefine__questions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.albumRefine__actions {
+  display: flex;
+  gap: var(--spacing-md);
+  justify-content: space-between;
+
+  @include ds.on-mobile {
+    flex-direction: column-reverse;
+  }
+}

@@ -6,8 +6,14 @@
  *
  * The shuffle prefers a suggestion the reader has not just seen; a group with
  * nothing left falls back to its whole set rather than freezing.
+ *
+ * The groups are a parameter: the playlist flow and the album flow each own a
+ * set (`libs/promptSuggestions`, `libs/albumSuggestions`) and pick from it the
+ * same way.
  */
-import { PROMPT_GROUPS } from './promptSuggestions.ts'
+
+/** A set of suggestions, one of which is offered at a time. */
+export type SuggestionGroups = readonly (readonly string[])[]
 
 /** One at random from `pool`, which must not be empty. */
 function anyOf(pool: readonly string[]): string {
@@ -15,15 +21,18 @@ function anyOf(pool: readonly string[]): string {
 }
 
 /** One suggestion per group. */
-export function pickSuggestions(): string[] {
-  return PROMPT_GROUPS.map((group) => anyOf(group))
+export function pickSuggestions(groups: SuggestionGroups): string[] {
+  return groups.map((group) => anyOf(group))
 }
 
 /** One per group again, avoiding what is on screen where a group allows it. */
-export function nextSuggestions(shown: readonly string[]): string[] {
+export function nextSuggestions(
+  groups: SuggestionGroups,
+  shown: readonly string[],
+): string[] {
   const seen = new Set(shown)
 
-  return PROMPT_GROUPS.map((group) => {
+  return groups.map((group) => {
     const unseen = group.filter((suggestion) => !seen.has(suggestion))
     return anyOf(unseen.length > 0 ? unseen : group)
   })

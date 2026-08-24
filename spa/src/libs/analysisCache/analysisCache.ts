@@ -49,8 +49,8 @@ export function keepAnalysis(prompt: string): void {
   void started
     .then((analysis) => {
       const flow = readPlaylistFlow()
-      // A newer prompt owns the record by now; this analysis is stale.
-      if (flow?.prompt !== prompt) return
+      // A newer prompt, or a seed flow, owns the record by now.
+      if (flow?.mode !== 'prompt' || flow.prompt !== prompt) return
       writePlaylistFlow({ ...flow, analysis })
     })
     .catch(() => undefined)

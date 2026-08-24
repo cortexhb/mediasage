@@ -12,18 +12,31 @@ export interface ChipProps {
   readonly selected: boolean
   /** Absent where there is no count to give: decades carry none. */
   readonly count?: number | null | undefined
+  /**
+   * `radio` for one of a set where exactly one holds.
+   *
+   * `frontend/index.html:610` draws the play-history pills as a radiogroup of
+   * chips; a filter chip is a toggle, and toggles are the default.
+   */
+  readonly as?: 'toggle' | 'radio'
   readonly onChoose: () => void
   readonly children: string
 }
 
-export function Chip({ selected, count, onChoose, children }: ChipProps) {
+export function Chip({
+  selected,
+  count,
+  as = 'toggle',
+  onChoose,
+  children,
+}: ChipProps) {
+  const state =
+    as === 'radio'
+      ? { role: 'radio', 'aria-checked': selected }
+      : { 'aria-pressed': selected }
+
   return (
-    <button
-      type="button"
-      className={styles.chip}
-      aria-pressed={selected}
-      onClick={onChoose}
-    >
+    <button type="button" className={styles.chip} {...state} onClick={onChoose}>
       {children}
       {count != null && (
         <>

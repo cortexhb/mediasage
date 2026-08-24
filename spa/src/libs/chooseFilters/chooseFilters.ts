@@ -5,6 +5,10 @@
  * the same, and the reason is not brevity: a genre filter listing every genre
  * still excludes the tracks that carry no genre at all.
  *
+ * How many were on offer comes from the form rather than from the record: the
+ * step is shared by both flows, which come by their lists differently, and
+ * the page already knows the totals it drew.
+ *
  * Generation starts here, in the submit, and nowhere else. Started from the
  * next page's effect it would run again on every reload of it, and each run
  * spends two LLM calls.
@@ -22,26 +26,26 @@ import { streamDeadline } from '../streamDeadline/streamDeadline.ts'
 /** The chosen names, or nothing where every one of them was chosen. */
 function narrowed(
   chosen: readonly string[],
-  available: readonly string[],
+  available: number,
 ): readonly string[] {
-  return chosen.length === available.length ? [] : chosen
+  return chosen.length === available ? [] : chosen
 }
 
 export async function chooseFilters({
   request,
 }: Pick<ActionFunctionArgs, 'request'>): Promise<Response> {
   const flow = readPlaylistFlow()
-  if (!flow?.analysis) return redirect('/playlist/prompt')
+  if (!flow) return redirect('/playlist/prompt')
 
   const form = await request.formData()
   const filters: ChosenFilters = {
     genres: narrowed(
       form.getAll('genres').map(String),
-      flow.analysis.available_genres.map((genre) => genre.name),
+      Number(formText(form, 'genre_total')),
     ),
     decades: narrowed(
       form.getAll('decades').map(String),
-      flow.analysis.available_decades.map((decade) => decade.name),
+      Number(formText(form, 'decade_total')),
     ),
     track_count: Number(formText(form, 'track_count')),
     exclude_live: formLast(form, 'exclude_live') === 'true',
@@ -49,18 +53,9 @@ export async function chooseFilters({
     max_tracks_to_ai: Number(formText(form, 'max_tracks_to_ai')),
   }
   // The kept playlist is dropped: these filters are what replaces it.
-  writePlaylistFlow({
-    id: flow.id,
-    prompt: flow.prompt,
-    questions: flow.questions,
-    refinementAnswers: flow.refinementAnswers,
-    analysis: flow.analysis,
-    filters,
-  })
+  const started = { ...flow, filters, playlist: undefined }
+  writePlaylistFlow(started)
 
-  startRun(
-    generateBody(flow.id, flow.prompt, flow.refinementAnswers, filters),
-    await streamDeadline(request.signal),
-  )
-  return redirect('/playlist/prompt/playlist')
+  startRun(generateBody(started, filters), await streamDeadline(request.signal))
+  return redirect(`/playlist/${flow.mode}/playlist`)
 }

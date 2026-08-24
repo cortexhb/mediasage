@@ -14,7 +14,7 @@ import { readPlaylistFlow } from '../flowStore/flowStore.ts'
 export function loadPlaylist(): PlaylistFlow | Response {
   const flow = readPlaylistFlow()
   if (!flow) return redirect('/playlist/prompt')
-  if (!flow.filters) return redirect('/playlist/prompt/filters')
+  if (!flow.filters) return redirect(`/playlist/${flow.mode}/filters`)
 
   return flow
 }
