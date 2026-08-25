@@ -20,8 +20,23 @@ import { afterAll, afterEach, beforeAll } from 'vitest'
 import type {
   ConfigResponse,
   SetupStatusResponse,
-} from './src/api/generated/types.gen.ts'
+} from './src/api/generated'
 import type { PatchField } from './src/libs/patchFields/patchFields.ts'
+
+// Node 26 owns `localStorage` (undefined without `--localstorage-file`) and
+// `sessionStorage` (one store for the whole worker, so state crosses files).
+// Vitest keeps whatever the runtime already defines, so jsdom's storage is
+// reattached here, off the JSDOM instance Vitest parks on `globalThis.jsdom`.
+declare global {
+  let jsdom: { window: Window }
+}
+for (const key of ['localStorage', 'sessionStorage'] as const) {
+  Object.defineProperty(globalThis, key, {
+    value: jsdom.window[key],
+    configurable: true,
+    writable: true,
+  })
+}
 
 export const server = setupServer()
 
