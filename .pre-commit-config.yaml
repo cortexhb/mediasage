@@ -40,3 +40,29 @@ repos:
         files: ^(uv\.lock|pyproject\.toml|uv\.toml)$
         args:
           - --upgrade
+
+  # The SPA toolchain is pinned in `spa/package-lock.json`, so the binaries are
+  # taken from there rather than from a mirror repo that resolves its own.
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier
+        entry: spa/node_modules/.bin/prettier --write
+        language: system
+        files: ^spa/
+        exclude: ^spa/(node_modules|dist)/
+        types_or: [ts, tsx, javascript, jsx, json, css, scss, markdown, yaml, html]
+
+      - id: eslint
+        name: eslint
+        entry: spa/node_modules/.bin/eslint --fix
+        language: system
+        files: ^spa/.*\.(ts|tsx|js)$
+        exclude: ^spa/(node_modules|dist)/
+
+      - id: stylelint
+        name: stylelint
+        entry: spa/node_modules/.bin/stylelint --fix
+        language: system
+        files: ^spa/.*\.(css|scss)$
+        exclude: ^spa/(node_modules|dist)/
