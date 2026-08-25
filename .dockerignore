@@ -3,10 +3,11 @@
 .gitignore
 
 # Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
+# `**` because a bare pattern matches the root only, not `backend/__pycache__`.
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/*.so
 .venv/
 venv/
 .pytest_cache/
@@ -23,24 +24,47 @@ htmlcov/
 *.swo
 
 # OS
-.DS_Store
+**/.DS_Store
 Thumbs.db
+
+# The CodeGraph index: 23MB of SQLite, rebuilt from the source beside it.
+.codegraph/
 
 # Project
 *.log
 logs/
-.env
-.env.local
+
+# The runtime state directory. `config.user.yaml` holds the Plex token and
+# the LLM key, and the cache database is tens of megabytes.
+data/
+
+# Every environment file, `.env.langfuse` and any local variant included.
+.env*
+
 config.yaml
+# A suffixed copy is the same secrets.
+config.yaml.*
+config.user.yaml.*
+*.bak
+
 tests/
 specs/
 initial-spec.md
 README.md
 CLAUDE.md
+task.md
+docs/
+.github/
+.omc/
 .specify/
 frontend/
 
+# Command-line only; `backend/db/migrate.py` configures alembic itself.
+alembic.ini
+.pre-commit-config.yaml
+
 # The SPA source is the build stage's input; its outputs are not.
+node_modules/
 spa/node_modules/
 spa/dist/
 spa/coverage/
@@ -50,5 +74,3 @@ Dockerfile*
 docker/
 docker-compose*.yml
 .dockerignore
-
-.env.langfuse

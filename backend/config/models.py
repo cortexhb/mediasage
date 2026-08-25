@@ -710,7 +710,7 @@ class DefaultsConfig(ConfigSection):
 
 
 class LangfuseConfig(ConfigSection):
-    """Where LLM traces are sent, and the keys that sign them.
+    """Where LLM traces are sent, and the keys that authenticate them.
 
     Tracing stays off until all three are set. No default endpoint: pointing an
     unconfigured deployment at a cloud it never chose would send prompts
@@ -740,7 +740,7 @@ class LangfuseConfig(ConfigSection):
 
     @property
     def is_configured(self) -> bool:
-        """Whether a trace has somewhere to go and something to sign it."""
+        """Whether a trace has somewhere to go and a key pair to get in with."""
         return bool(self.base_url and self.public_key and self.secret_key.get_secret_value())
 
 

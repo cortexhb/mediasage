@@ -3,7 +3,10 @@
 # The SPA is built where node and its toolchain may live freely. Only `dist`
 # is copied forward, so neither node nor `node_modules` reaches the runtime
 # image -- which ships no javascript runtime at all.
-FROM node:24-slim AS spa
+#
+# Pinned to the build platform: the bundle is javascript, identical whatever
+# the target is, and emulating this stage costs minutes per extra platform.
+FROM --platform=$BUILDPLATFORM node:24-slim AS spa
 
 # The browser project in `vitest.config.ts` is a test concern. `npm ci`
 # would otherwise pull ~400MB of Chromium that this stage never runs.

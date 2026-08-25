@@ -328,6 +328,9 @@ sudo systemctl start mediasage
 
 ## Configuration
 
+Every section, every field, every default: the [configuration reference](docs/configuration.md).
+What follows is the part most deployments need.
+
 ### Environment Variables
 
 Every setting is reachable as `MEDIASAGE_<SECTION>__<FIELD>`. Sections nest with a double

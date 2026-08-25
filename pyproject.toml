@@ -1,6 +1,6 @@
 [project]
 name = "mediasage"
-version = "0.1.0"
+version = "1.0.0"
 description = "AI-powered playlists and album recommendations for Plex, using only music you own"
 readme = "README.md"
 requires-python = ">=3.14"
