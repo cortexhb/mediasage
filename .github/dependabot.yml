@@ -17,6 +17,10 @@ updates:
       # One PR per week for the dev toolchain, not fifteen.
       dev:
         dependency-type: development
+    ignore:
+      # typescript-eslint 8.68 still peers on `typescript <6.1.0`.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /
@@ -27,3 +31,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # Node majors are pinned by `spa/.nvmrc` and the SPA job.
+      - dependency-name: node
+        update-types: [version-update:semver-major]
