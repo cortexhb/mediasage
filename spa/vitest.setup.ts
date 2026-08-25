@@ -17,10 +17,7 @@ import '@testing-library/jest-dom/vitest'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll } from 'vitest'
 
-import type {
-  ConfigResponse,
-  SetupStatusResponse,
-} from './src/api/generated'
+import type { ConfigResponse, SetupStatusResponse } from './src/api/generated'
 import type { PatchField } from './src/libs/patchFields/patchFields.ts'
 
 // Node 26 owns `localStorage` (undefined without `--localstorage-file`) and
