@@ -6,7 +6,7 @@
 #
 # Pinned to the build platform: the bundle is javascript, identical whatever
 # the target is, and emulating this stage costs minutes per extra platform.
-FROM --platform=$BUILDPLATFORM node:24-slim AS spa
+FROM --platform=$BUILDPLATFORM node:25-slim AS spa
 
 # The browser project in `vitest.config.ts` is a test concern. `npm ci`
 # would otherwise pull ~400MB of Chromium that this stage never runs.
