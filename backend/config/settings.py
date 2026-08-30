@@ -37,6 +37,7 @@ from pydantic_settings import (
 from backend.config.models import (
     ArtConfig,
     BudgetConfig,
+    DatabaseConfig,
     DefaultsConfig,
     LangfuseConfig,
     LibraryConfig,
@@ -132,6 +133,7 @@ class MediasageConfig(BaseSettings):
         env_file_encoding="utf-8",
     )
 
+    database: DatabaseConfig = DatabaseConfig()
     plex: PlexConfig = PlexConfig()
     # No default: an unconfigured provider fails at boot, not mid-request.
     llm: LLMSection

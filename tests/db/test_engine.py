@@ -1,13 +1,27 @@
-"""Tests for the engine, its pragmas, and session lifecycle."""
+"""Tests for the engine, its pragmas, its backend dispatch, and sessions."""
 
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import Engine, select
+from sqlalchemy.exc import OperationalError
 
+from backend.config.models import DatabaseConfig
 from backend.db import DB_PATH, Database, db
 from backend.library.tables import Track
+
+# Never connected to: dialect and pool arguments are decided before any I/O.
+POSTGRES_URL = "postgresql+psycopg://mediasage:secret@nowhere.invalid:5432/mediasage"
+
+
+def sqlite(path: Path) -> DatabaseConfig:
+    """A configuration pointing at one SQLite file.
+
+    Module-level because it builds a third-party shape from a path, and the
+    `DatabaseConfig` it returns is a frozen model with nowhere to hang it.
+    """
+    return DatabaseConfig(url=Database.sqlite_url(path))
 
 
 class TestUrlResolution:
@@ -18,15 +32,96 @@ class TestUrlResolution:
 
     def test_configure_overrides_the_default(self, tmp_path):
         instance = Database()
-        instance.configure(f"sqlite:///{tmp_path / 'x.db'}")
+        instance.configure(sqlite(tmp_path / "x.db"))
         assert instance.resolved_url().endswith("x.db")
 
     def test_configure_disposes_the_previous_engine(self, tmp_path):
         instance = Database()
-        instance.configure(f"sqlite:///{tmp_path / 'a.db'}")
+        instance.configure(sqlite(tmp_path / "a.db"))
         first = instance.engine()
-        instance.configure(f"sqlite:///{tmp_path / 'b.db'}")
+        instance.configure(sqlite(tmp_path / "b.db"))
         assert instance.engine() is not first
+
+
+class TestEngineOptions:
+    """A file and a server want opposite things from the pool."""
+
+    def test_sqlite_shares_connections_across_threads(self, tmp_path):
+        instance = Database()
+        instance.configure(sqlite(tmp_path / "x.db"))
+        assert instance.engine_options()["connect_args"]["check_same_thread"] is False
+
+    def test_sqlite_is_given_no_pool_size(self, tmp_path):
+        """There is no server to hold connections to, so the knobs do not apply."""
+        instance = Database()
+        instance.configure(sqlite(tmp_path / "x.db"))
+        assert "pool_size" not in instance.engine_options()
+
+    def test_a_server_backend_pools_from_the_configuration(self):
+        instance = Database()
+        instance.configure(DatabaseConfig(url=POSTGRES_URL, pool_size=9, pool_recycle=60))
+        options = instance.engine_options()
+        assert (options["pool_size"], options["pool_recycle"]) == (9, 60)
+
+    def test_a_server_backend_checks_a_connection_before_using_it(self):
+        """A container restart closes connections without telling the pool."""
+        instance = Database()
+        instance.configure(DatabaseConfig(url=POSTGRES_URL))
+        assert instance.engine_options()["pool_pre_ping"] is True
+
+    def test_a_server_backend_gets_a_connect_timeout(self):
+        instance = Database()
+        instance.configure(DatabaseConfig(url=POSTGRES_URL, connect_timeout=3))
+        assert instance.engine_options()["connect_args"] == {"connect_timeout": 3}
+
+    def test_the_postgres_url_builds_an_engine(self):
+        """The driver is a dependency, so the dialect resolves without a server."""
+        instance = Database()
+        instance.configure(DatabaseConfig(url=POSTGRES_URL))
+        assert instance.engine().dialect.name == "postgresql"
+
+
+class TestStart:
+    """Startup refuses a backend we cannot write to, and waits for a slow one."""
+
+    def test_a_backend_without_an_upsert_is_refused(self, tmp_path, monkeypatch):
+        """Named rather than exotic: the check is the upsert table, not the URL."""
+        monkeypatch.setattr("backend.db.engine.UPSERT_DIALECTS", {"postgresql": None})
+        instance = Database()
+        instance.configure(sqlite(tmp_path / "x.db"))
+
+        with pytest.raises(NotImplementedError, match="sqlite"):
+            instance.start()
+
+    def test_a_reachable_database_is_accepted(self, tmp_path):
+        instance = Database()
+        instance.configure(sqlite(tmp_path / "x.db"))
+        instance.start()
+
+    def test_a_refused_connection_is_retried(self, tmp_path, monkeypatch):
+        refusals = [OperationalError("connect", None, Exception("refused"))] * 2
+        connect = MagicMock(side_effect=[*refusals, MagicMock()])
+        monkeypatch.setattr(Engine, "connect", connect)
+
+        instance = Database()
+        instance.configure(
+            DatabaseConfig(url=Database.sqlite_url(tmp_path / "x.db"), startup_backoff=[0.0, 0.0])
+        )
+        instance.start()
+
+        assert connect.call_count == 3
+
+    def test_the_last_refusal_is_raised(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            Engine, "connect", MagicMock(side_effect=OperationalError("c", None, Exception()))
+        )
+        instance = Database()
+        instance.configure(
+            DatabaseConfig(url=Database.sqlite_url(tmp_path / "x.db"), startup_backoff=[])
+        )
+
+        with pytest.raises(OperationalError):
+            instance.start()
 
 
 class TestDataDirectory:
@@ -63,13 +158,13 @@ class TestPragmas:
         ("pragma", "expected"),
         [("journal_mode", "wal"), ("foreign_keys", 1)],
     )
-    def test_pragma_is_applied(self, temp_db, pragma, expected):
-        with temp_db.connection() as conn:
+    def test_pragma_is_applied(self, sqlite_only, pragma, expected):
+        with sqlite_only.connection() as conn:
             value = conn.exec_driver_sql(f"PRAGMA {pragma}").fetchone()[0]
         assert (value.lower() if isinstance(value, str) else value) == expected
 
-    def test_busy_timeout_is_not_left_at_zero(self, temp_db):
-        with temp_db.connection() as conn:
+    def test_busy_timeout_is_not_left_at_zero(self, sqlite_only):
+        with sqlite_only.connection() as conn:
             assert conn.exec_driver_sql("PRAGMA busy_timeout").fetchone()[0] > 0
 
 

@@ -125,7 +125,8 @@ Real-time track counts show exactly how your filters narrow results.
 
 ### Local Library Cache
 
-MediaSage syncs your Plex library to a local SQLite database. After a one-time sync (~2 min for 18,000 tracks), all
+MediaSage syncs your Plex library to a local database — SQLite by default, [Postgres](#postgres) if you point it at
+one. After a one-time sync (~2 min for 18,000 tracks), all
 library operations—filtering, counting, sending to AI—happen locally in milliseconds instead of waiting on Plex.
 
 - **Setup wizard** walks you through first-run configuration and sync
@@ -361,6 +362,7 @@ section is in `backend/config/models.py`, with a comment on every field.
 
 | Section | Prefix | What it tunes |
 |---------|--------|---------------|
+| Database | `MEDIASAGE_DATABASE__` | Which database to use, and how its connection pool behaves |
 | Plex | `MEDIASAGE_PLEX__` | Bulk page size, request timeout, reconnect cooldown, retry backoff |
 | Library | `MEDIASAGE_LIBRARY__` | Sync batch size, staleness, what counts as a live recording |
 | Budget | `MEDIASAGE_BUDGET__` | How much of the library fits in one prompt |
@@ -380,6 +382,25 @@ Two of these are worth knowing about:
   which your own mirror does not have.
 
 List-valued settings are JSON arrays: `MEDIASAGE_ART__EXTERNAL_DOMAINS='["coverartarchive.org"]'`.
+
+### Postgres
+
+SQLite is the default and needs nothing. To use Postgres instead, point one variable at it —
+the driver already ships in the image:
+
+```bash
+MEDIASAGE_DATABASE__URL=postgresql+psycopg://mediasage:mediasage@postgres:5432/mediasage
+```
+
+`docker-compose.yml` carries a `postgres` service behind a profile, off unless asked for:
+
+```bash
+docker compose --profile postgres up
+```
+
+The schema is migrated on startup either way, and the app waits out a database that is still
+starting. There is no importer between the two backends: switching means a fresh library sync.
+`./data` is still needed — UI-saved settings live there.
 
 ### Web UI Configuration
 

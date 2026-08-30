@@ -112,6 +112,57 @@ class ConfigSection(BaseModel):
         return (annotation | None, Field(default=None, description=info.description))
 
 
+class DatabaseConfig(ConfigSection):
+    """Which database rows are written to, and how the pool behaves.
+
+    Deliberately absent from `ConfigUpdate`: the engine is built and the schema
+    migrated once at startup, so a URL typed into the settings form could not
+    take effect until a restart. Environment or YAML only.
+
+    SQLite ignores every field but `url` -- it is a file, with no server to pool
+    connections to and no network to time out on. `max_overflow` is left at
+    SQLAlchemy's own 10: it is a burst allowance above `pool_size`, and a
+    deployment that needs a different one needs a different `pool_size` first.
+    """
+
+    # A DSN carries the database password, and `GET /api/config` returns every
+    # section to the browser.
+    url: SecretStr = Field(
+        default=SecretStr(""),
+        description=(
+            "SQLAlchemy URL, e.g. postgresql+psycopg://user:pass@host:5432/mediasage. "
+            "Empty means the SQLite file under `data/`."
+        ),
+    )
+    pool_size: int = Field(
+        default=5,
+        gt=0,
+        description="Server connections held open. 5 covers one uvicorn worker's concurrency.",
+    )
+    pool_recycle: int = Field(
+        default=1800,
+        gt=0,
+        description="Seconds before a pooled connection is reopened; a proxy may drop idle ones.",
+    )
+    connect_timeout: int = Field(
+        default=10,
+        ge=1,
+        description="Seconds one attempt to reach the server may take. Whole seconds: libpq.",
+    )
+    startup_backoff: list[float] = Field(
+        default=[1.0, 2.0, 4.0, 8.0, 15.0],
+        description=(
+            "Seconds between attempts to reach the database at startup, so a database "
+            "container starting alongside the app is waited for. Empty fails on the first refusal."
+        ),
+    )
+
+    @property
+    def is_default(self) -> bool:
+        """Whether nothing was configured, leaving the SQLite file under `data/`."""
+        return not self.url.get_secret_value()
+
+
 class PlexConfig(ConfigSection):
     """Plex server connection settings, and how hard to lean on the server.
 

@@ -8,7 +8,8 @@ from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import inspect
 
-from backend.db import Base, db, migrations
+from backend.config.models import DatabaseConfig
+from backend.db import Base, Database, db, migrations
 from backend.library.tables import Track
 from backend.results.tables import Result
 
@@ -87,7 +88,11 @@ REGISTERED = (Track, Result)
 
 @pytest.fixture
 def legacy_database(tmp_path):
-    """A database in the pre-Alembic shape, carrying a track and a result."""
+    """A database in the pre-Alembic shape, carrying a track and a result.
+
+    Always SQLite: the schema it upgrades from was only ever written by the
+    hand-rolled SQLite code, so there is no Postgres equivalent to test.
+    """
     path = tmp_path / "legacy.db"
     conn = sqlite3.connect(path)
     conn.executescript(LEGACY_SCHEMA)
@@ -102,7 +107,7 @@ def legacy_database(tmp_path):
     conn.commit()
     conn.close()
 
-    db.configure(f"sqlite:///{path}")
+    db.configure(DatabaseConfig(url=Database.sqlite_url(path)))
     yield path
     db.dispose()
 

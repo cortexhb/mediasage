@@ -15,6 +15,11 @@ legacy definition differs in ways that matter: a nullable primary key and a
 
 Dropping `tracks` takes the old `track_genres` triggers with it, since SQLite
 drops a table's triggers with the table. See docs/track_genres_consistency.md.
+
+Two column declarations here were later made explicit for Postgres --
+`sync_state.id` is not autoincrementing, and `results.created_at` carries a time
+zone. Edited in place rather than followed by a second revision: SQLite renders
+both identically, so no existing database sees a change.
 """
 
 from collections.abc import Sequence
@@ -90,7 +95,7 @@ def upgrade() -> None:
 
     op.create_table(
         "sync_state",
-        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("id", sa.Integer(), autoincrement=False, nullable=False),
         sa.Column("plex_server_id", sa.String(), nullable=True),
         sa.Column("last_sync_at", sa.String(), nullable=True),
         sa.Column("track_count", sa.Integer(), nullable=False),
@@ -131,7 +136,7 @@ def create_results() -> None:
         sa.Column("artist", sa.String(), nullable=True),
         sa.Column("art_rating_key", sa.String(), nullable=True),
         sa.Column("subtitle", sa.String(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("idx_results_type_created", "results", ["type", "created_at"])

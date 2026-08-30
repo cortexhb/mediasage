@@ -1,8 +1,9 @@
 """Database engine, session handling, and the one dialect-aware statement.
 
-Nothing above this package names a SQL dialect. Entry points: `db` for sessions
-and connections, `Upsert` for insert-or-update, `migrations` to bring the
-schema current at startup.
+Nothing above this package names a SQL dialect. SQLite and Postgres are both
+supported; the configured URL picks one. Entry points: `db` for sessions and
+connections, `Upsert` for insert-or-update, `migrations` to bring the schema
+current at startup.
 
 Modules:
     base        -- the declarative base every table class inherits from

@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Index
+from sqlalchemy import DateTime, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -35,7 +35,9 @@ class Result(Base):
     artist: Mapped[str | None] = mapped_column(default=None)
     art_rating_key: Mapped[str | None] = mapped_column(default=None)
     subtitle: Mapped[str | None] = mapped_column(default=None)
-    created_at: Mapped[datetime] = mapped_column(default=UTC_NOW)
+    # `UTC_NOW` is aware: a naive Postgres column would shift it by whatever
+    # the server's TimeZone happens to be. SQLite stores the same either way.
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=UTC_NOW)
 
     # History reads newest first, filtered by type or not at all. No DESC: both
     # backends scan an index backwards, and an expression index defeats

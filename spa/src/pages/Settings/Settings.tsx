@@ -3,7 +3,7 @@
  *
  * The legacy setup wizard is gone (see `spa/docs/migration.md`), so this
  * screen has to configure a system from nothing. `MediasageConfig` has ten
- * sections, so it is a rail of groups over a pane rather than one long form:
+ * editable sections, so it is a rail of groups over a pane rather than one form:
  * each group is its own route and its own save, and a save carries only the
  * fields on screen.
  *

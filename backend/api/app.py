@@ -34,7 +34,7 @@ from backend.api.routes.results import register_results_routes
 from backend.api.routes.setup import register_setup_routes
 from backend.api.routes.static import register_static_routes
 from backend.config import config_store
-from backend.db import migrations
+from backend.db import db, migrations
 from backend.llm import LLMClient, LLMNotConfigured, client_store
 from backend.plex import PlexClient, PlexNotConnected, plex_store
 from backend.tracing import Tracing
@@ -58,6 +58,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         client_store.client = LLMClient.of(config.llm)
 
     # Before anything reads or writes a row.
+    db.configure(config.database)
+    db.start()
     migrations.upgrade_to_head()
 
     yield

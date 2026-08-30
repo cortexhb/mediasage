@@ -1,14 +1,16 @@
 """Database engine and session management.
 
 Owns the single SQLAlchemy engine and hands out sessions. Entry points are
-`db.engine()`, `db.session()` and `db.configure()`.
+`db.configure()`, `db.start()`, `db.engine()` and `db.session()`.
 
-The URL decides the backend. SQLite is the default and the only one shipped, but
-nothing above this module names a dialect: pragmas are applied on connect only
-for SQLite, and `Upsert` in `backend.db.statements` dispatches on the dialect.
-Moving to Postgres is a URL change plus an Alembic run.
+The URL decides the backend: a file-backed SQLite database when none is
+configured, Postgres when one is. Nothing above this module names a dialect --
+pragmas are applied on connect only for SQLite, pool options only for a server
+backend, and `Upsert` in `backend.db.statements` dispatches on the dialect.
 """
 
+import logging
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -17,7 +19,13 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
+
+from backend.config.models import DatabaseConfig
+from backend.db.statements import UPSERT_DIALECTS
+
+logger = logging.getLogger(__name__)
 
 # Where a file-backed SQLite database lives when no URL is configured.
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
@@ -58,7 +66,7 @@ class Database(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    url: str | None = None
+    settings: DatabaseConfig = DatabaseConfig()
     _engine: Engine | None = None
 
     @staticmethod
@@ -76,6 +84,8 @@ class Database(BaseModel):
 
         Written to rather than checked with `os.access`: a Docker bind mount
         can report permission the kernel then refuses.
+
+        Still meaningful on a server backend: the saved settings live here too.
         """
         try:
             self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -86,34 +96,78 @@ class Database(BaseModel):
             return False
         return True
 
-    def configure(self, url: str) -> None:
-        """Point at a different database, disposing of the current engine.
-
-        Tests use this to redirect to a temporary file; nothing else should.
-        """
+    def configure(self, settings: DatabaseConfig) -> None:
+        """Point at a different database, disposing of the current engine."""
         self.dispose()
-        self.url = url
+        self.settings = settings
 
     def resolved_url(self) -> str:
         """The configured URL, defaulting to the SQLite file under `data/`."""
-        if self.url:
-            return self.url
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        return self.sqlite_url(DB_PATH)
+        if self.settings.is_default:
+            return self.sqlite_url(DB_PATH)
+        return self.settings.url.get_secret_value()
+
+    def engine_options(self) -> dict[str, Any]:
+        """The connection and pool arguments this backend needs.
+
+        SQLite is a file: there is no server to pool against, and its pool
+        exists to guard cross-thread access. A server backend gets the
+        opposite -- a sized pool, a liveness check and a connect timeout,
+        because a restart or an idle proxy closes connections without saying so.
+        """
+        if self.resolved_url().startswith("sqlite"):
+            # FastAPI serves requests across threads; the pool guards access.
+            return {
+                "connect_args": {
+                    "check_same_thread": False,
+                    "timeout": SQLITE_CONNECT_TIMEOUT,
+                }
+            }
+
+        return {
+            "pool_size": self.settings.pool_size,
+            "pool_recycle": self.settings.pool_recycle,
+            # A connection closed while idle is found here, not mid-request.
+            "pool_pre_ping": True,
+            "connect_args": {"connect_timeout": self.settings.connect_timeout},
+        }
 
     def engine(self) -> Engine:
         """The engine, created on first use."""
         if self._engine is None:
-            url = self.resolved_url()
-            connect_args: dict[str, Any] = {}
-            if url.startswith("sqlite"):
-                # FastAPI serves requests across threads; the pool guards access.
-                connect_args = {
-                    "check_same_thread": False,
-                    "timeout": SQLITE_CONNECT_TIMEOUT,
-                }
-            self._engine = create_engine(url, connect_args=connect_args)
+            if self.settings.is_default:
+                DATA_DIR.mkdir(parents=True, exist_ok=True)
+            self._engine = create_engine(self.resolved_url(), **self.engine_options())
         return self._engine
+
+    def start(self) -> None:
+        """Refuse an unsupported backend, then wait for it to answer.
+
+        Called once at startup, before migrations. A compose file brings the
+        database up beside the app, so a refused connection is retried on the
+        configured backoff rather than killing the process on the first attempt.
+
+        Raises:
+            NotImplementedError: If the URL names a backend with no upsert form
+            OperationalError: If the last attempt still cannot connect
+        """
+        dialect = self.engine().dialect.name
+        if dialect not in UPSERT_DIALECTS:
+            supported = ", ".join(sorted(UPSERT_DIALECTS))
+            raise NotImplementedError(
+                f"Unsupported database backend {dialect!r}; supported: {supported}"
+            )
+
+        backoff = self.settings.startup_backoff
+        for attempt in range(len(backoff) + 1):
+            try:
+                with self.engine().connect():
+                    return
+            except OperationalError:
+                if attempt == len(backoff):
+                    raise
+                logger.warning("Database not reachable, retrying in %.1fs", backoff[attempt])
+                time.sleep(backoff[attempt])
 
     @contextmanager
     def session(self) -> Iterator[Session]:

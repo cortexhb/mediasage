@@ -27,6 +27,7 @@ dependencies = [
     "ollama>=0.6.2",
     "alembic>=1.19.1",
     "sqlalchemy>=2.0.52",
+    "psycopg[binary]>=3.2.10",
     "langfuse>=4.14.4",
 ]
 

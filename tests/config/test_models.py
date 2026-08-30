@@ -8,6 +8,7 @@ from backend.config import (
     BudgetConfig,
     CloudLLMConfig,
     ConfigUpdate,
+    DatabaseConfig,
     LocalLLMConfig,
     MatchingConfig,
     MediasageConfig,
@@ -15,6 +16,36 @@ from backend.config import (
     RecommendConfig,
     ResearchConfig,
 )
+
+# Read once at startup: a form could not make it take effect.
+NOT_SUBMITTABLE = frozenset({"database"})
+
+
+class TestDatabaseConfig:
+    """The URL picks the backend; the rest only reaches a server one."""
+
+    def test_an_unset_url_leaves_the_backend_to_the_engine(self):
+        """Empty rather than the SQLite path: only the engine knows where data lives."""
+        assert DatabaseConfig().is_default is True
+
+    def test_a_configured_url_is_not_the_default(self):
+        assert DatabaseConfig(url="postgresql+psycopg://u:p@h/db").is_default is False
+
+    def test_the_url_is_masked_when_dumped(self):
+        """A DSN carries a password, and `GET /api/config` returns every section."""
+        dumped = DatabaseConfig(url="postgresql+psycopg://u:hunter2@h/db").model_dump()
+        assert "hunter2" not in str(dumped)
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [("pool_size", 0), ("pool_recycle", 0), ("connect_timeout", 0)],
+    )
+    def test_a_non_positive_tunable_is_rejected(self, field, value):
+        with pytest.raises(ValidationError):
+            DatabaseConfig(**{field: value})
+
+    def test_the_backoff_can_be_emptied_to_fail_on_the_first_refusal(self):
+        assert DatabaseConfig(startup_backoff=[]).startup_backoff == []
 
 
 class TestPlexConfig:
@@ -116,7 +147,15 @@ class TestConfigUpdate:
 
     def test_carries_every_section_the_config_has(self):
         """A section the config declares must be submittable, or it is unreachable."""
-        assert ConfigUpdate.sections() == tuple(MediasageConfig.model_fields)
+        declared = tuple(
+            name for name in MediasageConfig.model_fields if name not in NOT_SUBMITTABLE
+        )
+        assert ConfigUpdate.sections() == declared
+
+    def test_the_database_section_cannot_be_submitted(self):
+        """Deliberate: the engine is built once, so a saved URL would mislead."""
+        with pytest.raises(ValidationError):
+            ConfigUpdate.model_validate({"database": {"url": "postgresql+psycopg://x@y/z"}})
 
     @pytest.mark.parametrize(
         ("key", "value"),

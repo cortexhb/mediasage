@@ -64,6 +64,8 @@ described in [docs/plex_login.md](plex_login.md).
 | Recommendations | `recommend`, `matching`, `research`, `defaults` |
 | Advanced        | `art`, `langfuse`                               |
 
+`database` is in no group: it is read once at startup and a form could not apply it.
+
 A save is proved before it is kept. Changing `provider`, `api_key`, `endpoint_url`,
 `model_analysis`, `model_generation` or `context_window` probes the provider first; a
 failure is a 422 on the form and nothing is written. Editing a price or a threshold spends
@@ -77,13 +79,50 @@ four price fields, because they name things the new provider does not serve.
 
 ## Secrets
 
-`llm.api_key`, `langfuse.secret_key`, `plex.token` and `plex.account_token` serialise as
+`database.url`, `llm.api_key`, `langfuse.secret_key`, `plex.token` and `plex.account_token` serialise as
 `**********` in `GET /api/config`, and a save logs field names only. `llm_api_key_set` in
 the same response is how a form knows a credential is there at all. `langfuse.public_key`
 is not a secret: Langfuse publishes it to browsers by design.
 
 `config.yaml` and `data/config.user.yaml` hold credentials in plain text. Both, and any
 suffixed copy, are gitignored.
+
+## database
+
+Which database rows are written to. SQLite by default and Postgres when a URL says so;
+nothing else is supported, and an unrecognised backend is refused at startup rather than
+halfway through a sync.
+
+| Field             | Default                     | Meaning                                                                     |
+| ----------------- | --------------------------- | ---------------------------------------------------------------------------- |
+| `url`             | `""`                        | SQLAlchemy URL, masked in responses. Empty means SQLite under `data/`.      |
+| `pool_size`       | `5`                         | Server connections held open. Ignored by SQLite.                            |
+| `pool_recycle`    | `1800`                      | Seconds before a pooled connection is reopened. Ignored by SQLite.          |
+| `connect_timeout` | `10`                        | Seconds one attempt to reach the server may take. Whole seconds; libpq.     |
+| `startup_backoff` | `[1.0, 2.0, 4.0, 8.0, 15.0]` | Seconds between attempts at startup. Empty fails on the first refusal.      |
+
+This section is **not** in the settings UI, and `PUT /api/config` rejects it. The engine is
+built and the schema migrated once at startup, so a URL saved from a form could not take
+effect until a restart. Set it in the environment or in `config.yaml`.
+
+For Postgres, install nothing extra — the driver ships with the image:
+
+```bash
+MEDIASAGE_DATABASE__URL=postgresql+psycopg://mediasage:mediasage@postgres:5432/mediasage
+```
+
+`docker-compose.yml` carries an optional `postgres` service behind a profile:
+
+```bash
+docker compose --profile postgres up
+```
+
+The app has no `depends_on` on it. It retries a database that is still starting, on
+`startup_backoff`, so a cold stack comes up in either order. Migrations run against whichever
+backend is configured; there is no import path between the two, so switching means a fresh
+`data/` sync rather than a copied file.
+
+`data/` is still used on Postgres: `config.user.yaml` lives there.
 
 ## plex
 
@@ -285,7 +324,7 @@ Both `PLEXAPI_*` variables use `setdefault`, so an explicitly exported value win
 | `config.yaml`           | The base file. Not created by the app.                |
 | `config.example.yaml`   | A copyable starting point.                            |
 | `data/config.user.yaml` | Settings saved from the UI.                           |
-| `data/library_cache.db` | The SQLite mirror of the Plex library. Path is fixed. |
+| `data/library_cache.db` | The SQLite mirror of the Plex library, when no `database.url` is set. |
 | `.env`, `.env.langfuse` | Environment files, read at boot.                      |
 
 Under Docker, `./data` is bind-mounted to `/app/data` and must be writable by UID 1000. A

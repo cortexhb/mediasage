@@ -114,7 +114,9 @@ class SyncState(Base):
 
     __tablename__ = "sync_state"
 
-    id: Mapped[int] = mapped_column(primary_key=True, default=SYNC_STATE_ID)
+    # Not autoincrementing: the row supplies its own id, and Postgres would
+    # otherwise back an integer primary key with a sequence nothing advances.
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False, default=SYNC_STATE_ID)
     plex_server_id: Mapped[str | None] = mapped_column(default=None)
     last_sync_at: Mapped[str | None] = mapped_column(default=None)
     track_count: Mapped[int] = mapped_column(default=0)

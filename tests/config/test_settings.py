@@ -38,6 +38,14 @@ class TestSourcePrecedence:
 
         assert MediasageConfig.load(config_file).plex.music_library == "Env"
 
+    def test_the_database_url_is_reachable_from_the_environment(self, tmp_path, clean_config_env):
+        """The only way to select Postgres: no form writes this section."""
+        config_file = write_config(tmp_path, {"llm": CLOUD_LLM})
+        clean_config_env.setenv("MEDIASAGE_DATABASE__URL", "postgresql+psycopg://u:p@host/ms")
+
+        loaded = MediasageConfig.load(config_file).database
+        assert loaded.url.get_secret_value() == "postgresql+psycopg://u:p@host/ms"
+
     def test_yaml_used_when_no_env_var(self, tmp_path, clean_config_env):
         """YAML value should be used when env var not set."""
         config_file = write_config(tmp_path, {"plex": {"music_library": "Yaml"}, "llm": CLOUD_LLM})

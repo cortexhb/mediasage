@@ -1,5 +1,6 @@
 """Pytest fixtures for MediaSage tests."""
 
+import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -15,6 +16,7 @@ from backend.tracing import Tracing
 # these set, so tests must clear them or they assert against that machine
 # instead of the values under test.
 CONFIG_ENV_VARS = (
+    "MEDIASAGE_DATABASE__URL",
     "MEDIASAGE_DEFAULTS__TRACK_COUNT",
     "MEDIASAGE_LLM__API_KEY",
     "MEDIASAGE_LLM__CONTEXT_WINDOW",
@@ -26,6 +28,9 @@ CONFIG_ENV_VARS = (
     "MEDIASAGE_PLEX__TOKEN",
     "MEDIASAGE_PLEX__URL",
 )
+
+# Runs the suite against a server backend. Unset: no test needs one.
+TEST_DB_URL_ENV = "MEDIASAGE_TEST_DB_URL"
 
 # Langfuse's own names, which `LangfuseEnv` reads unprefixed.
 LANGFUSE_ENV_VARS = (
@@ -108,22 +113,46 @@ def clean_config_env(monkeypatch):
 
 @pytest.fixture
 def temp_db(tmp_path):
-    """A migrated database on a fresh file, with in-process sync state reset.
+    """A migrated, empty database, with in-process sync state reset.
 
     Migrations build the schema, so tests exercise what the application
     actually ships rather than a parallel definition.
+
+    A fresh SQLite file, unless `MEDIASAGE_TEST_DB_URL` names a server -- which
+    is how the suite is run against Postgres. That database is emptied before
+    every test, so it must be one the suite owns, and the run cannot be
+    parallel. Reflected rather than dropped from `Base.metadata`, so
+    `alembic_version` and anything a half-finished revision left behind go too.
     """
+    from sqlalchemy import MetaData
+
+    from backend.config.models import DatabaseConfig
     from backend.db import db, migrations
     from backend.library import library_sync
     from backend.library.models import SyncRun
 
-    db.configure(f"sqlite:///{tmp_path / 'test.db'}")
+    url = os.environ.get(TEST_DB_URL_ENV) or f"sqlite:///{tmp_path / 'test.db'}"
+    db.configure(DatabaseConfig(url=url))
+
+    with db.connection() as conn:
+        existing = MetaData()
+        existing.reflect(bind=conn)
+        existing.drop_all(bind=conn)
+
     migrations.upgrade_to_head()
     library_sync._run = SyncRun()
 
     yield db
 
     db.dispose()
+
+
+@pytest.fixture
+def sqlite_only(temp_db):
+    """`temp_db`, for a test that reads SQLite's own pragmas or catalogue."""
+    if temp_db.engine().dialect.name != "sqlite":
+        pytest.skip("asserts on SQLite internals")
+    return temp_db
 
 
 @pytest.fixture

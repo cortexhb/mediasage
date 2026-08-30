@@ -155,9 +155,11 @@ i` adds nothing.
 ## Key design decisions
 
 - **Filter-first**: Apply genre/decade filters before sending to the LLM (handles 50k+ libraries)
-- **Local SQLite cache** at `data/library_cache.db` mirrors Plex track metadata; genres are
-  normalized into `track_genres` and kept in step by trigger, so filters use an index instead of
-  scanning and parsing JSON per row
+- **Local cache** mirrors Plex track metadata; genres are normalized into `track_genres` and kept
+  in step on write, so filters use an index instead of scanning and parsing JSON per row
+- **SQLite or Postgres**, decided by `MEDIASAGE_DATABASE__URL`; unset means the SQLite file at
+  `data/library_cache.db`. Only `backend/db/engine.py` and `backend/db/statements.py` name a
+  dialect — everything above them builds portable SQLAlchemy expressions, and Alembic owns all DDL
 - **Resumable sync**: page offsets are checkpointed to `sync_state`; a failed sync keeps what it
   wrote and resumes rather than restarting
 - **plexapi autoreload is disabled** (`PLEXAPI_PLEXAPI_AUTORELOAD=false`, set in

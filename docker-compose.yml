@@ -1,6 +1,6 @@
 services:
   mediasage:
-    image: cortexhb/mediasage:latest
+    image: ghcr.io/cortexhb/mediasage:latest
     build:
       context: .
 #      dockerfile: docker/Dockerfile
@@ -14,6 +14,8 @@ services:
     environment:
       # Performance tuning
       - UVICORN_WORKERS=${UVICORN_WORKERS:-1}
+      # Unset means the SQLite file in ./data. Uncomment for the service below.
+#      - MEDIASAGE_DATABASE__URL=postgresql+psycopg://mediasage:mediasage@postgres:5432/mediasage
 #      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-)
 #      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-)
 #      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-)
@@ -40,3 +42,21 @@ services:
           path: ./uv.lock
         - action: rebuild
           path: Dockerfile
+
+  # Optional Postgres backend, off unless the profile is asked for:
+  #   docker compose --profile postgres up
+  # No `depends_on`: the app retries, and a profile cannot be depended on.
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:18-alpine
+    container_name: mediasage-postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-mediasage}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mediasage}
+      - POSTGRES_DB=${POSTGRES_DB:-mediasage}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

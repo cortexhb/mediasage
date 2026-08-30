@@ -16,6 +16,11 @@ llm:
 defaults:
   track_count: 25
 
+# Blank means SQLite under data/. Not editable from the UI.
+database:
+  url: ""
+  # postgresql+psycopg://mediasage:mediasage@postgres:5432/mediasage
+
 langfuse: # all four blank means tracing off. docs/langfuse_tracing.md
   base_url: ""
   public_key: ""
