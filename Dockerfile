@@ -28,7 +28,7 @@ RUN npm run build
 # The virtualenv is built where uv and its download cache may live freely.
 # Only `/app/.venv` is copied forward, so neither reaches the runtime image;
 # together they are the bulk of what a single-stage build ships.
-FROM python:3.14-slim-trixie AS builder
+FROM python:3.15-slim-trixie AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
@@ -60,7 +60,7 @@ import cryptography.hazmat.bindings._rust, greenlet, httptools, lxml.etree, \
        watchfiles, websockets, xxhash, yaml, zstandard"
 
 
-FROM python:3.14-slim-trixie AS runtime
+FROM python:3.15-slim-trixie AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
